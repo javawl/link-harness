@@ -38,5 +38,5 @@ Use the browser tool to drive one shared, persistent real-browser session (the a
 
 ## 已知限制与遗留工作
 
-- **不支持标签页寻址** — 工具只驱动会话的活动页；命名标签页随服务定义契约变更引入。
+- **标签页寻址按调用方隔离** — `page` 参数贯通所有动作；navigate 绑定新引用，后续命令按引用寻址。单个 agent 的调用保持串行（`isConcurrencySafe` 为 false）；跨 agent 并发靠编排（每个子任务寻址自己的引用），不是本 agent 的并行调用。
 - **不检查 cookie/存储** — 有意为之：会话对模型不透明；登录态只通过页面快照观察。

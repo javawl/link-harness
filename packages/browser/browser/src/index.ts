@@ -1,9 +1,10 @@
 /**
  * Service Definition for the browser automation capability seam (`ctx.browser`): a provider registry and
- * a serialized one-session command dispatch. Duplicate provider ids are rejected. The session opens lazily
- * on the first command and is reused until `closeSession()` or context disposal, so a persistent browser
- * profile outlives individual tool calls. Provider selection happens at call time and never depends on
- * registration order.
+ * a one-session command dispatch ordered per addressed tab. Duplicate provider ids are rejected. The
+ * session opens lazily on the first command (single-flight) and is reused until `closeSession()` or
+ * context disposal, so a persistent browser profile outlives individual tool calls. Commands naming the
+ * same tab serialize; commands naming different tabs run concurrently inside the provider. Provider
+ * selection happens at call time and never depends on registration order.
  * @module @deepseek-ai/dsh-browser
  */
 
@@ -78,7 +79,7 @@ export class BrowserRuntime extends Service {
   private readonly providerId: string | undefined
   private session: BrowserSession | undefined
   private sessionDisposer: (() => void) | undefined
-  private queue: Promise<unknown> = Promise.resolve()
+  private opening: Promise<BrowserSession> | undefined
 
   constructor(ctx: Context, config: BrowserRuntimeConfig = {}) {
     super(ctx, 'browser')
@@ -107,9 +108,10 @@ export class BrowserRuntime extends Service {
   }
 
   /**
-   * Perform one command on the shared session, opening it lazily through the
-   * selected provider on first use. Commands serialize: each dispatch observes
-   * the previous one's settled state. Provider selection and session open
+   * Perform one command on the shared session, opening it lazily (and
+   * single-flight) through the selected provider on first use. Ordering is
+   * per addressed tab: same-tab commands serialize in dispatch order while
+   * different-tab commands may overlap. Provider selection and session open
    * throw {@link BrowserError} before any page work runs.
    * @param command - the closed-union command to execute.
    * @param signal - optional cancellation signal checked before dispatch.
@@ -138,9 +140,7 @@ export class BrowserRuntime extends Service {
         )
       }
     }
-    const next = this.queue.then(run, run)
-    this.queue = next.catch(() => {})
-    return next
+    return run()
   }
 
   /**
@@ -149,12 +149,26 @@ export class BrowserRuntime extends Service {
    * @returns when the session is closed or none existed.
    */
   async closeSession(): Promise<void> {
-    await this.queue
+    await this.opening
     await this.discardSession()
   }
 
-  private async ensureSession(signal?: AbortSignal): Promise<BrowserSession> {
-    if (this.session) return this.session
+  private ensureSession(signal?: AbortSignal): Promise<BrowserSession> {
+    if (this.session) return Promise.resolve(this.session)
+    this.opening ??= this.launchSession(signal).then(
+      (session) => {
+        this.opening = undefined
+        return session
+      },
+      (error: unknown) => {
+        this.opening = undefined
+        throw error
+      },
+    )
+    return this.opening
+  }
+
+  private async launchSession(signal?: AbortSignal): Promise<BrowserSession> {
     const provider = resolveProvider({
       providers: this.providers,
       ...this.providerId !== undefined ? { configuredId: this.providerId } : {},

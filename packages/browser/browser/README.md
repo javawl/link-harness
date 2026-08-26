@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Service Definition for the browser automation capability seam (`ctx.browser`): the provider registry, the lazy single-session lifecycle, serialized closed-union command dispatch, and the `BrowserError` taxonomy.
+Service Definition for the browser automation capability seam (`ctx.browser`): the provider registry, the lazy single-session lifecycle, per-tab-ordered closed-union command dispatch over page refs, and the `BrowserError` taxonomy.
 
 | Package | Role | ctx key |
 |---|---|---|
@@ -15,7 +15,7 @@ Service Definition for the browser automation capability seam (`ctx.browser`): t
 | Member | Purpose |
 |---|---|
 | `registerProvider(provider)` | Register a browser provider; duplicate ids throw `BROWSER_DUPLICATE_PROVIDER`; returns a fiber-scoped disposer |
-| `act(command, signal?)` | Dispatch one closed-union command on the shared session (opened lazily); commands serialize |
+| `act(command, signal?)` | Dispatch one closed-union command on the shared session (opened lazily); same-tab commands serialize while different-tab commands may overlap |
 | `closeSession()` | Close the shared browser; the next `act()` opens a fresh one |
 
 `BrowserCommand` (`navigate`/`snapshot`/`click`/`fill`/`select`/`press`/`upload`/`screenshot`/`waitFor`/`closePage`) and `BrowserResult` (`page`/`acked`/`screenshot`) are CLOSED unions owned here. A raw provider failure discards the session (`BROWSER_ACTION_FAILED`), so the next command relaunches rather than reusing unknown browser state.
@@ -43,6 +43,6 @@ No direct invalidation; the named consumer owns any request-prefix changes.
 
 ## Known Limitations and Deferred Work
 
-- **One session, one active page** — the seam serializes all commands onto one shared session and its most recently opened page; named-tab addressing and parallel sessions are deferred until a workflow needs them.
+- **One session, many addressed tabs** — every command takes an optional `page` ref; a navigate binds a caller-named ref to a tab and later commands address it, so parallel callers each drive their own tab (cookie jar shared). Commands without a ref keep the legacy most-recent-tab contract; a second parallel session remains out of scope.
 - **No observation surface** — no page-lifecycle events and no session-status query; callers observe outcomes per command.
 - **Signal checks are cooperative** — `AbortSignal` is checked before dispatch; in-flight Playwright operations complete under their own timeouts.

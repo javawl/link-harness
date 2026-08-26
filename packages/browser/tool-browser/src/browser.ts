@@ -21,6 +21,7 @@ type BrowserAction = typeof ACTIONS[number]
 /** Validated tool arguments after value checks the schema DSL cannot express. */
 export interface BrowserToolInput {
   readonly action: BrowserAction
+  readonly page?: string
   readonly url?: string
   readonly selector?: string
   readonly value?: string
@@ -38,57 +39,62 @@ export interface BrowserToolInput {
  */
 export function parseBrowserArgs(args: Record<string, unknown>): BrowserCommand {
   const action = args.action
+  const page = readNonEmpty(args.page, 'page')
   const url = readNonEmpty(args.url, 'url')
   const selector = readNonEmpty(args.selector, 'selector')
   const value = readNonEmpty(args.value, 'value')
   const waitUntil = readWaitUntil(args.waitUntil)
   const timeoutMs = readPositiveInt(args.timeoutMs, 'timeoutMs')
 
+  const addressed = <T extends BrowserCommand>(command: T): T => (
+    page === undefined ? command : { ...command, page }
+  )
+
   switch (action as BrowserAction) {
     case 'navigate': {
       const target = readUrl(args.url)
       if (target === undefined) throw new Error('browser navigate requires an http(s) url.')
-      return { kind: 'navigate', url: target, ...waitUntil === undefined ? {} : { waitUntil } }
+      return addressed({ kind: 'navigate', url: target, ...waitUntil === undefined ? {} : { waitUntil } })
     }
     case 'snapshot':
-      return { kind: 'snapshot', ...selector === undefined ? {} : { selector } }
+      return addressed({ kind: 'snapshot', ...selector === undefined ? {} : { selector } })
     case 'click':
       if (selector === undefined) throw new Error('browser click requires a selector.')
-      return { kind: 'click', selector }
+      return addressed({ kind: 'click', selector })
     case 'fill':
       if (selector === undefined) throw new Error('browser fill requires a selector.')
       if (value === undefined) throw new Error('browser fill requires a value.')
-      return { kind: 'fill', selector, value }
+      return addressed({ kind: 'fill', selector, value })
     case 'select':
       if (selector === undefined) throw new Error('browser select requires a selector.')
       if (value === undefined) throw new Error('browser select requires a value.')
-      return { kind: 'select', selector, value }
+      return addressed({ kind: 'select', selector, value })
     case 'press':
       if (typeof args.key !== 'string' || args.key.trim().length === 0) {
         throw new Error('browser press requires a key (for example Enter, Tab).')
       }
-      return { kind: 'press', key: args.key.trim() }
+      return addressed({ kind: 'press', key: args.key.trim() })
     case 'upload':
       if (selector === undefined) throw new Error('browser upload requires a selector.')
       if (!Array.isArray(args.files) || args.files.length === 0
         || args.files.some(file => typeof file !== 'string' || file.trim().length === 0)) {
         throw new Error('browser upload requires a non-empty files array of paths.')
       }
-      return { kind: 'upload', selector, files: args.files.map(file => String(file)) }
+      return addressed({ kind: 'upload', selector, files: args.files.map(file => String(file)) })
     case 'screenshot':
-      return { kind: 'screenshot' }
+      return addressed({ kind: 'screenshot' })
     case 'waitFor':
       if (selector === undefined && url === undefined) {
         throw new Error('browser waitFor requires a selector or a url.')
       }
-      return {
+      return addressed({
         kind: 'waitFor',
         ...selector === undefined ? {} : { selector },
         ...url === undefined ? {} : { url },
         ...timeoutMs === undefined ? {} : { timeoutMs },
-      }
+      })
     case 'closePage':
-      return { kind: 'closePage' }
+      return addressed({ kind: 'closePage' })
     default:
       return assertNever(action as never, `browser action must be one of ${ACTIONS.join(', ')}.`)
   }
@@ -141,7 +147,7 @@ function readPositiveInt(value: unknown, field: string): number | undefined {
 export function formatBrowserOutput(result: BrowserResult, maxChars: number): string {
   switch (result.kind) {
     case 'page': {
-      const header = `${result.title}\n${result.url}`
+      const header = `[page ${result.page}] ${result.title}\n${result.url}`
       const body = result.text.length > maxChars
         ? `${result.text.slice(0, maxChars)}\n… (truncated)`
         : result.text
@@ -156,8 +162,10 @@ export function formatBrowserOutput(result: BrowserResult, maxChars: number): st
   }
 }
 
-/** The browser session is one stateful surface; overlapping calls would interleave page state.
- * @returns always false — browser commands must not run concurrently.
+/** One agent must not overlap its own browser calls: interleaved steps on one tab are incoherent.
+ * Cross-tab parallelism is real — separate agents/children each addressing their own page ref overlap
+ * inside the provider — but that is orchestration-level, not this agent's parallel tool calls.
+ * @returns always false — one agent's browser commands run serially.
  */
 export function browserIsConcurrencySafe(): boolean {
   return false
@@ -199,9 +207,14 @@ export function presentBrowserResult(_args: Record<string, unknown>, result: Too
  * @returns the JSON payload persisted with the `tool/result` event.
  */
 export function browserMetaFromValue(value: unknown): JsonValue {
-  const outcome = (value as { result?: { kind?: string; title?: string; url?: string } } | undefined)?.result
+  const outcome = (value as { result?: { kind?: string; title?: string; url?: string; page?: string } } | undefined)?.result
   if (outcome?.kind === 'page' && typeof outcome.title === 'string' && typeof outcome.url === 'string') {
-    return { kind: 'browser-page', title: outcome.title, url: outcome.url }
+    return {
+      kind: 'browser-page',
+      title: outcome.title,
+      url: outcome.url,
+      ...typeof outcome.page === 'string' ? { page: outcome.page } : {},
+    }
   }
   return { kind: 'browser', outcome: outcome?.kind ?? 'unknown' }
 }
@@ -229,7 +242,8 @@ export function applyBrowserTool(ctx: Context, timeoutMs: number, maxOutputChars
     name: 'tool:browser',
     order: 112,
     text: [
-      'Use the browser tool to drive one shared, persistent real-browser session (the active tab).',
+      'Use the browser tool to drive one shared, persistent real-browser session across tabs.',
+      'Tabs: navigate returns a page ref like p2; pass that page on every later command for the tab you are working. Work several sites in parallel by giving each its own ref. Omit page only for single-tab serial work.',
       'Actions: navigate (absolute http(s) url), snapshot (url/title/text of the page or a selector), click/fill/select (CSS selector; fill and select need value), press (key like Enter), upload (selector + files), screenshot (PNG base64), waitFor (selector or url), closePage.',
       'The session persists cookies and logins across calls and runs; prefer it for sites that need JavaScript, logins, or form submission. Confirm outcomes with snapshot or waitFor after state-changing actions.',
     ].join(' '),
@@ -243,6 +257,10 @@ export function applyBrowserTool(ctx: Context, timeoutMs: number, maxOutputChars
         type: 'string',
         required: true,
         description: `One of ${ACTIONS.join(', ')}.`,
+      },
+      page: {
+        type: 'string',
+        description: 'Tab ref from a navigate result. Pass it on EVERY command while working a tab: navigate with a new ref opens that tab, later commands address it. Omit only for single-tab serial work.',
       },
       url: {
         type: 'string',
@@ -287,6 +305,7 @@ export function applyBrowserTool(ctx: Context, timeoutMs: number, maxOutputChars
                 additionalProperties: false,
                 properties: {
                   kind: { type: 'string', required: true, const: 'page' },
+                  page: { type: 'string', required: true },
                   url: { type: 'string', required: true },
                   title: { type: 'string', required: true },
                   text: { type: 'string', required: true },

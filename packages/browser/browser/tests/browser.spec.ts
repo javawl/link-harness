@@ -10,6 +10,7 @@ import BrowserRuntime, {
 
 const pageResult: BrowserResult = {
   kind: 'page',
+  page: 'p1',
   url: 'https://example.com/',
   title: 'Example',
   text: 'hello',
@@ -141,7 +142,7 @@ describe('BrowserRuntime session lifecycle', () => {
     expect(made.sessions[0]?.commands.map(command => command.kind)).toEqual(['navigate', 'click'])
   })
 
-  it('serializes commands so each observes the previous settled state', async () => {
+  it('dispatches concurrent commands without a global chain; ordering is per page', async () => {
     const { browser } = await mountBrowser()
     const order: string[] = []
     browser.registerProvider(makeProvider({
@@ -153,11 +154,15 @@ describe('BrowserRuntime session lifecycle', () => {
       }),
     }).provider)
 
-    await Promise.all([
+    const [first, second] = await Promise.all([
       browser.act({ kind: 'navigate', url: 'https://example.com/' }),
       browser.act({ kind: 'snapshot' }),
     ])
-    expect(order).toEqual(['navigate', 'snapshot'])
+    // The seam passes both straight to the session; whichever finishes first
+    // reports first. Per-tab ordering is the provider's contract, tested there.
+    expect(order.slice().sort()).toEqual(['navigate', 'snapshot'])
+    expect(first.kind).toBe('page')
+    expect(second.kind).toBe('page')
   })
 
   it('discards the session after a raw provider failure and relaunches on the next command', async () => {
@@ -178,6 +183,26 @@ describe('BrowserRuntime session lifecycle', () => {
       .rejects.toThrow(expect.objectContaining({ code: 'BROWSER_ACTION_FAILED' }))
     await expect(browser.act({ kind: 'snapshot' })).resolves.toMatchObject({ kind: 'page' })
 
+    expect(made.opens).toBe(2)
+  })
+
+  it('discards the session when the provider reports it closed and relaunches', async () => {
+    const { browser } = await mountBrowser()
+    let failFirst = true
+    const made = makeProvider({
+      onCommand: () => {
+        if (failFirst) {
+          failFirst = false
+          throw new BrowserError('Target page, context or browser has been closed', 'BROWSER_ACTION_FAILED')
+        }
+        return pageResult
+      },
+    })
+    browser.registerProvider(made.provider)
+
+    await expect(browser.act({ kind: 'snapshot' }))
+      .rejects.toThrow(expect.objectContaining({ code: 'BROWSER_ACTION_FAILED' }))
+    await expect(browser.act({ kind: 'snapshot' })).resolves.toMatchObject({ kind: 'page' })
     expect(made.opens).toBe(2)
   })
 

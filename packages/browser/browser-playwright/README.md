@@ -21,7 +21,7 @@ Service Provider for the browser automation seam: a Playwright persistent Chromi
 | `launchArgs` | `[]` | Extra Chromium launch arguments (proxy, window size, …) |
 | `ignoreDefaultArgs` | `[]` | Playwright default launch arguments to omit by exact flag; dropping `--enable-automation` keeps automation-hostile pages (notably the Google account login) from rejecting the browser as unsafe |
 
-Every command dispatch maps the seam's closed `BrowserCommand` union onto the active page (the most recently opened tab, or a fresh one); raw Playwright failures wrap into `BROWSER_ACTION_FAILED` and launch failures into `BROWSER_LAUNCH_FAILED`.
+Every command dispatch maps the seam's closed `BrowserCommand` union onto its addressed tab: a named `page` ref (bound by a navigate, reused after) or, when omitted, the most recently opened tab. Commands on one tab serialize behind a per-tab chain while commands on different tabs overlap. Raw Playwright failures wrap into `BROWSER_ACTION_FAILED` and launch failures into `BROWSER_LAUNCH_FAILED`.
 
 ## Model Experience
 
@@ -34,5 +34,5 @@ No direct invalidation; the named consumer owns any request-prefix changes.
 ## Known Limitations and Deferred Work
 
 - **Bundled Chromium needs a manual install** — the default `chrome` channel uses the locally installed Google Chrome; an empty `channel` requires `npx playwright-core install chromium` in the deployment.
-- **Active page only** — the provider addresses the most recently opened tab; named-tab routing is deferred with the seam's single-page contract.
+- **Tabs addressed by ref** — the provider drives each tab behind a per-tab serial chain; cross-tab commands overlap; site-opened popups are adopted as addressable pages.
 - **Screenshots are viewport-only** — `fullPage` capture is deferred until a workflow needs page-length evidence.

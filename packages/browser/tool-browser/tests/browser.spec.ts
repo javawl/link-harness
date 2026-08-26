@@ -33,6 +33,10 @@ describe('parseBrowserArgs', () => {
     expect(parseBrowserArgs({ action: 'waitFor', url: '**/thanks' }))
       .toEqual({ kind: 'waitFor', url: '**/thanks' })
     expect(parseBrowserArgs({ action: 'closePage' })).toEqual({ kind: 'closePage' })
+    expect(parseBrowserArgs({ action: 'navigate', page: 'siteA', url: 'https://example.com' }))
+      .toEqual({ kind: 'navigate', page: 'siteA', url: 'https://example.com/' })
+    expect(parseBrowserArgs({ action: 'click', page: 'siteA', selector: 'a' }))
+      .toEqual({ kind: 'click', page: 'siteA', selector: 'a' })
   })
 
   it('rejects unknown actions and missing required fields per action', () => {
@@ -61,7 +65,7 @@ describe('parseBrowserArgs', () => {
 describe('formatBrowserOutput', () => {
   it('renders page results with the header and bounded text', () => {
     const text = formatBrowserOutput(
-      { kind: 'page', url: 'https://example.com', title: 'Example', text: 'a'.repeat(30), truncated: false },
+      { kind: 'page', page: 'p1', url: 'https://example.com', title: 'Example', text: 'a'.repeat(30), truncated: false },
       10,
     )
     expect(text).toContain('Example\nhttps://example.com')
@@ -126,5 +130,17 @@ describe('tool-browser plugin apply', () => {
   it('rejects non-positive maxOutputChars and timeoutMs', () => {
     expect(() =>{  apply({} as never, { maxOutputChars: 0, timeoutMs: 1 }) }).toThrow(/maxOutputChars/u)
     expect(() =>{  apply({} as never, { maxOutputChars: 1, timeoutMs: -1 }) }).toThrow(/timeoutMs/u)
+  })
+})
+
+describe('page addressing presentation', () => {
+  it('renders the addressed page ref in page captures', () => {
+    expect(formatBrowserOutput({ kind: 'page', page: 'p2', url: 'https://a.test/', title: 'A', text: 'body', truncated: false }, 100))
+      .toContain('[page p2] A')
+  })
+
+  it('carries the page ref in persisted meta', () => {
+    expect(browserMetaFromValue({ result: { kind: 'page', page: 'p2', url: 'https://a.test/', title: 'A', text: 'b', truncated: false } }))
+      .toEqual({ kind: 'browser-page', title: 'A', url: 'https://a.test/', page: 'p2' })
   })
 })

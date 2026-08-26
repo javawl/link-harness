@@ -64,6 +64,15 @@ function throwIfAborted(signal: AbortSignal | undefined, commandKind: string): v
 
 class PlaywrightSession implements BrowserSession {
   private closed = false
+  /** Live tabs by ref; the ref is the parallel caller's tab identity. */
+  private readonly pages = new Map<string, Page>()
+  /** Per-tab serial chains: same tab orders, different tabs overlap. */
+  private readonly chains = new Map<string, Promise<unknown>>()
+  /** Chain for commands that address no ref (the legacy single-tab path). */
+  private legacyTail: Promise<unknown> = Promise.resolve()
+  /** Most recently adopted tab; the no-ref addressing target. */
+  private lastRef: string | undefined
+  private refSeq = 0
 
   constructor(
     private readonly context: BrowserContext,
@@ -73,6 +82,11 @@ class PlaywrightSession implements BrowserSession {
     this.context.on('close', () => {
       this.closed = true
     })
+    // A persistent context may reopen with surviving tabs; adopt them so
+    // no-ref addressing lands on a real page instead of opening a spare one.
+    for (const existing of this.context.pages()) {
+      this.adopt(existing)
+    }
   }
 
   async act(command: BrowserCommand, signal?: AbortSignal): Promise<BrowserResult> {
@@ -80,51 +94,75 @@ class PlaywrightSession implements BrowserSession {
     if (this.closed) {
       throw new BrowserError('browser session is closed', 'BROWSER_ACTION_FAILED')
     }
+    return await (command.page === undefined
+      ? this.chained(this.legacyTail, (tail) => { this.legacyTail = tail }, command, signal)
+      : this.chained(
+        this.chains.get(command.page) ?? Promise.resolve(),
+        (tail) => { this.chains.set(command.page as string, tail) },
+        command,
+        signal,
+      ))
+  }
+
+  /** Run one command after the addressed tab's previous command settles. */
+  private chained(
+    previous: Promise<unknown>,
+    store: (tail: Promise<unknown>) => void,
+    command: BrowserCommand,
+    signal?: AbortSignal,
+  ): Promise<BrowserResult> {
+    // Stored tails swallow their errors, so `previous` always settles; a
+    // failed command rejects only the caller's `next`, not the tab's chain.
+    const next = previous.then(() => this.execute(command, signal))
+    store(next.catch(() => undefined))
+    return next
+  }
+
+  private async execute(command: BrowserCommand, signal?: AbortSignal): Promise<BrowserResult> {
+    throwIfAborted(signal, command.kind)
     try {
       switch (command.kind) {
         case 'navigate': {
-          const page = await this.activePage()
+          const { page, ref } = await this.resolveForNavigate(command.page)
           await page.goto(command.url, {
             timeout: this.defaultTimeoutMs,
             ...command.waitUntil === undefined ? {} : { waitUntil: command.waitUntil },
           })
-          return await this.pageResult(page, command.maxChars ?? this.defaultMaxChars)
+          return await this.pageResult(page, ref, command.maxChars ?? this.defaultMaxChars)
         }
-        case 'snapshot':
-          return await this.pageResult(
-            await this.activePage(),
-            command.maxChars ?? this.defaultMaxChars,
-            command.selector,
-          )
+        case 'snapshot': {
+          const { page, ref } = await this.requirePage(command.page)
+          return await this.pageResult(page, ref, command.maxChars ?? this.defaultMaxChars, command.selector)
+        }
         case 'click': {
-          const page = await this.activePage()
+          const { page } = await this.requirePage(command.page)
           await page.click(command.selector, { timeout: this.defaultTimeoutMs })
           return { kind: 'acked' }
         }
         case 'fill': {
-          const page = await this.activePage()
+          const { page } = await this.requirePage(command.page)
           await page.fill(command.selector, command.value, { timeout: this.defaultTimeoutMs })
           return { kind: 'acked' }
         }
         case 'select': {
-          const page = await this.activePage()
+          const { page } = await this.requirePage(command.page)
           await page.selectOption(command.selector, command.value, { timeout: this.defaultTimeoutMs })
           return { kind: 'acked' }
         }
         case 'press': {
-          const page = await this.activePage()
+          const { page } = await this.requirePage(command.page)
           await page.keyboard.press(command.key)
           return { kind: 'acked' }
         }
         case 'upload': {
-          const page = await this.activePage()
+          const { page } = await this.requirePage(command.page)
           await page.setInputFiles(command.selector, [...command.files], {
             timeout: this.defaultTimeoutMs,
           })
           return { kind: 'acked' }
         }
         case 'screenshot': {
-          const page = await this.activePage()
+          const { page } = await this.requirePage(command.page)
           const buffer = await page.screenshot({ type: 'png', timeout: this.defaultTimeoutMs })
           return { kind: 'screenshot', pngBase64: buffer.toString('base64') }
         }
@@ -132,7 +170,7 @@ class PlaywrightSession implements BrowserSession {
           if (command.selector === undefined && command.url === undefined) {
             throw new BrowserError('waitFor requires a selector or a url', 'BROWSER_ACTION_FAILED')
           }
-          const page = await this.activePage()
+          const { page } = await this.requirePage(command.page)
           const timeout = command.timeoutMs ?? this.defaultTimeoutMs
           if (command.selector !== undefined) {
             await page.waitForSelector(command.selector, { timeout })
@@ -142,8 +180,10 @@ class PlaywrightSession implements BrowserSession {
           return { kind: 'acked' }
         }
         case 'closePage': {
-          const page = await this.activePage()
+          const { page, ref } = await this.requirePage(command.page)
           await page.close()
+          this.pages.delete(ref)
+          this.chains.delete(ref)
           return { kind: 'acked' }
         }
         default:
@@ -169,17 +209,71 @@ class PlaywrightSession implements BrowserSession {
     }
   }
 
-  /** The most recently opened page, or a fresh tab when none is left. */
-  private async activePage(): Promise<Page> {
-    const pages = this.context.pages()
-    const last = pages[pages.length - 1]
-    if (last) return last
-    return this.context.newPage()
+  /**
+   * Register one tab under a fresh ref; a tab closed by the page itself or by
+   * the site drops out of the map so later ref addressing fails loudly.
+   */
+  private adopt(page: Page): string {
+    const ref = `p${++this.refSeq}`
+    this.pages.set(ref, page)
+    this.lastRef = ref
+    page.on('close', () => {
+      this.pages.delete(ref)
+    })
+    return ref
+  }
+
+  /**
+   * The tab a command addresses, with its ref. Without a ref that is the most
+   * recently adopted tab (the legacy single-tab contract); a named ref must be
+   * live. Every return path leaves `lastRef` naming the returned tab.
+   */
+  private async requirePage(ref: string | undefined): Promise<{ page: Page; ref: string }> {
+    if (ref === undefined) {
+      const pages = this.context.pages()
+      const last = pages[pages.length - 1]
+      if (last) {
+        if (this.pages.get(this.lastRef ?? '') !== last) {
+          this.adopt(last)
+        }
+        return { page: last, ref: this.lastRef as string }
+      }
+      const page = await this.context.newPage()
+      return { page, ref: this.adopt(page) }
+    }
+    const page = this.pages.get(ref)
+    if (page === undefined || page.isClosed()) {
+      throw new BrowserError(`browser page "${ref}" is not open`, 'BROWSER_ACTION_FAILED')
+    }
+    this.lastRef = ref
+    return { page, ref }
+  }
+
+  /** A navigate either reuses its named tab or opens a new one bound to that name. */
+  private async resolveForNavigate(ref: string | undefined): Promise<{ page: Page; ref: string }> {
+    if (ref !== undefined) {
+      const existing = this.pages.get(ref)
+      if (existing !== undefined && !existing.isClosed()) {
+        this.lastRef = ref
+        return { page: existing, ref }
+      }
+      // The caller's name IS the tab identity: bind the fresh tab to it so
+      // every later command can keep addressing it by the same ref.
+      const page = await this.context.newPage()
+      this.pages.set(ref, page)
+      this.lastRef = ref
+      page.on('close', () => {
+        this.pages.delete(ref)
+      })
+      return { page, ref }
+    }
+    return await this.requirePage(undefined)
   }
 
   /** Capture url/title/text (whole body or one selector's subtree), bounded. */
   private async pageResult(
     page: Page,
+    ref: string,
     maxChars: number,
     selector?: string,
   ): Promise<BrowserResult> {
@@ -189,7 +283,7 @@ class PlaywrightSession implements BrowserSession {
       page.innerText(selector ?? 'body'),
     ])
     const { text, truncated } = truncate(rawText, maxChars)
-    return { kind: 'page', url, title, text, truncated }
+    return { kind: 'page', page: ref, url, title, text, truncated }
   }
 }
 

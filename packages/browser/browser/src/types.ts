@@ -25,8 +25,21 @@ export type BrowserCommand =
   | BrowserWaitForCommand
   | BrowserClosePageCommand
 
-/** Navigate the active page to a URL and return the resulting page snapshot. */
-export interface BrowserNavigateCommand {
+/**
+ * Address one browser tab by its ref. Every command accepts `page`; a
+ * navigate naming an unknown ref opens a new tab under it, any other command
+ * naming an unknown or closed ref fails, and omission addresses the most
+ * recently opened tab. Callers driving tabs in parallel MUST address every
+ * command by ref: refs are the only thing that keeps one caller's actions off
+ * another caller's tab.
+ */
+export interface BrowserPageAddress {
+  /** Tab ref from a prior navigate result; omitted = most recent tab. */
+  readonly page?: string
+}
+
+/** Navigate the addressed page to a URL and return the resulting page snapshot. */
+export interface BrowserNavigateCommand extends BrowserPageAddress {
   readonly kind: 'navigate'
   /** Absolute http(s) URL. */
   readonly url: string
@@ -36,8 +49,8 @@ export interface BrowserNavigateCommand {
   readonly maxChars?: number
 }
 
-/** Capture url/title/text of the active page (whole page or one selector's subtree). */
-export interface BrowserSnapshotCommand {
+/** Capture url/title/text of the addressed page (whole page or one selector’s subtree). */
+export interface BrowserSnapshotCommand extends BrowserPageAddress {
   readonly kind: 'snapshot'
   /** CSS selector limiting the capture; omitted = whole page body. */
   readonly selector?: string
@@ -45,47 +58,47 @@ export interface BrowserSnapshotCommand {
   readonly maxChars?: number
 }
 
-/** Click the first element matching the selector. */
-export interface BrowserClickCommand {
+/** Click the first element matching the selector on the addressed page. */
+export interface BrowserClickCommand extends BrowserPageAddress {
   readonly kind: 'click'
   readonly selector: string
 }
 
-/** Replace the value of a text input or textarea matching the selector. */
-export interface BrowserFillCommand {
+/** Replace the value of a text input or textarea on the addressed page. */
+export interface BrowserFillCommand extends BrowserPageAddress {
   readonly kind: 'fill'
   readonly selector: string
   readonly value: string
 }
 
-/** Choose an option of a `<select>` matching the selector. */
-export interface BrowserSelectCommand {
+/** Choose an option of a `<select>` on the addressed page. */
+export interface BrowserSelectCommand extends BrowserPageAddress {
   readonly kind: 'select'
   readonly selector: string
   readonly value: string
 }
 
-/** Press one keyboard key (for example `Enter`, `Tab`) on the active page. */
-export interface BrowserPressCommand {
+/** Press one keyboard key (for example `Enter`, `Tab`) on the addressed page. */
+export interface BrowserPressCommand extends BrowserPageAddress {
   readonly kind: 'press'
   readonly key: string
 }
 
-/** Set files on an `<input type=file>` matching the selector. */
-export interface BrowserUploadCommand {
+/** Set files on an `<input type=file>` on the addressed page. */
+export interface BrowserUploadCommand extends BrowserPageAddress {
   readonly kind: 'upload'
   readonly selector: string
   /** Absolute or cwd-relative file paths to attach. */
   readonly files: readonly string[]
 }
 
-/** Capture a PNG screenshot of the active page viewport. */
-export interface BrowserScreenshotCommand {
+/** Capture a PNG screenshot of the addressed page viewport. */
+export interface BrowserScreenshotCommand extends BrowserPageAddress {
   readonly kind: 'screenshot'
 }
 
-/** Wait until a selector appears or the URL matches, with a timeout. */
-export interface BrowserWaitForCommand {
+/** Wait until the addressed page shows a selector or its URL matches, with a timeout. */
+export interface BrowserWaitForCommand extends BrowserPageAddress {
   readonly kind: 'waitFor'
   /** CSS selector to wait for. */
   readonly selector?: string
@@ -95,8 +108,8 @@ export interface BrowserWaitForCommand {
   readonly timeoutMs?: number
 }
 
-/** Close the active page tab (the session stays usable). */
-export interface BrowserClosePageCommand {
+/** Close the addressed page tab (the session stays usable). */
+export interface BrowserClosePageCommand extends BrowserPageAddress {
   readonly kind: 'closePage'
 }
 
@@ -113,6 +126,8 @@ export type BrowserResult =
 /** Page text capture: navigation, snapshot, and extraction all return this. */
 export interface BrowserPageResult {
   readonly kind: 'page'
+  /** Ref of the tab this capture came from; pass it back as `page`. */
+  readonly page: string
   /** Final URL after redirects. */
   readonly url: string
   readonly title: string
@@ -134,13 +149,14 @@ export interface BrowserScreenshotResult {
 }
 
 /**
- * One live automation session over a provider-launched browser. Commands are
- * dispatched one at a time by the seam; the provider guarantees each `act()`
- * observes the previous one's settled state.
+ * One live automation session over a provider-launched browser. Commands
+ * addressing the same tab serialize in dispatch order; commands addressing
+ * different tabs (by ref) may run concurrently, so a caller must use refs for
+ * everything it wants kept off other callers' tabs.
  */
 export interface BrowserSession {
   /**
-   * Perform one command on the active page.
+   * Perform one command on the addressed page.
    * @param command - the closed-union command to execute.
    * @param signal - optional cancellation signal checked before dispatch.
    * @returns the closed-union outcome for the command kind.

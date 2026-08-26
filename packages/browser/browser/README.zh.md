@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-浏览器自动化能力服务定义（`ctx.browser`）：Provider 注册表、惰性单会话生命周期、串行化的闭合判别联合命令分发，以及 `BrowserError` 错误分类。
+浏览器自动化能力服务定义（`ctx.browser`）：Provider 注册表、惰性单会话生命周期、按标签页引用寻址且页内保序的闭合判别联合命令分发，以及 `BrowserError` 错误分类。
 
 | 包 | 角色 | ctx 键 |
 |---|---|---|
@@ -15,7 +15,7 @@
 | 成员 | 用途 |
 |---|---|
 | `registerProvider(provider)` | 注册浏览器 Provider；重复 id 抛 `BROWSER_DUPLICATE_PROVIDER`；返回随 fiber 销毁的清理器 |
-| `act(command, signal?)` | 在共享会话（惰性打开）上分发一条闭合联合命令；命令串行执行 |
+| `act(command, signal?)` | 在共享会话（惰性打开）上分发一条闭合联合命令；同页命令保序，不同页可并行 |
 | `closeSession()` | 关闭共享浏览器；下一次 `act()` 打开新会话 |
 
 `BrowserCommand`（`navigate`/`snapshot`/`click`/`fill`/`select`/`press`/`upload`/`screenshot`/`waitFor`/`closePage`）与 `BrowserResult`（`page`/`acked`/`screenshot`）是本包持有的闭合联合。Provider 泄漏的裸失败会丢弃会话（`BROWSER_ACTION_FAILED`），下一条命令重新启动浏览器而不是复用未知状态。
@@ -43,6 +43,6 @@
 
 ## 已知限制与遗留工作
 
-- **单会话单活动页** — 服务定义将全部命令串行到唯一共享会话及其最近打开的页；命名标签页寻址与并行会话推迟到有工作流需要时再做。
+- **单会话多可寻址标签页** — 每条命令可带 `page` 引用；navigate 以调用者命名的引用绑定标签页，后续命令按引用寻址，并行调用方各驭其页（cookie 共享）。不带引用的命令保持『最近标签页』旧契约；第二个并行会话仍不在范围内。
 - **无观察面** — 没有页面生命周期事件，也没有会话状态查询；调用方按命令观察结果。
 - **信号检查是协作式的** — `AbortSignal` 在分发前检查；进行中的 Playwright 操作按自身超时完成。

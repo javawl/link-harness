@@ -75,7 +75,9 @@
         userDataDir: ./.backlink-browser-profile
         headless: false
         channel: chrome
-        defaultTimeoutMs: 20000
+        # Fail fast on wrong-selector guesses; the agent retries with the
+        # next candidate instead of burning the full 20s per miss.
+        defaultTimeoutMs: 8000
         # Google account login rejects Playwright's default --enable-automation
         # flag ("This browser or app may not be secure"); omit it and mask the
         # webdriver blink feature so the seeded Google session can log in.

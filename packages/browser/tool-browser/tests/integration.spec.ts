@@ -21,6 +21,7 @@ let received: BrowserCommand[] = []
 
 const pageResult: BrowserResult = {
   kind: 'page',
+  page: 'p1',
   url: 'https://example.com/listing',
   title: 'Example Listing',
   text: 'listing body',

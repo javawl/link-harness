@@ -37,6 +37,8 @@ function fakePage(overrides: { innerText?: (selector: string) => Promise<string>
     waitForURL: vi.fn(async () => null),
     close: vi.fn(async () => undefined),
     press: vi.fn(async () => undefined),
+    on: vi.fn(),
+    isClosed: () => false,
   }
   const page = {
     url: () => 'https://example.com/listing',
@@ -52,14 +54,18 @@ function fakePage(overrides: { innerText?: (selector: string) => Promise<string>
     waitForURL: mocks.waitForURL,
     close: mocks.close,
     keyboard: { press: mocks.press },
+    on: mocks.on,
+    isClosed: () => false,
   } as unknown as Page
   return { page, mocks }
 }
 
 function fakeContext(pages: Page[]) {
   const allPages = [...pages]
+  const created: ReturnType<typeof fakePage>[] = []
   const newPage = vi.fn(async () => {
     const fresh = fakePage()
+    created.push(fresh)
     allPages.push(fresh.page)
     return fresh.page
   })
@@ -69,7 +75,7 @@ function fakeContext(pages: Page[]) {
     close: vi.fn(async () => undefined),
     on: vi.fn(),
   }
-  return { context, mocks: { newPage } }
+  return { context, mocks: { newPage, created } }
 }
 
 beforeEach(() => {
@@ -153,6 +159,118 @@ describe('PlaywrightSession command dispatch', () => {
     return { session: await provider.open(), context, mocks }
   }
 
+  it('opens a new tab bound to the caller-named ref and reuses it after', async () => {
+    const first = fakePage()
+    const { session, context, mocks } = await mount([first.page])
+
+    const opened = await session.act({ kind: 'navigate', page: 'work', url: 'https://a.test/' })
+    expect(opened).toMatchObject({ kind: 'page', page: 'work' })
+    expect(mocks.newPage).toHaveBeenCalledTimes(1)
+    expect(first.mocks.goto).not.toHaveBeenCalled()
+
+    // The named tab is reused: no second newPage, the same tab navigates on.
+    const again = await session.act({ kind: 'navigate', page: 'work', url: 'https://a.test/2' })
+    expect(again).toMatchObject({ kind: 'page', page: 'work' })
+    expect(mocks.newPage).toHaveBeenCalledTimes(1)
+    expect(context.pages().at(-1)!.goto).toHaveBeenCalledWith('https://a.test/2', expect.anything())
+  })
+
+  it('rejects a command naming an unknown or closed ref', async () => {
+    const { session } = await mount([fakePage().page])
+    await expect(session.act({ kind: 'click', page: 'nope', selector: 'a' }))
+      .rejects.toThrow(/browser page "nope" is not open/u)
+  })
+
+  it('orders commands on one ref and overlaps commands across refs', async () => {
+    const { session } = await mount([fakePage().page])
+    await session.act({ kind: 'navigate', page: 'a', url: 'https://a.test/' })
+    await session.act({ kind: 'navigate', page: 'b', url: 'https://b.test/' })
+
+    const done: string[] = []
+    // Same-ref ordering: fill then click on page "a"; the click must observe fill.
+    const chainA = (async () => {
+      await session.act({ kind: 'fill', page: 'a', selector: 'input', value: 'x' })
+      done.push('a-fill')
+      await session.act({ kind: 'click', page: 'a', selector: 'button' })
+      done.push('a-click')
+    })()
+    // Cross-ref overlap: page "b" finishes while "a" is still mid-chain.
+    const chainB = session.act({ kind: 'snapshot', page: 'b' }).then(() => {
+      done.push('b-snapshot')
+    })
+    await Promise.all([chainA, chainB])
+    expect(done.indexOf('b-snapshot')).toBeLessThan(done.indexOf('a-click'))
+  })
+
+  it('drops refs whose tab closed on its own and re-adopts the live last tab', async () => {
+    const first = fakePage()
+    const { session, context, mocks } = await mount([first.page])
+    await session.act({ kind: 'navigate', page: 'a', url: 'https://a.test/' })
+    await session.act({ kind: 'navigate', page: 'b', url: 'https://b.test/' })
+    expect(mocks.created.length).toBe(2)
+
+    // The site closes tab "b" on its own: its close listeners fire, the ref
+    // drops out, and addressing it now fails loudly.
+    const tabB = mocks.created[1]!
+    // Real Playwright drops a closed page from context.pages(); mirror that.
+    const live = context.pages()
+    live.splice(live.indexOf(tabB.page), 1)
+    for (const call of (tabB.page.on as unknown as ReturnType<typeof vi.fn>).mock.calls) {
+      if (call[0] === 'close') (call[1] as () => void)()
+    }
+    await expect(session.act({ kind: 'click', page: 'b', selector: 'a' }))
+      .rejects.toThrow(/browser page "b" is not open/u)
+
+    // A no-ref command lands on the last live tab: "a" is re-adopted through
+    // the stale-lastRef branch and receives the click.
+    const tabA = mocks.created[0]!
+    await expect(session.act({ kind: 'click', selector: 'button' })).resolves.toMatchObject({ kind: 'acked' })
+    expect(tabA.mocks.click).toHaveBeenCalledWith('button', expect.anything())
+    expect(context.pages().length).toBe(2)
+
+    // The constructor-adopted first tab's close listener drops its auto ref
+    // the same way (the p1 legacy addressing target).
+    const live2 = context.pages()
+    live2.splice(live2.indexOf(first.page), 1)
+    for (const call of (first.page.on as unknown as ReturnType<typeof vi.fn>).mock.calls) {
+      if (call[0] === 'close') (call[1] as () => void)()
+    }
+    await session.act({ kind: 'click', page: 'a', selector: 'a' })
+    expect(context.pages().length).toBe(1)
+  })
+
+  it('adopts a site-opened popup as the no-ref addressing target', async () => {
+    const { session, context } = await mount([])
+    // The site pops a tab on its own after construction; no ref exists yet.
+    const popup = fakePage()
+    context.pages().push(popup.page)
+
+    await expect(session.act({ kind: 'click', selector: 'a' })).resolves.toMatchObject({ kind: 'acked' })
+    expect(popup.mocks.click).toHaveBeenCalledWith('a', expect.anything())
+  })
+
+  it('covers the no-ref snapshot fallback and legacy closePage ref', async () => {
+    const first = fakePage()
+    const { session } = await mount([first.page])
+    // No-ref snapshot: lastRef is set, exercising the resolved arm.
+    await expect(session.act({ kind: 'snapshot' })).resolves.toMatchObject({ kind: 'page', page: 'p1' })
+    // Legacy closePage with no ref closes the last-addressed tab under lastRef.
+    await expect(session.act({ kind: 'closePage' })).resolves.toMatchObject({ kind: 'acked' })
+    expect(first.mocks.close).toHaveBeenCalledTimes(1)
+    // Every tab closed: a fresh no-ref snapshot re-opens a tab (empty arm of
+    // the requirePage fallback) and reports its fresh ref.
+    const reopened = await session.act({ kind: 'snapshot', maxChars: 10 })
+    expect(reopened).toMatchObject({ kind: 'page' })
+  })
+
+  it('closes a page by ref and drops its addressing', async () => {
+    const { session } = await mount([fakePage().page])
+    await session.act({ kind: 'navigate', page: 'temp', url: 'https://t.test/' })
+    await expect(session.act({ kind: 'closePage', page: 'temp' })).resolves.toMatchObject({ kind: 'acked' })
+    await expect(session.act({ kind: 'snapshot', page: 'temp' }))
+      .rejects.toThrow(/browser page "temp" is not open/u)
+  })
+
   it('navigates and returns a bounded page result', async () => {
     const made = fakePage()
     const { session } = await mount([made.page])
@@ -160,6 +278,7 @@ describe('PlaywrightSession command dispatch', () => {
     const result = await session.act({ kind: 'navigate', url: 'https://example.com/', waitUntil: 'networkidle' })
     expect(result).toEqual({
       kind: 'page',
+      page: 'p1',
       url: 'https://example.com/listing',
       title: 'Example Listing',
       text: 'page text',
@@ -287,6 +406,18 @@ describe('PlaywrightSession command dispatch', () => {
     })
     const { session } = await mount([made.page])
     await expect(session.act({ kind: 'click', selector: 'a' })).rejects.toThrow(/detached string/u)
+  })
+
+  it('marks the session closed when the browser context closes underneath', async () => {
+    const { session, context } = await mount([fakePage().page])
+    const closeHandlers = (context.on as unknown as ReturnType<typeof vi.fn>).mock.calls
+      .filter(call => call[0] === 'close')
+      .map(call => call[1] as () => void)
+    expect(closeHandlers.length).toBeGreaterThan(0)
+    for (const handler of closeHandlers) handler()
+
+    await expect(session.act({ kind: 'snapshot' }))
+      .rejects.toThrow(/browser session is closed/u)
   })
 
   it('rejects commands on a closed session and close is idempotent', async () => {

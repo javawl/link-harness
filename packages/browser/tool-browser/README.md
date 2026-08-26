@@ -38,5 +38,5 @@ Stable tool schema and prompt section; no request-prefix churn across calls.
 
 ## Known Limitations and Deferred Work
 
-- **No tab addressing** — the tool drives the session's active page only; named tabs arrive with the seam contract change.
+- **Tab addressing is per-caller** — the `page` argument threads through every action; navigate binds a new ref, later commands address it. One agent's calls stay serial (`isConcurrencySafe` false); cross-agent parallelism is orchestration (each child addresses its own ref), not this agent's parallel calls.
 - **No cookie/storage inspection** — deliberate: sessions are opaque to the model; login state is observed through page snapshots only.

@@ -18,8 +18,14 @@ user-invocable: true
 
 1. `backlinks batch_list` → **必须调用 `ask_user_question` 工具**把批次渲染成可点击选项卡让用户选，不要只在对话里贴列表让用户打字：每个选项 `label` = "批次 <id> · <待发布数>条"，`description` = 站点类型 + 日期概要；最近 4 个批次作为选项，其余引导用户用自定义输入填批次号。**用户点选后才继续；若问题卡被取消、跳过或未获回答，立即停止本流程，绝不认领任何批次（包括推荐项），向用户说明并等待明确指示。**
 2. `backlinks batch_get <id>` → 展示条目；用 ask-user 确认范围（全部 / 仅待发布 / 手选）。
-3. `backlinks batch_claim <id> [itemIds]` 获得租约。此后**每完成 1-2 个条目调一次 `lease_heartbeat`**。
-4. 逐条执行（见下方单条目循环）。全部结束后 `lease_release`，输出汇总表。
+3. `backlinks batch_claim <id> [itemIds]` 获得租约，记下 `leaseId`。
+4. **选择执行拓扑**：
+   - **条目 ≥3 且分布在不同域名** → 用并发拓扑（默认并发 3）：
+     a. 按 `sourceHost` 把条目分组——**同域名的条目必须进同一组串行**（防频控）；
+     b. 一次回复里并发调用 `subagent` 工具派出至多 3 个子任务（或逐个以 run_in_background 派发再轮询）。每个子任务的提示词必须包含：该组全部条目的完整信息（id/sourceUrl/submitUrl/category/anchors/tags/notes）、`leaseId`、以及这段话："你是并行发布子任务。先用 browser navigate 并带 page:"组名" 打开专属标签页，此后每一条 browser 命令都必须带同一个 page 参数；严格按 backlink-publish 技能的单条目循环执行；每条完成立即用 backlinks item_result（带 leaseId）诚实回写；CAPTCHA/登录墙回写 manual_required 并保留标签页；不要认领批次、不要 lease_release、不要问用户问题。"
+     c. 等待子任务期间，主任务每约 60 秒调一次 `lease_heartbeat` 保活租约；
+     d. 全部子任务返回后核对各条目回写状态，`lease_release`，输出汇总表（含每条的 live/submitted/failed/skipped）。
+   - **条目 <3 或集中在同一域名** → 串行拓扑：自己逐条执行单条目循环，每 1-2 个条目 `lease_heartbeat`，结束后 `lease_release` 输出汇总。
 
 ## 单条目循环
 
