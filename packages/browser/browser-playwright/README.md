@@ -1,0 +1,38 @@
+# @deepseek-ai/dsh-browser-playwright
+
+English | [中文](README.zh.md)
+
+Service Provider for the browser automation seam: a Playwright persistent Chromium context. Headed by default over a real Chrome channel, so cookie logins and human-solved challenges in the shared profile survive across harness runs.
+
+| Package | Role | ctx key |
+|---|---|---|
+| `dsh-browser` | Service Definition | `ctx.browser` |
+| `dsh-browser-playwright` (this) | Service Provider: persistent Chromium via Playwright | registers on `ctx.browser` |
+| `dsh-tool-browser` | Consumer: the model-facing `browser` tool | `ctx.tools` |
+
+## Configuration
+
+| Field | Default | Purpose |
+|---|---|---|
+| `userDataDir` | `.browser-profile` | Persistent profile directory; logins, cookies, and challenge solutions survive runs |
+| `headless` | `false` | Headed by default so a human can step into the same browser |
+| `channel` | `chrome` | Chromium distribution; `chrome` uses the installed Google Chrome, empty uses bundled Chromium |
+| `defaultTimeoutMs` | `15000` | Default per-operation timeout |
+| `launchArgs` | `[]` | Extra Chromium launch arguments (proxy, window size, …) |
+| `ignoreDefaultArgs` | `[]` | Playwright default launch arguments to omit by exact flag; dropping `--enable-automation` keeps automation-hostile pages (notably the Google account login) from rejecting the browser as unsafe |
+
+Every command dispatch maps the seam's closed `BrowserCommand` union onto the active page (the most recently opened tab, or a fresh one); raw Playwright failures wrap into `BROWSER_ACTION_FAILED` and launch failures into `BROWSER_LAUNCH_FAILED`.
+
+## Model Experience
+
+Indirectly, through `dsh-tool-browser`; this provider contributes no prompt, schema, or session surface of its own.
+
+#### KV Cache effect
+
+No direct invalidation; the named consumer owns any request-prefix changes.
+
+## Known Limitations and Deferred Work
+
+- **Bundled Chromium needs a manual install** — the default `chrome` channel uses the locally installed Google Chrome; an empty `channel` requires `npx playwright-core install chromium` in the deployment.
+- **Active page only** — the provider addresses the most recently opened tab; named-tab routing is deferred with the seam's single-page contract.
+- **Screenshots are viewport-only** — `fullPage` capture is deferred until a workflow needs page-length evidence.

@@ -1,0 +1,7 @@
+{
+  "name": "backlink-agent-example",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Runnable backlink publishing agent: supermanager batches over a persistent browser with cloud-mail verification"
+}

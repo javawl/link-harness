@@ -28,6 +28,8 @@ const GROUP_ORDER = [
   'compact',
   'subagent',
   'web',
+  'browser',
+  'backlinks',
   'spill',
   'timeout',
   'todo',

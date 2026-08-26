@@ -502,6 +502,103 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'backlinks',
+    summary: 'The backlinks service.',
+    description: 'The backlinks service. Registered as `ctx.backlinks` (one instance per context). Selection follows the shared execution-time rules: a configured id must be registered and `available()`; without one, exactly one usable provider is required.',
+    methods: [
+      {
+        signature: 'registerBatchSourceProvider(provider: BacklinkBatchSourceProvider): () => void',
+        description: 'Register a batch work source. Throws BacklinksError `BACKLINKS_DUPLICATE_PROVIDER` on a duplicate id. Returns a disposer; disposed with the calling fiber.',
+        parameters: [{ name: 'provider', description: 'the provider; its `id` is the registry key.' }],
+        returns: 'the disposer that unregisters the provider.',
+      },
+      {
+        signature: 'registerMailboxProvider(provider: MailboxProvider): () => void',
+        description: 'Register a mailbox provider. Throws BacklinksError `BACKLINKS_DUPLICATE_PROVIDER` on a duplicate id. Returns a disposer; disposed with the calling fiber.',
+        parameters: [{ name: 'provider', description: 'the provider; its `id` is the registry key.' }],
+        returns: 'the disposer that unregisters the provider.',
+      },
+      {
+        signature: 'async listBatches(signal?: AbortSignal): Promise<readonly BacklinkBatchSummary[]>',
+        description: 'List every batch in the workspace.',
+        parameters: [{ name: 'signal', description: 'optional cancellation forwarded to the provider.' }],
+        returns: 'batch summaries with per-status counts.',
+      },
+      {
+        signature: 'async getBatch(batchId: number, signal?: AbortSignal): Promise<BacklinkBatchDetail>',
+        description: 'Fetch one batch\'s execution inputs.',
+        parameters: [{ name: 'batchId', description: 'the batch to detail.' }, { name: 'signal', description: 'optional cancellation forwarded to the provider.' }],
+        returns: 'batch, website, anchors, and items.',
+      },
+      {
+        signature: 'async claim(batchId: number, itemIds?: readonly number[], signal?: AbortSignal): Promise<BacklinkLeaseClaim>',
+        description: 'Claim a batch for execution.',
+        parameters: [{ name: 'batchId', description: 'the batch to claim.' }, { name: 'itemIds', description: 'optional explicit plan-item subset.' }, { name: 'signal', description: 'optional cancellation forwarded to the provider.' }],
+        returns: 'the granted lease and claimed item payloads.',
+      },
+      {
+        signature: 'async heartbeat(leaseId: number, signal?: AbortSignal): Promise<BacklinkHeartbeat>',
+        description: 'Extend a lease from the server clock.',
+        parameters: [{ name: 'leaseId', description: 'the lease granted by claim.' }, { name: 'signal', description: 'optional cancellation forwarded to the provider.' }],
+        returns: 'the renewed lease window.',
+      },
+      {
+        signature: 'async release(leaseId: number, signal?: AbortSignal): Promise<void>',
+        description: 'Release a lease early.',
+        parameters: [{ name: 'leaseId', description: 'the lease to release.' }, { name: 'signal', description: 'optional cancellation forwarded to the provider.' }],
+      },
+      {
+        signature: 'async reportItemResult(itemId: number, result: BacklinkItemResult, signal?: AbortSignal): Promise<BacklinkItemOutcome>',
+        description: 'Report one item\'s terminal result.',
+        parameters: [{ name: 'itemId', description: 'the claimed plan item.' }, { name: 'result', description: 'the closed-union outcome.' }, { name: 'signal', description: 'optional cancellation forwarded to the provider.' }],
+        returns: 'the server-side item status and created record id.',
+      },
+      {
+        signature: 'async addBadge(websiteId: number, badge: BacklinkBadgeInput, signal?: AbortSignal): Promise<BacklinkBadgeResult>',
+        description: 'Add and activate a reciprocal footer badge.',
+        parameters: [{ name: 'websiteId', description: 'the promoted website.' }, { name: 'badge', description: 'badge name and HTML.' }, { name: 'signal', description: 'optional cancellation forwarded to the provider.' }],
+        returns: 'the created badge id and whether the callback fired.',
+      },
+      {
+        signature: 'async createMailbox(options: { readonly localPart: string; readonly domain: string }, signal?: AbortSignal): Promise<MailboxAddress>',
+        description: 'Create one mailbox address.',
+        parameters: [{ name: 'options', description: 'the desired local part and domain.' }, { name: 'signal', description: 'optional cancellation forwarded to the provider.' }],
+        returns: 'the created address.',
+      },
+      {
+        signature: 'async pollMail(address: MailboxAddress, options: MailPollOptions, signal?: AbortSignal): Promise<VerificationMail | null>',
+        description: 'Poll one address until a matching mail arrives or the timeout elapses.',
+        parameters: [{ name: 'address', description: 'the mailbox to poll.' }, { name: 'options', description: 'match filters and the bounded wait.' }, { name: 'signal', description: 'optional cancellation for the whole wait.' }],
+        returns: 'the first matching mail, or `null` on timeout.',
+      },
+    ],
+  },
+  {
+    key: 'browser',
+    summary: 'The browser automation service.',
+    description: 'The browser automation service. Registered as `ctx.browser` (one instance per context).\n\nSelection semantics (resolved at execution time, never order-dependent):\n\n- A configured id that is registered and `available()` → that provider.\n- A configured id not registered → `BROWSER_PROVIDER_CONFIGURED_MISSING`.\n- A configured id registered but unavailable → `BROWSER_PROVIDER_CONFIGURED_UNAVAILABLE`.\n- No id configured, exactly one registered usable provider → that provider.\n- No id configured, multiple usable providers → `BROWSER_PROVIDER_AMBIGUOUS`.\n- No id configured, no usable provider → `BROWSER_PROVIDER_UNAVAILABLE`.',
+    methods: [
+      {
+        signature: 'registerProvider(provider: BrowserAutomationProvider): () => void',
+        description: 'Register a browser automation provider. Throws BrowserError `BROWSER_DUPLICATE_PROVIDER` if its id is already registered. Returns a disposer; disposed with the calling fiber.',
+        parameters: [{ name: 'provider', description: 'the provider; its `id` is the registry key.' }],
+        returns: 'the disposer that unregisters the provider.',
+      },
+      {
+        signature: 'act(command: BrowserCommand, signal?: AbortSignal): Promise<BrowserResult>',
+        description: 'Perform one command on the shared session, opening it lazily through the selected provider on first use. Commands serialize: each dispatch observes the previous one\'s settled state. Provider selection and session open throw BrowserError before any page work runs.',
+        parameters: [{ name: 'command', description: 'the closed-union command to execute.' }, { name: 'signal', description: 'optional cancellation signal checked before dispatch.' }],
+        returns: 'the closed-union outcome for the command kind.',
+      },
+      {
+        signature: 'async closeSession(): Promise<void>',
+        description: 'Close the shared session (and its browser). Safe when no session is open; the next `act()` opens a fresh one.',
+        parameters: [],
+        returns: 'when the session is closed or none existed.',
+      },
+    ],
+  },
+  {
     key: 'clientModules',
     summary: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index injection rows.',
     description: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index injection rows. Construction runs the activation scan synchronously — a malformed declaration or missing bundle among the already-loaded entries aggregates into one loud throw (FAILED fiber; the boot activation audit reports it).',
@@ -3002,6 +3099,50 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export class BackendRegistry {\n    register(name: string, backend: StorageBackend): () => void;\n    get(name: string): StorageBackend;\n    names(): string[];\n}',
   },
   {
+    name: 'BacklinkBadgeInput',
+    declaration: 'export interface BacklinkBadgeInput {\n    readonly name: string;\n    readonly html: string;\n    readonly isActive?: boolean;\n}',
+  },
+  {
+    name: 'BacklinkBadgeResult',
+    declaration: 'export interface BacklinkBadgeResult {\n    readonly backlinkId: number;\n    readonly callbackTriggered: boolean;\n}',
+  },
+  {
+    name: 'BacklinkBatchDetail',
+    declaration: 'export interface BacklinkBatchDetail {\n    readonly batch: BacklinkBatchSummary;\n    readonly website: {\n        readonly id: number;\n        readonly name: string;\n        readonly siteUrl: string;\n        readonly siteHost: string;\n    };\n    readonly anchors: readonly BacklinkWebsiteAnchor[];\n    readonly items: readonly BacklinkBatchItem[];\n}',
+  },
+  {
+    name: 'BacklinkBatchItem',
+    declaration: 'export interface BacklinkBatchItem {\n    readonly id: number;\n    readonly sourceId: number;\n    readonly sourceName: string;\n    readonly sourceUrl: string;\n    readonly sourceHost: string;\n    readonly submitUrl: string | null;\n    readonly sourceNotes: string | null;\n    readonly category: string | null;\n    readonly tags: readonly string[];\n    readonly paymentType: string;\n    readonly linkType: string;\n    readonly status: string;\n    readonly failureMode: string | null;\n    readonly failureReason: string | null;\n    readonly publishedUrl: string | null;\n    readonly publishStatus: string | null;\n    readonly plannedAt: string;\n}',
+  },
+  {
+    name: 'BacklinkBatchSourceProvider',
+    declaration: 'export interface BacklinkBatchSourceProvider {\n    readonly id: string;\n    available(): boolean;\n    listBatches(signal?: AbortSignal): Promise<readonly BacklinkBatchSummary[]>;\n    getBatch(batchId: number, signal?: AbortSignal): Promise<BacklinkBatchDetail>;\n    claim(batchId: number, itemIds?: readonly number[], signal?: AbortSignal): Promise<BacklinkLeaseClaim>;\n    heartbeat(leaseId: number, signal?: AbortSignal): Promise<BacklinkHeartbeat>;\n    release(leaseId: number, signal?: AbortSignal): Promise<void>;\n    reportItemResult(itemId: number, result: BacklinkItemResult, signal?: AbortSignal): Promise<BacklinkItemOutcome>;\n    addBadge(websiteId: number, badge: BacklinkBadgeInput, signal?: AbortSignal): Promise<BacklinkBadgeResult>;\n}',
+  },
+  {
+    name: 'BacklinkBatchSummary',
+    declaration: 'export interface BacklinkBatchSummary {\n    readonly id: number;\n    readonly name: string;\n    readonly websiteId: number;\n    readonly websiteName: string;\n    readonly websiteHost: string;\n    readonly plannedAt: string;\n    readonly counts: {\n        readonly pending: number;\n        readonly executed: number;\n        readonly skipped: number;\n        readonly failed: number;\n        readonly total: number;\n    };\n}',
+  },
+  {
+    name: 'BacklinkHeartbeat',
+    declaration: 'export interface BacklinkHeartbeat {\n    readonly leaseId: number;\n    readonly leaseExpiresAt: string;\n}',
+  },
+  {
+    name: 'BacklinkItemOutcome',
+    declaration: 'export interface BacklinkItemOutcome {\n    readonly itemStatus: \'executed\' | \'failed\' | \'skipped\';\n    readonly publishRecordId: number | null;\n}',
+  },
+  {
+    name: 'BacklinkItemResult',
+    declaration: 'export type BacklinkItemResult = {\n    readonly status: \'live\';\n    readonly publicUrl: string;\n    readonly anchorText: string;\n    readonly targetUrl: string;\n    readonly evidence?: string;\n} | {\n    readonly status: \'submitted\';\n    readonly publicUrl?: string;\n    readonly anchorText: string;\n    readonly targetUrl: string;\n    readonly evidence?: string;\n} | {\n    readonly status: \'failed\';\n    readonly failureMode: \'retryable\' | \'manual_required\';\n    readonly failureReason: string;\n    readonly evidence?: string;\n} | {\n    readonly status: \'skipped\';\n    readonly skipReason: string;\n};',
+  },
+  {
+    name: 'BacklinkLeaseClaim',
+    declaration: 'export interface BacklinkLeaseClaim {\n    readonly leaseId: number;\n    readonly leaseExpiresAt: string;\n    readonly items: readonly BacklinkBatchItem[];\n}',
+  },
+  {
+    name: 'BacklinkWebsiteAnchor',
+    declaration: 'export interface BacklinkWebsiteAnchor {\n    readonly id: number;\n    readonly anchorText: string;\n    readonly targetUrl: string;\n}',
+  },
+  {
     name: 'BashEnvContributor',
     declaration: 'export interface BashEnvContributor {\n    name: string;\n    variables: Readonly<Record<DshEnvironmentKey, BashEnvVariable>>;\n    resolve(execution: ToolExecution): Readonly<Partial<Record<DshEnvironmentKey, string>>>;\n}',
   },
@@ -3016,6 +3157,74 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'Branded',
     declaration: 'export type Branded<B extends string> = string & {\n    readonly [BRAND]: B;\n};',
+  },
+  {
+    name: 'BrowserAckedResult',
+    declaration: 'export interface BrowserAckedResult {\n    readonly kind: \'acked\';\n}',
+  },
+  {
+    name: 'BrowserAutomationProvider',
+    declaration: 'export interface BrowserAutomationProvider {\n    readonly id: string;\n    available(): boolean;\n    open(signal?: AbortSignal): Promise<BrowserSession>;\n}',
+  },
+  {
+    name: 'BrowserClickCommand',
+    declaration: 'export interface BrowserClickCommand {\n    readonly kind: \'click\';\n    readonly selector: string;\n}',
+  },
+  {
+    name: 'BrowserClosePageCommand',
+    declaration: 'export interface BrowserClosePageCommand {\n    readonly kind: \'closePage\';\n}',
+  },
+  {
+    name: 'BrowserCommand',
+    declaration: 'export type BrowserCommand = BrowserNavigateCommand | BrowserSnapshotCommand | BrowserClickCommand | BrowserFillCommand | BrowserSelectCommand | BrowserPressCommand | BrowserUploadCommand | BrowserScreenshotCommand | BrowserWaitForCommand | BrowserClosePageCommand;',
+  },
+  {
+    name: 'BrowserFillCommand',
+    declaration: 'export interface BrowserFillCommand {\n    readonly kind: \'fill\';\n    readonly selector: string;\n    readonly value: string;\n}',
+  },
+  {
+    name: 'BrowserNavigateCommand',
+    declaration: 'export interface BrowserNavigateCommand {\n    readonly kind: \'navigate\';\n    readonly url: string;\n    readonly waitUntil?: \'load\' | \'domcontentloaded\' | \'networkidle\';\n    readonly maxChars?: number;\n}',
+  },
+  {
+    name: 'BrowserPageResult',
+    declaration: 'export interface BrowserPageResult {\n    readonly kind: \'page\';\n    readonly url: string;\n    readonly title: string;\n    readonly text: string;\n    readonly truncated: boolean;\n}',
+  },
+  {
+    name: 'BrowserPressCommand',
+    declaration: 'export interface BrowserPressCommand {\n    readonly kind: \'press\';\n    readonly key: string;\n}',
+  },
+  {
+    name: 'BrowserResult',
+    declaration: 'export type BrowserResult = BrowserPageResult | BrowserAckedResult | BrowserScreenshotResult;',
+  },
+  {
+    name: 'BrowserScreenshotCommand',
+    declaration: 'export interface BrowserScreenshotCommand {\n    readonly kind: \'screenshot\';\n}',
+  },
+  {
+    name: 'BrowserScreenshotResult',
+    declaration: 'export interface BrowserScreenshotResult {\n    readonly kind: \'screenshot\';\n    readonly pngBase64: string;\n}',
+  },
+  {
+    name: 'BrowserSelectCommand',
+    declaration: 'export interface BrowserSelectCommand {\n    readonly kind: \'select\';\n    readonly selector: string;\n    readonly value: string;\n}',
+  },
+  {
+    name: 'BrowserSession',
+    declaration: 'export interface BrowserSession {\n    act(command: BrowserCommand, signal?: AbortSignal): Promise<BrowserResult>;\n    close(): Promise<void>;\n}',
+  },
+  {
+    name: 'BrowserSnapshotCommand',
+    declaration: 'export interface BrowserSnapshotCommand {\n    readonly kind: \'snapshot\';\n    readonly selector?: string;\n    readonly maxChars?: number;\n}',
+  },
+  {
+    name: 'BrowserUploadCommand',
+    declaration: 'export interface BrowserUploadCommand {\n    readonly kind: \'upload\';\n    readonly selector: string;\n    readonly files: readonly string[];\n}',
+  },
+  {
+    name: 'BrowserWaitForCommand',
+    declaration: 'export interface BrowserWaitForCommand {\n    readonly kind: \'waitFor\';\n    readonly selector?: string;\n    readonly url?: string;\n    readonly timeoutMs?: number;\n}',
   },
   {
     name: 'CancelOptions',
@@ -3688,6 +3897,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'LspRange',
     declaration: 'export interface LspRange {\n    readonly start: LspPosition;\n    readonly end: LspPosition;\n}',
+  },
+  {
+    name: 'MailboxAddress',
+    declaration: 'export interface MailboxAddress {\n    readonly email: string;\n}',
+  },
+  {
+    name: 'MailboxProvider',
+    declaration: 'export interface MailboxProvider {\n    readonly id: string;\n    available(): boolean;\n    createMailbox(options: {\n        readonly localPart: string;\n        readonly domain: string;\n    }, signal?: AbortSignal): Promise<MailboxAddress>;\n    pollMail(address: MailboxAddress, options: MailPollOptions, signal?: AbortSignal): Promise<VerificationMail | null>;\n}',
+  },
+  {
+    name: 'MailPollOptions',
+    declaration: 'export interface MailPollOptions {\n    readonly subjectContains?: string;\n    readonly fromContains?: string;\n    readonly timeoutMs: number;\n    readonly intervalMs: number;\n}',
   },
   {
     name: 'ManualCompactAgentContext',
@@ -4936,6 +5157,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'UserQuestionProvider',
     declaration: 'export interface UserQuestionProvider {\n    ask(request: AskUserQuestionRequest): Promise<AskUserQuestionAnswer>;\n}',
+  },
+  {
+    name: 'VerificationMail',
+    declaration: 'export interface VerificationMail {\n    readonly subject: string;\n    readonly from: string;\n    readonly text: string;\n    readonly code: string | null;\n    readonly link: string | null;\n    readonly receivedAt: string;\n}',
   },
   {
     name: 'WebBootEntry',

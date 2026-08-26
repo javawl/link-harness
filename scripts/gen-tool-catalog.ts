@@ -63,6 +63,12 @@ import * as ToolTeam from '@deepseek-ai/dsh-experimental-tool-agent-team'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
 import * as ToolSubagent from '@deepseek-ai/dsh-tool-subagent'
 import * as ToolWeb from '@deepseek-ai/dsh-tool-web'
+import BrowserRuntime from '@deepseek-ai/dsh-browser'
+import BacklinksRuntime from '@deepseek-ai/dsh-backlinks'
+import * as BacklinksSupermanager from '@deepseek-ai/dsh-backlinks-supermanager'
+import * as ToolBacklinks from '@deepseek-ai/dsh-tool-backlinks'
+import * as BrowserPlaywright from '@deepseek-ai/dsh-browser-playwright'
+import * as ToolBrowser from '@deepseek-ai/dsh-tool-browser'
 import VmWorkflowEngine from '@deepseek-ai/dsh-workflow-worker-thread'
 import * as ToolRalph from '@deepseek-ai/dsh-tool-ralph'
 import * as ToolWorkflow from '@deepseek-ai/dsh-tool-workflow'
@@ -605,6 +611,38 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-browser',
+    dir: 'tool-browser',
+    source: 'packages/browser/tool-browser/src/index.ts',
+    requires: ['ctx.tools', 'ctx.browser', 'ctx.systemPrompt'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      // Mount the seam and the Playwright provider so the tool registers. Its
+      // schema does not depend on the browser being launched or installed.
+      await ctx.plugin(BrowserRuntime)
+      await ctx.plugin(BrowserPlaywright)
+      await ctx.plugin(ToolBrowser)
+    },
+    note:
+      'browser keeps provider selection and the shared persistent session behind ctx.browser so model-visible schemas stay stable across backend swaps.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-backlinks',
+    dir: 'tool-backlinks',
+    source: 'packages/backlinks/tool-backlinks/src/index.ts',
+    requires: ['ctx.tools', 'ctx.backlinks', 'ctx.systemPrompt'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      // Mount the seam and one provider so the tool registers. Its schema does
+      // not depend on the backend being reachable or configured.
+      await ctx.plugin(BacklinksRuntime)
+      await ctx.plugin(BacklinksSupermanager, { baseUrl: 'http://127.0.0.1:9', token: 'catalog' })
+      await ctx.plugin(ToolBacklinks)
+    },
+    note:
+      'backlinks keeps batch-source and mailbox selection behind ctx.backlinks so model-visible schemas stay stable across backend swaps.',
   },
 ]
 

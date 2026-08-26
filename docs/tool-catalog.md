@@ -41,6 +41,8 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
+| `@deepseek-ai/dsh-tool-browser` | `browser` | `ctx.tools`, `ctx.browser`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | browser keeps provider selection and the shared persistent session behind ctx.browser so model-visible schemas stay stable across backend swaps. |
+| `@deepseek-ai/dsh-tool-backlinks` | `backlinks` | `ctx.tools`, `ctx.backlinks`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | backlinks keeps batch-source and mailbox selection behind ctx.backlinks so model-visible schemas stay stable across backend swaps. |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -2219,3 +2221,179 @@ Search the web for current information. Provide 1–4 queries in the required qu
 Source: [`packages/web/tool-web/src/index.ts`](../packages/web/tool-web/src/index.ts)
 
 web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps.
+
+<a id="deepseek-aidsh-tool-browser"></a>
+
+## `@deepseek-ai/dsh-tool-browser`
+
+### `browser`
+
+Drive one shared persistent real-browser session: navigate, read page text, click, fill forms, select options, press keys, upload files, screenshot, wait, and close tabs.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "One of navigate, snapshot, click, fill, select, press, upload, screenshot, waitFor, closePage."
+    },
+    "url": {
+      "type": "string",
+      "description": "Absolute http(s) URL for navigate; target for waitFor."
+    },
+    "selector": {
+      "type": "string",
+      "description": "CSS selector for snapshot, click, fill, select, upload, waitFor."
+    },
+    "value": {
+      "type": "string",
+      "description": "Value for fill; option value for select."
+    },
+    "key": {
+      "type": "string",
+      "description": "Keyboard key for press, for example Enter or Tab."
+    },
+    "files": {
+      "type": "array",
+      "description": "File paths for upload.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "waitUntil": {
+      "type": "string",
+      "description": "navigate load state: load, domcontentloaded, or networkidle."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "waitFor timeout in milliseconds."
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+Source: [`packages/browser/tool-browser/src/index.ts`](../packages/browser/tool-browser/src/index.ts)
+
+browser keeps provider selection and the shared persistent session behind ctx.browser so model-visible schemas stay stable across backend swaps.
+
+<a id="deepseek-aidsh-tool-backlinks"></a>
+
+## `@deepseek-ai/dsh-tool-backlinks`
+
+### `backlinks`
+
+Run the publish-batch workflow: list/detail/claim batches, keep the lease alive, report per-item results, create verification mailboxes, wait for verification mail, and add reciprocal badges.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "One of batch_list, batch_get, batch_claim, lease_heartbeat, lease_release, item_result, badge_add, mailbox_create, mail_wait."
+    },
+    "batchId": {
+      "type": "number",
+      "description": "Batch id for batch_get / batch_claim."
+    },
+    "itemIds": {
+      "type": "array",
+      "description": "Optional explicit plan-item subset for batch_claim; omitted claims pending + retryable.",
+      "items": {
+        "type": "number"
+      }
+    },
+    "leaseId": {
+      "type": "number",
+      "description": "Lease id for lease_heartbeat / lease_release."
+    },
+    "itemId": {
+      "type": "number",
+      "description": "Plan item id for item_result."
+    },
+    "websiteId": {
+      "type": "number",
+      "description": "Website id for badge_add."
+    },
+    "status": {
+      "type": "string",
+      "description": "item_result status: live, submitted, failed, or skipped."
+    },
+    "publicUrl": {
+      "type": "string",
+      "description": "Verified public listing URL (required for live)."
+    },
+    "anchorText": {
+      "type": "string",
+      "description": "Anchor text used (live/submitted)."
+    },
+    "targetUrl": {
+      "type": "string",
+      "description": "Target URL used (live/submitted)."
+    },
+    "evidence": {
+      "type": "string",
+      "description": "One-line evidence note stored with the result."
+    },
+    "failureMode": {
+      "type": "string",
+      "description": "failed classification: retryable or manual_required."
+    },
+    "failureReason": {
+      "type": "string",
+      "description": "Why the item failed."
+    },
+    "skipReason": {
+      "type": "string",
+      "description": "Why the item is skipped."
+    },
+    "name": {
+      "type": "string",
+      "description": "Badge name for badge_add."
+    },
+    "html": {
+      "type": "string",
+      "description": "Badge HTML for badge_add."
+    },
+    "isActive": {
+      "type": "boolean",
+      "description": "Activate the badge immediately (default true)."
+    },
+    "localPart": {
+      "type": "string",
+      "description": "Mailbox local part for mailbox_create."
+    },
+    "domain": {
+      "type": "string",
+      "description": "Mail domain for mailbox_create."
+    },
+    "mailEmail": {
+      "type": "string",
+      "description": "Mailbox address for mail_wait."
+    },
+    "subjectContains": {
+      "type": "string",
+      "description": "Subject filter for mail_wait."
+    },
+    "fromContains": {
+      "type": "string",
+      "description": "Sender filter for mail_wait."
+    },
+    "waitTimeoutMs": {
+      "type": "number",
+      "description": "Total wait bound for mail_wait in milliseconds."
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+Source: [`packages/backlinks/tool-backlinks/src/index.ts`](../packages/backlinks/tool-backlinks/src/index.ts)
+
+backlinks keeps batch-source and mailbox selection behind ctx.backlinks so model-visible schemas stay stable across backend swaps.

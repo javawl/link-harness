@@ -1,0 +1,108 @@
+# Backlink publishing agent overlay: mount the browser/backlinks capability
+# plugins over any dsh profile (web or headless) and route the model through an
+# OpenAI-compatible gateway. Launch from the harness repo root:
+#   dsh web --patch examples/backlink-agent/cordis.yml
+#   dsh --profile headless --patch examples/backlink-agent/cordis.yml "发布批次 176"
+# Secrets resolve from the root `.env` the app bin loads: NEWAPI_API_KEY,
+# SUPERMANAGER_TOKEN, and CLOUDMAIL_TOKEN. Paths resolve against the process
+# cwd (the repo root for every documented launch command).
+
+# ── overrides of rows the base bundle already mounts ────────────────────────
+
+# The bases ship llm-deepseek; this deployment runs on the gateway below.
+- id: llm-deepseek
+  disabled: true
+
+# Entry points that create agents without an explicit route (session titles,
+# fresh drivers) follow this default; point it at the gateway too.
+- id: agent-default-model
+  config:
+    provider: newapi
+    model: grok-4.6
+
+# One OpenAI-compatible route: any New API / One API style aggregator. The
+# providers dict key IS the route name.
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  config:
+    providers:
+      newapi:
+        apiKeyEnv: NEWAPI_API_KEY
+        api: openai-completions
+        baseURL: https://newapi.code0.vip/v1
+        models:
+          - id: gemini-3.7-flash-high
+          - id: grok-4.6
+          - id: gpt-5.6-sol
+          - id: gpt-5.6-terra
+          - id: gpt-5.6-luna
+
+# ── new plugin rows ─────────────────────────────────────────────────────────
+
+- insert:
+    # The backlink operator spine: persona, one pre-created agent, and a skill
+    # provider that mounts ONLY the playbooks in this example's skills/ dir.
+    # Registering with a distinct provider name merges it into every session
+    # catalog, including the web app's preset sessions.
+    - id: agent-spine
+      name: '@deepseek-ai/dsh-agent-spine-demo'
+      config:
+        agents:
+          - id: main
+            provider: newapi
+            model: grok-4.6
+            cwd: !!js process.cwd()
+        workspaceContext: false
+        persona: |
+          You are backlink-agent, an autonomous backlink publishing operator powered by the {{model}} model.
+          You run publish batches from the backlink management backend: pick a batch, drive the target
+          sites in the shared browser, verify by reading back public pages, and report every item honestly.
+          Any 发外链/发布批次/批次 request goes through the backlink-publish skill; follow it exactly.
+        skills:
+          filesystem:
+            providerName: backlink-operator
+            includeDefaultRoots: false
+            customSkillDirs:
+              - ./examples/backlink-agent/skills
+
+    # Browser automation: one shared persistent Chrome (headed by default so a
+    # human can step in for CAPTCHAs and first logins in the same profile).
+    - id: browser
+      name: '@deepseek-ai/dsh-browser'
+    - id: browser-playwright
+      name: '@deepseek-ai/dsh-browser-playwright'
+      config:
+        userDataDir: ./.backlink-browser-profile
+        headless: false
+        channel: chrome
+        defaultTimeoutMs: 20000
+        # Google account login rejects Playwright's default --enable-automation
+        # flag ("This browser or app may not be secure"); omit it and mask the
+        # webdriver blink feature so the seeded Google session can log in.
+        ignoreDefaultArgs:
+          - --enable-automation
+        launchArgs:
+          - --disable-blink-features=AutomationControlled
+    - id: tool-browser
+      name: '@deepseek-ai/dsh-tool-browser'
+      config:
+        timeoutMs: 180000
+        maxOutputChars: 60000
+
+    # Batch work source and verification mailboxes over the backend's open API.
+    - id: backlinks
+      name: '@deepseek-ai/dsh-backlinks'
+    - id: backlinks-supermanager
+      name: '@deepseek-ai/dsh-backlinks-supermanager'
+      config:
+        # Same composition on every machine: point SUPERMANAGER_BASE_URL at the
+        # production backend (https://…) or fall back to a local dev instance.
+        baseUrl: !!js process.env.SUPERMANAGER_BASE_URL ?? 'http://127.0.0.1:3000'
+    - id: backlinks-cloud-mail
+      name: '@deepseek-ai/dsh-backlinks-cloud-mail'
+      config:
+        baseUrl: https://mail.screwdom.org/api
+    - id: tool-backlinks
+      name: '@deepseek-ai/dsh-tool-backlinks'
+      config:
+        timeoutMs: 300000

@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-25-browser-capability-seam.md
+2026-08-25-browser-capability-seam.md: 57393e4bc89006f8f42bb0171c9da09c9f486cd3
+2026-08-25-browser-capability-seam.zh.md: b5292c4476f0dbcd64e4b5c8e8c16f6880fba422

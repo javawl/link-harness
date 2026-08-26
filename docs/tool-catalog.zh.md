@@ -45,6 +45,8 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
+| `@deepseek-ai/dsh-tool-browser` | `browser` | `ctx.tools`、`ctx.browser`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使模型可见 schema 在更换后端时保持稳定。 |
+| `@deepseek-ai/dsh-tool-backlinks` | `backlinks` | `ctx.tools`、`ctx.backlinks`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | backlinks 将批次源与邮箱选择置于 ctx.backlinks 之后，使模型可见 schema 在更换后端时保持稳定。 |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -2227,3 +2229,179 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 来源：[`packages/web/tool-web/src/index.ts`](../packages/web/tool-web/src/index.ts)
 
 web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。
+
+<a id="deepseek-aidsh-tool-browser"></a>
+
+## `@deepseek-ai/dsh-tool-browser`
+
+### `browser`
+
+驱动一个共享的持久真实浏览器会话：导航、读取页面文本、点击、填写表单、选择选项、按键、上传文件、截图、等待与关闭标签页。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "One of navigate, snapshot, click, fill, select, press, upload, screenshot, waitFor, closePage."
+    },
+    "url": {
+      "type": "string",
+      "description": "Absolute http(s) URL for navigate; target for waitFor."
+    },
+    "selector": {
+      "type": "string",
+      "description": "CSS selector for snapshot, click, fill, select, upload, waitFor."
+    },
+    "value": {
+      "type": "string",
+      "description": "Value for fill; option value for select."
+    },
+    "key": {
+      "type": "string",
+      "description": "Keyboard key for press, for example Enter or Tab."
+    },
+    "files": {
+      "type": "array",
+      "description": "File paths for upload.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "waitUntil": {
+      "type": "string",
+      "description": "navigate load state: load, domcontentloaded, or networkidle."
+    },
+    "timeoutMs": {
+      "type": "number",
+      "description": "waitFor timeout in milliseconds."
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+Source: [`packages/browser/tool-browser/src/index.ts`](../packages/browser/tool-browser/src/index.ts)
+
+browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使模型可见 schema 在更换后端时保持稳定。
+
+<a id="deepseek-aidsh-tool-backlinks"></a>
+
+## `@deepseek-ai/dsh-tool-backlinks`
+
+### `backlinks`
+
+运行批次发布工作流：列出/查看/认领批次、维持租约心跳、逐条回写结果、创建验证邮箱、等待验证邮件、添加互惠徽标。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "One of batch_list, batch_get, batch_claim, lease_heartbeat, lease_release, item_result, badge_add, mailbox_create, mail_wait."
+    },
+    "batchId": {
+      "type": "number",
+      "description": "Batch id for batch_get / batch_claim."
+    },
+    "itemIds": {
+      "type": "array",
+      "description": "Optional explicit plan-item subset for batch_claim; omitted claims pending + retryable.",
+      "items": {
+        "type": "number"
+      }
+    },
+    "leaseId": {
+      "type": "number",
+      "description": "Lease id for lease_heartbeat / lease_release."
+    },
+    "itemId": {
+      "type": "number",
+      "description": "Plan item id for item_result."
+    },
+    "websiteId": {
+      "type": "number",
+      "description": "Website id for badge_add."
+    },
+    "status": {
+      "type": "string",
+      "description": "item_result status: live, submitted, failed, or skipped."
+    },
+    "publicUrl": {
+      "type": "string",
+      "description": "Verified public listing URL (required for live)."
+    },
+    "anchorText": {
+      "type": "string",
+      "description": "Anchor text used (live/submitted)."
+    },
+    "targetUrl": {
+      "type": "string",
+      "description": "Target URL used (live/submitted)."
+    },
+    "evidence": {
+      "type": "string",
+      "description": "One-line evidence note stored with the result."
+    },
+    "failureMode": {
+      "type": "string",
+      "description": "failed classification: retryable or manual_required."
+    },
+    "failureReason": {
+      "type": "string",
+      "description": "Why the item failed."
+    },
+    "skipReason": {
+      "type": "string",
+      "description": "Why the item is skipped."
+    },
+    "name": {
+      "type": "string",
+      "description": "Badge name for badge_add."
+    },
+    "html": {
+      "type": "string",
+      "description": "Badge HTML for badge_add."
+    },
+    "isActive": {
+      "type": "boolean",
+      "description": "Activate the badge immediately (default true)."
+    },
+    "localPart": {
+      "type": "string",
+      "description": "Mailbox local part for mailbox_create."
+    },
+    "domain": {
+      "type": "string",
+      "description": "Mail domain for mailbox_create."
+    },
+    "mailEmail": {
+      "type": "string",
+      "description": "Mailbox address for mail_wait."
+    },
+    "subjectContains": {
+      "type": "string",
+      "description": "Subject filter for mail_wait."
+    },
+    "fromContains": {
+      "type": "string",
+      "description": "Sender filter for mail_wait."
+    },
+    "waitTimeoutMs": {
+      "type": "number",
+      "description": "Total wait bound for mail_wait in milliseconds."
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+Source: [`packages/backlinks/tool-backlinks/src/index.ts`](../packages/backlinks/tool-backlinks/src/index.ts)
+
+backlinks 将批次源与邮箱选择置于 ctx.backlinks 之后，使模型可见 schema 在更换后端时保持稳定。

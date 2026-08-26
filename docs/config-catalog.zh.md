@@ -350,6 +350,66 @@ export interface Config {
 
 来源：[`packages/attachment/attachment-local/src/index.ts:51`](../packages/attachment/attachment-local/src/index.ts)
 
+<a id="deepseek-aidsh-backlinks"></a>
+
+## `@deepseek-ai/dsh-backlinks`
+
+```ts config-catalog
+/**
+ * Config for the backlinks seam. `batchSourceProvider` / `mailboxProvider` pin
+ * which provider wins for each registry; omitted auto-selects when exactly one
+ * usable provider is registered.
+ */
+export interface BacklinksRuntimeConfig {
+  /** Explicit batch-source provider id. Omitted = auto-select when exactly one usable. */
+  readonly batchSourceProvider?: string
+  /** Explicit mailbox provider id. Omitted = auto-select when exactly one usable. */
+  readonly mailboxProvider?: string
+}
+```
+
+Source: [`packages/backlinks/backlinks/src/index.ts:56`](../packages/backlinks/backlinks/src/index.ts)
+
+<a id="deepseek-aidsh-backlinks-cloud-mail"></a>
+
+## `@deepseek-ai/dsh-backlinks-cloud-mail`
+
+Requires: `backlinks`
+
+```ts config-catalog
+/** Configuration for the cloud-mail mailbox provider. */
+export interface Config {
+  /** Base URL of the worker API, for example `https://mail.example.org/api`. */
+  readonly baseUrl?: string
+  /** Open-API token; `CLOUDMAIL_TOKEN` is the environment fallback. */
+  readonly token?: string
+  /** Per-request timeout in milliseconds. */
+  readonly requestTimeoutMs?: number
+}
+```
+
+Source: [`packages/backlinks/backlinks-cloud-mail/src/index.ts:20`](../packages/backlinks/backlinks-cloud-mail/src/index.ts)
+
+<a id="deepseek-aidsh-backlinks-supermanager"></a>
+
+## `@deepseek-ai/dsh-backlinks-supermanager`
+
+Requires: `backlinks`
+
+```ts config-catalog
+/** Configuration for the supermanager batch work-source provider. */
+export interface Config {
+  /** Base URL of the deployment, for example `http://127.0.0.1:3000`. */
+  readonly baseUrl?: string
+  /** Bearer agent token; `SUPERMANAGER_TOKEN` is the environment fallback. */
+  readonly token?: string
+  /** Per-request timeout in milliseconds. */
+  readonly requestTimeoutMs?: number
+}
+```
+
+Source: [`packages/backlinks/backlinks-supermanager/src/index.ts:20`](../packages/backlinks/backlinks-supermanager/src/index.ts)
+
 <a id="deepseek-aidsh-bash-local"></a>
 
 ## `@deepseek-ai/dsh-bash-local`
@@ -396,6 +456,48 @@ export type Config = LocalConfig
 依赖：[`LocalConfig`](#deepseek-aidsh-bash-local)
 
 来源：[`packages/shell/bash-sandbox/src/index.ts:35`](../packages/shell/bash-sandbox/src/index.ts)
+
+<a id="deepseek-aidsh-browser"></a>
+
+## `@deepseek-ai/dsh-browser`
+
+```ts config-catalog
+/**
+ * Config for the browser seam. `provider` pins which provider wins; omitted
+ * auto-selects when exactly one usable provider is registered. Operational
+ * overrides feed the same field rather than a hidden priority chain.
+ */
+export interface BrowserRuntimeConfig {
+  /** Explicit browser provider id. Omitted = auto-select when exactly one usable. */
+  readonly provider?: string
+}
+```
+
+Source: [`packages/browser/browser/src/index.ts:53`](../packages/browser/browser/src/index.ts)
+
+<a id="deepseek-aidsh-browser-playwright"></a>
+
+## `@deepseek-ai/dsh-browser-playwright`
+
+Requires: `browser`
+
+```ts config-catalog
+/** Configuration for the Playwright browser provider. */
+export interface Config {
+  /** Persistent profile directory; logins, cookies, and challenge solutions survive runs. */
+  readonly userDataDir?: string
+  /** Launch headless; default false so a human can step into the same browser. */
+  readonly headless?: boolean
+  /** Chromium distribution channel; default `chrome` (installed Google Chrome). Empty = bundled Chromium. */
+  readonly channel?: string
+  /** Default per-operation timeout in milliseconds. */
+  readonly defaultTimeoutMs?: number
+  /** Extra Chromium launch arguments (proxy, window size, …). */
+  readonly launchArgs?: string[]
+}
+```
+
+Source: [`packages/browser/browser-playwright/src/index.ts:20`](../packages/browser/browser-playwright/src/index.ts)
 
 <a id="deepseek-aidsh-client-connection"></a>
 
@@ -2507,6 +2609,22 @@ export type TokenMeterConfig = Record<string, never>
 
 来源：[`packages/llm/token-meter/src/types.ts:12`](../packages/llm/token-meter/src/types.ts)
 
+<a id="deepseek-aidsh-tool-backlinks"></a>
+
+## `@deepseek-ai/dsh-tool-backlinks`
+
+Requires: `tools` · `backlinks` · `systemPrompt`
+
+```ts config-catalog
+/** Configuration for the backlinks tool. */
+export interface Config {
+  /** Per-call timeout in milliseconds attached to the tool definition. */
+  readonly timeoutMs?: number
+}
+```
+
+Source: [`packages/backlinks/tool-backlinks/src/index.ts:19`](../packages/backlinks/tool-backlinks/src/index.ts)
+
 <a id="deepseek-aidsh-tool-bash"></a>
 
 ## `@deepseek-ai/dsh-tool-bash`
@@ -2544,6 +2662,24 @@ export interface Config {
 ```
 
 来源：[`packages/shell/tool-bash-persistent/src/index.ts:432`](../packages/shell/tool-bash-persistent/src/index.ts)
+
+<a id="deepseek-aidsh-tool-browser"></a>
+
+## `@deepseek-ai/dsh-tool-browser`
+
+Requires: `tools` · `browser` · `systemPrompt`
+
+```ts config-catalog
+/** Configuration for the browser tool suite. */
+export interface Config {
+  /** Bound on page text returned to the model. */
+  readonly maxOutputChars?: number
+  /** Per-call timeout in milliseconds attached to the tool definition. */
+  readonly timeoutMs?: number
+}
+```
+
+Source: [`packages/browser/tool-browser/src/index.ts:22`](../packages/browser/tool-browser/src/index.ts)
 
 <a id="deepseek-aidsh-tool-fs"></a>
 
