@@ -14,7 +14,7 @@ if ! command -v node >/dev/null || ! node -e 'process.exit(process.versions.node
   brew install node@24
   echo '后续命令请先: export PATH="/opt/homebrew/opt/node@24/bin:$PATH"'
 fi
-command -v pnpm >/dev/null || npm install -g pnpm
+command -v pnpm >/dev/null || { echo "安装 pnpm（仅本脚本装依赖时使用，日常 start.sh 启动不需要）..."; npm install -g pnpm; }
 command -v "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" >/dev/null 2>&1 || {
   echo "未检测到 Google Chrome，请先安装: https://www.google.com/chrome/"; exit 1; }
 
