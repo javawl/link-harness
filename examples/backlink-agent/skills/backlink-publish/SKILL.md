@@ -17,12 +17,17 @@ user-invocable: true
 收到"发外链"（或输入 `/backlink-publish [批次号]`）后：消息里已带具体批次号时跳过第 1 步直接认领执行。
 
 1. `backlinks batch_list` → **必须调用 `ask_user_question` 工具**把批次渲染成可点击选项卡让用户选，不要只在对话里贴列表让用户打字：每个选项 `label` = "批次 <id> · <待发布数>条"，`description` = 站点类型 + 日期概要；最近 4 个批次作为选项，其余引导用户用自定义输入填批次号。**用户点选后才继续；若问题卡被取消、跳过或未获回答，立即停止本流程，绝不认领任何批次（包括推荐项），向用户说明并等待明确指示。**
-2. `backlinks batch_get <id>` → 展示条目；用 ask-user 确认范围（全部 / 仅待发布 / 手选）。
+2. `backlinks batch_get <id>` → 展示条目；用 ask-user 依次确认两张卡：
+   a. **范围**：全部 / 仅待发布 / 手选；
+   b. **执行模式**（本次运行生效）：
+      - `智能匹配（推荐）`：只发布类型可识别的外链站——勘察后能匹配六类剧本之一才发；类型不识别的条目回写 `skipped`（failureReason 注明"类型不识别，智能匹配模式下跳过"）。
+      - `全部尝试`：不做类型筛选，所有条目都尝试发布——已知类型仍用对应剧本提速，未知类型走通用主循环（勘察→注册→提交→核验→回写）；绝不因类型跳过，结局交给诚实回写。
+   未回答模式卡时默认 `智能匹配`；无人值守（headless）任务里以任务描述声明的模式为准。
 3. `backlinks batch_claim <id> [itemIds]` 获得租约，记下 `leaseId`。
 4. **选择执行拓扑**：
    - **条目 ≥3 且分布在不同域名** → 用并发拓扑（默认并发 3）：
      a. 按 `sourceHost` 把条目分组——**同域名的条目必须进同一组串行**（防频控）；
-     b. 一次回复里并发调用 `subagent` 工具派出至多 3 个子任务（或逐个以 run_in_background 派发再轮询）。每个子任务的提示词必须包含：该组全部条目的完整信息（id/sourceUrl/submitUrl/category/anchors/tags/notes）、`leaseId`、以及这段话："你是并行发布子任务。先用 browser navigate 并带 page:"组名" 打开专属标签页，此后每一条 browser 命令都必须带同一个 page 参数；严格按 backlink-publish 技能的单条目循环执行；每条完成立即用 backlinks item_result（带 leaseId）诚实回写；CAPTCHA/登录墙回写 manual_required 并保留标签页；不要认领批次、不要 lease_release、不要问用户问题。"
+     b. 一次回复里并发调用 `subagent` 工具派出至多 3 个子任务（或逐个以 run_in_background 派发再轮询）。每个子任务的提示词必须包含：该组全部条目的完整信息（id/sourceUrl/submitUrl/category/anchors/tags/notes）、`leaseId`、以及这段话："你是并行发布子任务。执行模式：{智能匹配|全部尝试}。先用 browser navigate 并带 page:"组名" 打开专属标签页，此后每一条 browser 命令都必须带同一个 page 参数；严格按 backlink-publish 技能的单条目循环执行（注意所选模式的类型规则）；每条完成立即用 backlinks item_result（带 leaseId）诚实回写；CAPTCHA/登录墙回写 manual_required 并保留标签页；不要认领批次、不要 lease_release、不要问用户问题。"
      c. 等待子任务期间，主任务每约 60 秒调一次 `lease_heartbeat` 保活租约；
      d. 全部子任务返回后核对各条目回写状态，`lease_release`，输出汇总表（含每条的 live/submitted/failed/skipped）。
    - **条目 <3 或集中在同一域名** → 串行拓扑：自己逐条执行单条目循环，每 1-2 个条目 `lease_heartbeat`，结束后 `lease_release` 输出汇总。
@@ -31,7 +36,10 @@ user-invocable: true
 
 对每个 item（顺序执行，同域连续操作之间自然停顿）：
 
-1. **选择 playbook**：按 `category` 选择（六类见 references/）。`submitUrl` 优先于 `sourceUrl`。
+1. **选择 playbook**：先 `snapshot format=aria` 勘察实貌，按特征匹配剧本（导航=提交流表单、博客=评论区、论坛=版块发帖、内容=长文投稿、游戏=截图/平台字段、工具=定价/截图字段）；条目 `category` 仅作提示，与实貌冲突时以实貌为准并在 evidence 注明。
+   - **智能匹配模式**：勘察后六类都不匹配 → 该条回写 `skipped`（"类型不识别，智能匹配模式下跳过"），继续下一条；
+   - **全部尝试模式**：不匹配 → 直接走通用主循环发（本技能 4-7 步），绝不因类型跳过。
+   `submitUrl` 优先于 `sourceUrl`。
 2. **勘察优先**：先 `browser navigate` + `snapshot format=aria` 只读了解页面结构（aria 快照带 role 和名称），再动手填写。
 3. **语义寻址**：定位元素优先用 aria 快照里看到的语义选择器——`role:button|Create Account`、`label:Email`、`placeholder:you@example.com`、`text:Sign in`；CSS 只作兜底；表单在 iframe 里时加 `frame(<iframe css>)>>` 前缀；截图后可 `xy:<x>,<y>` 坐标点击。禁止不看清 aria 快照就猜 CSS。
 4. **需要注册/登录？** → 先 `snapshot format=aria` 看登录/注册页，按决策树走（细节见 [references/google-session.md](references/google-session.md)）：

@@ -27,7 +27,7 @@ One-time setup on a new Mac: `bash examples/backlink-agent/setup.sh <repo-url>` 
 
 Typing `/` in the web composer opens the skill trigger picker; a `/name` token in any message injects that skill's full body:
 
-- `/backlink-publish` — start the flow with clickable batch cards
+- `/backlink-publish` — start the flow with clickable batch cards; a second card picks the run mode — smart-match (publish only recognized site types, skip unknown) or try-all (attempt every item regardless of type)
 - `/backlink-publish 176` — publish batch 176 directly
 - `/google-session` — seed or check the shared browser's Google session
 
