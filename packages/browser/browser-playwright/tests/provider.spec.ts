@@ -20,42 +20,91 @@ function resolvedConfig(overrides: Partial<ResolvedPlaywrightConfig> = {}): Reso
     defaultTimeoutMs: 5_000,
     launchArgs: [],
     ignoreDefaultArgs: [],
+    windowPosition: undefined,
     ...overrides,
   }
 }
 
-/** Every playwright method the session touches, as held mock handles. */
-function fakePage(overrides: { innerText?: (selector: string) => Promise<string> } = {}) {
+/** One recorded locator action: which selector addressed what, and how. */
+interface RecordedAction {
+  selector: string
+  method: string
+  args: readonly unknown[]
+}
+
+/** Every playwright surface the session touches, as held mock handles. */
+function fakePage(overrides: { innerText?: (selector: string) => Promise<string>; aria?: string } = {}) {
+  const actions: RecordedAction[] = []
+  const failures: { method: string; fn: () => void }[] = []
+  const fire = (method: string): void => {
+    const next = failures.shift()
+    if (next !== undefined && next.method === method) next.fn()
+  }
+  const makeLocator = (selector: string): unknown => ({
+    click: async (...args: unknown[]) => {
+      fire('click')
+      actions.push({ selector, method: 'click', args })
+    },
+    fill: async (...args: unknown[]) => {
+      fire('fill')
+      actions.push({ selector, method: 'fill', args })
+    },
+    selectOption: async (...args: unknown[]) => {
+      fire('select')
+      actions.push({ selector, method: 'select', args })
+    },
+    setInputFiles: async (...args: unknown[]) => {
+      fire('upload')
+      actions.push({ selector, method: 'upload', args })
+    },
+    waitFor: async (...args: unknown[]) => {
+      fire('waitFor')
+      actions.push({ selector, method: 'waitFor', args })
+    },
+    ariaSnapshot: async () => overrides.aria ?? '- button "Go"',
+  })
+  const frameScope = (frameSelector: string) => ({
+    getByRole: (role: string, ...opts: unknown[]) =>
+      makeLocator(`frame(${frameSelector})>>role:${role}${(opts[0] as { name?: string } | undefined)?.name !== undefined ? `|${(opts[0] as { name: string }).name}` : ''}`),
+    getByLabel: (text: string) => makeLocator(`frame(${frameSelector})>>label:${text}`),
+    getByPlaceholder: (text: string) => makeLocator(`frame(${frameSelector})>>placeholder:${text}`),
+    getByText: (text: string) => makeLocator(`frame(${frameSelector})>>text:${text}`),
+    locator: (css: string) => makeLocator(`frame(${frameSelector})>>${css}`),
+  })
   const mocks = {
     goto: vi.fn(async () => null),
-    click: vi.fn(async () => null),
-    fill: vi.fn(async () => null),
-    selectOption: vi.fn(async () => [] as string[]),
-    setInputFiles: vi.fn(async () => undefined),
     screenshot: vi.fn(async () => Buffer.from('png-bytes')),
-    waitForSelector: vi.fn(async () => null),
     waitForURL: vi.fn(async () => null),
     close: vi.fn(async () => undefined),
     press: vi.fn(async () => undefined),
+    bringToFront: vi.fn(async () => undefined),
+    xyClick: vi.fn(async () => undefined),
     on: vi.fn(),
-    isClosed: () => false,
+    actions,
+    failOnce: (method: string, fn: () => void) => {
+      failures.push({ method, fn })
+    },
   }
   const page = {
     url: () => 'https://example.com/listing',
     title: async () => 'Example Listing',
     innerText: overrides.innerText ?? (async () => 'page text'),
     goto: mocks.goto,
-    click: mocks.click,
-    fill: mocks.fill,
-    selectOption: mocks.selectOption,
-    setInputFiles: mocks.setInputFiles,
     screenshot: mocks.screenshot,
-    waitForSelector: mocks.waitForSelector,
     waitForURL: mocks.waitForURL,
     close: mocks.close,
+    bringToFront: mocks.bringToFront,
     keyboard: { press: mocks.press },
+    mouse: { click: mocks.xyClick },
     on: mocks.on,
     isClosed: () => false,
+    locator: (css: string) => makeLocator(css),
+    frameLocator: (css: string) => frameScope(css),
+    getByRole: (role: string, ...opts: unknown[]) =>
+      makeLocator(`role:${role}${(opts[0] as { name?: string } | undefined)?.name !== undefined ? `|${(opts[0] as { name: string }).name}` : ''}`),
+    getByLabel: (text: string) => makeLocator(`label:${text}`),
+    getByPlaceholder: (text: string) => makeLocator(`placeholder:${text}`),
+    getByText: (text: string) => makeLocator(`text:${text}`),
   } as unknown as Page
   return { page, mocks }
 }
@@ -109,6 +158,19 @@ describe('PlaywrightBrowserProvider', () => {
     expect(context.close).toHaveBeenCalled()
   })
 
+  it('positions the window offscreen when windowPosition is set', async () => {
+    const { context } = fakeContext([fakePage().page])
+    launchPersistentContext.mockResolvedValueOnce(context)
+    const provider = new PlaywrightBrowserProvider(resolvedConfig({
+      windowPosition: '-32000,-32000',
+    }))
+
+    await provider.open()
+    expect(launchPersistentContext).toHaveBeenCalledWith('.test-profile', expect.objectContaining({
+      args: ['--window-position=-32000,-32000'],
+    }))
+  })
+
   it('omits named Playwright default arguments for automation-hostile pages', async () => {
     const { context } = fakeContext([fakePage().page])
     launchPersistentContext.mockResolvedValueOnce(context)
@@ -159,118 +221,6 @@ describe('PlaywrightSession command dispatch', () => {
     return { session: await provider.open(), context, mocks }
   }
 
-  it('opens a new tab bound to the caller-named ref and reuses it after', async () => {
-    const first = fakePage()
-    const { session, context, mocks } = await mount([first.page])
-
-    const opened = await session.act({ kind: 'navigate', page: 'work', url: 'https://a.test/' })
-    expect(opened).toMatchObject({ kind: 'page', page: 'work' })
-    expect(mocks.newPage).toHaveBeenCalledTimes(1)
-    expect(first.mocks.goto).not.toHaveBeenCalled()
-
-    // The named tab is reused: no second newPage, the same tab navigates on.
-    const again = await session.act({ kind: 'navigate', page: 'work', url: 'https://a.test/2' })
-    expect(again).toMatchObject({ kind: 'page', page: 'work' })
-    expect(mocks.newPage).toHaveBeenCalledTimes(1)
-    expect(context.pages().at(-1)!.goto).toHaveBeenCalledWith('https://a.test/2', expect.anything())
-  })
-
-  it('rejects a command naming an unknown or closed ref', async () => {
-    const { session } = await mount([fakePage().page])
-    await expect(session.act({ kind: 'click', page: 'nope', selector: 'a' }))
-      .rejects.toThrow(/browser page "nope" is not open/u)
-  })
-
-  it('orders commands on one ref and overlaps commands across refs', async () => {
-    const { session } = await mount([fakePage().page])
-    await session.act({ kind: 'navigate', page: 'a', url: 'https://a.test/' })
-    await session.act({ kind: 'navigate', page: 'b', url: 'https://b.test/' })
-
-    const done: string[] = []
-    // Same-ref ordering: fill then click on page "a"; the click must observe fill.
-    const chainA = (async () => {
-      await session.act({ kind: 'fill', page: 'a', selector: 'input', value: 'x' })
-      done.push('a-fill')
-      await session.act({ kind: 'click', page: 'a', selector: 'button' })
-      done.push('a-click')
-    })()
-    // Cross-ref overlap: page "b" finishes while "a" is still mid-chain.
-    const chainB = session.act({ kind: 'snapshot', page: 'b' }).then(() => {
-      done.push('b-snapshot')
-    })
-    await Promise.all([chainA, chainB])
-    expect(done.indexOf('b-snapshot')).toBeLessThan(done.indexOf('a-click'))
-  })
-
-  it('drops refs whose tab closed on its own and re-adopts the live last tab', async () => {
-    const first = fakePage()
-    const { session, context, mocks } = await mount([first.page])
-    await session.act({ kind: 'navigate', page: 'a', url: 'https://a.test/' })
-    await session.act({ kind: 'navigate', page: 'b', url: 'https://b.test/' })
-    expect(mocks.created.length).toBe(2)
-
-    // The site closes tab "b" on its own: its close listeners fire, the ref
-    // drops out, and addressing it now fails loudly.
-    const tabB = mocks.created[1]!
-    // Real Playwright drops a closed page from context.pages(); mirror that.
-    const live = context.pages()
-    live.splice(live.indexOf(tabB.page), 1)
-    for (const call of (tabB.page.on as unknown as ReturnType<typeof vi.fn>).mock.calls) {
-      if (call[0] === 'close') (call[1] as () => void)()
-    }
-    await expect(session.act({ kind: 'click', page: 'b', selector: 'a' }))
-      .rejects.toThrow(/browser page "b" is not open/u)
-
-    // A no-ref command lands on the last live tab: "a" is re-adopted through
-    // the stale-lastRef branch and receives the click.
-    const tabA = mocks.created[0]!
-    await expect(session.act({ kind: 'click', selector: 'button' })).resolves.toMatchObject({ kind: 'acked' })
-    expect(tabA.mocks.click).toHaveBeenCalledWith('button', expect.anything())
-    expect(context.pages().length).toBe(2)
-
-    // The constructor-adopted first tab's close listener drops its auto ref
-    // the same way (the p1 legacy addressing target).
-    const live2 = context.pages()
-    live2.splice(live2.indexOf(first.page), 1)
-    for (const call of (first.page.on as unknown as ReturnType<typeof vi.fn>).mock.calls) {
-      if (call[0] === 'close') (call[1] as () => void)()
-    }
-    await session.act({ kind: 'click', page: 'a', selector: 'a' })
-    expect(context.pages().length).toBe(1)
-  })
-
-  it('adopts a site-opened popup as the no-ref addressing target', async () => {
-    const { session, context } = await mount([])
-    // The site pops a tab on its own after construction; no ref exists yet.
-    const popup = fakePage()
-    context.pages().push(popup.page)
-
-    await expect(session.act({ kind: 'click', selector: 'a' })).resolves.toMatchObject({ kind: 'acked' })
-    expect(popup.mocks.click).toHaveBeenCalledWith('a', expect.anything())
-  })
-
-  it('covers the no-ref snapshot fallback and legacy closePage ref', async () => {
-    const first = fakePage()
-    const { session } = await mount([first.page])
-    // No-ref snapshot: lastRef is set, exercising the resolved arm.
-    await expect(session.act({ kind: 'snapshot' })).resolves.toMatchObject({ kind: 'page', page: 'p1' })
-    // Legacy closePage with no ref closes the last-addressed tab under lastRef.
-    await expect(session.act({ kind: 'closePage' })).resolves.toMatchObject({ kind: 'acked' })
-    expect(first.mocks.close).toHaveBeenCalledTimes(1)
-    // Every tab closed: a fresh no-ref snapshot re-opens a tab (empty arm of
-    // the requirePage fallback) and reports its fresh ref.
-    const reopened = await session.act({ kind: 'snapshot', maxChars: 10 })
-    expect(reopened).toMatchObject({ kind: 'page' })
-  })
-
-  it('closes a page by ref and drops its addressing', async () => {
-    const { session } = await mount([fakePage().page])
-    await session.act({ kind: 'navigate', page: 'temp', url: 'https://t.test/' })
-    await expect(session.act({ kind: 'closePage', page: 'temp' })).resolves.toMatchObject({ kind: 'acked' })
-    await expect(session.act({ kind: 'snapshot', page: 'temp' }))
-      .rejects.toThrow(/browser page "temp" is not open/u)
-  })
-
   it('navigates and returns a bounded page result', async () => {
     const made = fakePage()
     const { session } = await mount([made.page])
@@ -295,6 +245,22 @@ describe('PlaywrightSession command dispatch', () => {
     expect(made.mocks.goto).toHaveBeenCalledWith('https://example.com/', { timeout: 5_000 })
   })
 
+  it('captures the accessibility tree on an aria snapshot', async () => {
+    const made = fakePage({ aria: '- button "Create Account"' })
+    const { session } = await mount([made.page])
+
+    const result = await session.act({ kind: 'snapshot', format: 'aria' })
+    expect(result).toMatchObject({ kind: 'page', text: '- button "Create Account"', truncated: false })
+  })
+
+  it('bounds the aria snapshot at maxChars', async () => {
+    const made = fakePage({ aria: '- button "Go"\n' })
+    const { session } = await mount([made.page])
+
+    const result = await session.act({ kind: 'snapshot', format: 'aria', maxChars: 5 })
+    expect(result).toMatchObject({ truncated: true, text: '- but' })
+  })
+
   it('truncates snapshot text at maxChars and flags it', async () => {
     const made = fakePage({ innerText: async () => 'a'.repeat(50) })
     const { session } = await mount([made.page])
@@ -311,21 +277,84 @@ describe('PlaywrightSession command dispatch', () => {
     expect(result).toMatchObject({ kind: 'page', text: 'text of #main' })
   })
 
-  it('acks click, fill, select, and upload through their page methods', async () => {
+  it('acks click, fill, select, and upload through addressed locators', async () => {
     const made = fakePage()
     const { session } = await mount([made.page])
 
     await expect(session.act({ kind: 'click', selector: 'a.submit' })).resolves.toEqual({ kind: 'acked' })
-    expect(made.mocks.click).toHaveBeenCalledWith('a.submit', { timeout: 5_000 })
-
     await expect(session.act({ kind: 'fill', selector: 'input[name=url]', value: 'https://x.test' })).resolves.toEqual({ kind: 'acked' })
-    expect(made.mocks.fill).toHaveBeenCalledWith('input[name=url]', 'https://x.test', { timeout: 5_000 })
-
     await expect(session.act({ kind: 'select', selector: 'select#cat', value: 'tools' })).resolves.toEqual({ kind: 'acked' })
-    expect(made.mocks.selectOption).toHaveBeenCalledWith('select#cat', 'tools', { timeout: 5_000 })
-
     await expect(session.act({ kind: 'upload', selector: 'input[type=file]', files: ['/tmp/logo.png'] })).resolves.toEqual({ kind: 'acked' })
-    expect(made.mocks.setInputFiles).toHaveBeenCalledWith('input[type=file]', ['/tmp/logo.png'], { timeout: 5_000 })
+
+    expect(made.mocks.actions).toEqual([
+      { selector: 'a.submit', method: 'click', args: [{ timeout: 5_000 }] },
+      { selector: 'input[name=url]', method: 'fill', args: ['https://x.test', { timeout: 5_000 }] },
+      { selector: 'select#cat', method: 'select', args: ['tools', { timeout: 5_000 }] },
+      { selector: 'input[type=file]', method: 'upload', args: [['/tmp/logo.png'], { timeout: 5_000 }] },
+    ])
+  })
+
+  it('addresses elements semantically by role, label, placeholder, and text', async () => {
+    const made = fakePage()
+    const { session } = await mount([made.page])
+
+    await session.act({ kind: 'click', selector: 'role:button|Create Account' })
+    await session.act({ kind: 'fill', selector: 'label:Email', value: 'a@b.test' })
+    await session.act({ kind: 'fill', selector: 'placeholder:you@example.com', value: 'b@c.test' })
+    await session.act({ kind: 'click', selector: 'text:Sign in' })
+    await session.act({ kind: 'click', selector: 'role:link' })
+
+    expect(made.mocks.actions.map(a => [a.method, a.selector])).toEqual([
+      ['click', 'role:button|Create Account'],
+      ['fill', 'label:Email'],
+      ['fill', 'placeholder:you@example.com'],
+      ['click', 'text:Sign in'],
+      ['click', 'role:link'],
+    ])
+  })
+
+  it('chains into iframes through frame(...)>> prefixes', async () => {
+    const made = fakePage()
+    const { session } = await mount([made.page])
+
+    await session.act({ kind: 'click', selector: 'frame(#pay)>>role:button|Pay' })
+    await session.act({ kind: 'fill', selector: 'frame(#pay)>>frame(input)>>#card', value: '4242' })
+
+    expect(made.mocks.actions.map(a => [a.method, a.selector])).toEqual([
+      ['click', 'frame(#pay)>>role:button|Pay'],
+      ['fill', 'frame(#pay)>>frame(input)>>#card'],
+    ])
+  })
+
+  it('clicks viewport coordinates from the xy selector', async () => {
+    const made = fakePage()
+    const { session } = await mount([made.page])
+
+    await expect(session.act({ kind: 'click', selector: 'xy:120,45' })).resolves.toEqual({ kind: 'acked' })
+    expect(made.mocks.xyClick).toHaveBeenCalledWith(120, 45)
+    expect(made.mocks.actions).toEqual([])
+  })
+
+  it('rejects malformed addressing straight from the provider grammar', async () => {
+    const { session } = await mount([fakePage().page])
+    await expect(session.act({ kind: 'click', selector: 'xy:12,4e5' }))
+      .rejects.toThrow(expect.objectContaining({ code: 'BROWSER_ACTION_FAILED' }))
+    await expect(session.act({ kind: 'click', selector: 'role:|Pay' }))
+      .rejects.toThrow(/role:<role>\|<name>/u)
+    await expect(session.act({ kind: 'click', selector: 'role:button|' }))
+      .rejects.toThrow(/role:<role>\|<name>/u)
+    await expect(session.act({ kind: 'fill', selector: 'label:', value: 'x' }))
+      .rejects.toThrow(/must be label:/u)
+    await expect(session.act({ kind: 'fill', selector: 'xy:1,2', value: 'x' }))
+      .rejects.toThrow(/xy addressing supports click only/u)
+  })
+
+  it('surfaces the addressed tab with bringToFront', async () => {
+    const made = fakePage()
+    const { session } = await mount([made.page])
+
+    await expect(session.act({ kind: 'bringToFront' })).resolves.toEqual({ kind: 'acked' })
+    expect(made.mocks.bringToFront).toHaveBeenCalledTimes(1)
   })
 
   it('presses a key through the keyboard', async () => {
@@ -352,7 +381,9 @@ describe('PlaywrightSession command dispatch', () => {
     const { session } = await mount([made.page])
 
     await expect(session.act({ kind: 'waitFor', selector: '.done' })).resolves.toEqual({ kind: 'acked' })
-    expect(made.mocks.waitForSelector).toHaveBeenCalledWith('.done', { timeout: 5_000 })
+    expect(made.mocks.actions).toEqual([
+      { selector: '.done', method: 'waitFor', args: [{ state: 'visible', timeout: 5_000 }] },
+    ])
 
     await expect(session.act({ kind: 'waitFor', url: '**/thanks', timeoutMs: 1_000 })).resolves.toEqual({ kind: 'acked' })
     expect(made.mocks.waitForURL).toHaveBeenCalledWith('**/thanks', { timeout: 1_000 })
@@ -390,7 +421,7 @@ describe('PlaywrightSession command dispatch', () => {
 
   it('wraps raw playwright failures as BROWSER_ACTION_FAILED', async () => {
     const made = fakePage()
-    made.mocks.click.mockImplementationOnce(async () => {
+    made.mocks.failOnce('click', () => {
       throw new Error('detached node')
     })
     const { session } = await mount([made.page])
@@ -401,7 +432,7 @@ describe('PlaywrightSession command dispatch', () => {
 
   it('wraps non-Error command failures', async () => {
     const made = fakePage()
-    made.mocks.click.mockImplementationOnce(async () => {
+    made.mocks.failOnce('click', () => {
       throw 'detached string'
     })
     const { session } = await mount([made.page])
@@ -446,6 +477,103 @@ describe('PlaywrightSession command dispatch', () => {
     const session = await provider.open()
 
     await expect(session.close()).resolves.toBeUndefined()
+  })
+
+  it('opens a new tab bound to the caller-named ref and reuses it after', async () => {
+    const first = fakePage()
+    const { session, context, mocks } = await mount([first.page])
+
+    const opened = await session.act({ kind: 'navigate', page: 'work', url: 'https://a.test/' })
+    expect(opened).toMatchObject({ kind: 'page', page: 'work' })
+    expect(mocks.newPage).toHaveBeenCalledTimes(1)
+    expect(first.mocks.goto).not.toHaveBeenCalled()
+
+    const again = await session.act({ kind: 'navigate', page: 'work', url: 'https://a.test/2' })
+    expect(again).toMatchObject({ kind: 'page', page: 'work' })
+    expect(mocks.newPage).toHaveBeenCalledTimes(1)
+    expect(context.pages().at(-1)!.goto).toHaveBeenCalledWith('https://a.test/2', expect.anything())
+  })
+
+  it('rejects a command naming an unknown or closed ref', async () => {
+    const { session } = await mount([fakePage().page])
+    await expect(session.act({ kind: 'click', page: 'nope', selector: 'a' }))
+      .rejects.toThrow(/browser page "nope" is not open/u)
+  })
+
+  it('orders commands on one ref and overlaps commands across refs', async () => {
+    const { session } = await mount([fakePage().page])
+    await session.act({ kind: 'navigate', page: 'a', url: 'https://a.test/' })
+    await session.act({ kind: 'navigate', page: 'b', url: 'https://b.test/' })
+
+    const done: string[] = []
+    const chainA = (async () => {
+      await session.act({ kind: 'fill', page: 'a', selector: 'input', value: 'x' })
+      done.push('a-fill')
+      await session.act({ kind: 'click', page: 'a', selector: 'button' })
+      done.push('a-click')
+    })()
+    const chainB = session.act({ kind: 'snapshot', page: 'b' }).then(() => {
+      done.push('b-snapshot')
+    })
+    await Promise.all([chainA, chainB])
+    expect(done.indexOf('b-snapshot')).toBeLessThan(done.indexOf('a-click'))
+  })
+
+  it('drops refs whose tab closed on its own and re-adopts the live last tab', async () => {
+    const first = fakePage()
+    const { session, context, mocks } = await mount([first.page])
+    await session.act({ kind: 'navigate', page: 'a', url: 'https://a.test/' })
+    await session.act({ kind: 'navigate', page: 'b', url: 'https://b.test/' })
+    expect(mocks.created.length).toBe(2)
+
+    const tabB = mocks.created[1]!
+    const live = context.pages()
+    live.splice(live.indexOf(tabB.page), 1)
+    for (const call of (tabB.page.on as unknown as ReturnType<typeof vi.fn>).mock.calls) {
+      if (call[0] === 'close') (call[1] as () => void)()
+    }
+    await expect(session.act({ kind: 'click', page: 'b', selector: 'a' }))
+      .rejects.toThrow(/browser page "b" is not open/u)
+
+    const tabA = mocks.created[0]!
+    await expect(session.act({ kind: 'click', selector: 'button' })).resolves.toMatchObject({ kind: 'acked' })
+    expect(tabA.mocks.actions.some(a => a.method === 'click' && a.selector === 'button')).toBe(true)
+    expect(context.pages().length).toBe(2)
+
+    const live2 = context.pages()
+    live2.splice(live2.indexOf(first.page), 1)
+    for (const call of (first.page.on as unknown as ReturnType<typeof vi.fn>).mock.calls) {
+      if (call[0] === 'close') (call[1] as () => void)()
+    }
+    await session.act({ kind: 'click', page: 'a', selector: 'a' })
+    expect(context.pages().length).toBe(1)
+  })
+
+  it('adopts a site-opened popup as the no-ref addressing target', async () => {
+    const { session, context } = await mount([])
+    const popup = fakePage()
+    context.pages().push(popup.page)
+
+    await expect(session.act({ kind: 'click', selector: 'a' })).resolves.toMatchObject({ kind: 'acked' })
+    expect(popup.mocks.actions.some(a => a.method === 'click' && a.selector === 'a')).toBe(true)
+  })
+
+  it('covers the no-ref snapshot fallback and legacy closePage ref', async () => {
+    const first = fakePage()
+    const { session } = await mount([first.page])
+    await expect(session.act({ kind: 'snapshot' })).resolves.toMatchObject({ kind: 'page', page: 'p1' })
+    await expect(session.act({ kind: 'closePage' })).resolves.toMatchObject({ kind: 'acked' })
+    expect(first.mocks.close).toHaveBeenCalledTimes(1)
+    const reopened = await session.act({ kind: 'snapshot', maxChars: 10 })
+    expect(reopened).toMatchObject({ kind: 'page' })
+  })
+
+  it('closes a page by ref and drops its addressing', async () => {
+    const { session } = await mount([fakePage().page])
+    await session.act({ kind: 'navigate', page: 'temp', url: 'https://t.test/' })
+    await expect(session.act({ kind: 'closePage', page: 'temp' })).resolves.toMatchObject({ kind: 'acked' })
+    await expect(session.act({ kind: 'snapshot', page: 'temp' }))
+      .rejects.toThrow(/browser page "temp" is not open/u)
   })
 })
 

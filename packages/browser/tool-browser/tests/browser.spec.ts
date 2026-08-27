@@ -37,6 +37,11 @@ describe('parseBrowserArgs', () => {
       .toEqual({ kind: 'navigate', page: 'siteA', url: 'https://example.com/' })
     expect(parseBrowserArgs({ action: 'click', page: 'siteA', selector: 'a' }))
       .toEqual({ kind: 'click', page: 'siteA', selector: 'a' })
+    expect(parseBrowserArgs({ action: 'bringToFront' })).toEqual({ kind: 'bringToFront' })
+    expect(parseBrowserArgs({ action: 'bringToFront', page: 'work' })).toEqual({ kind: 'bringToFront', page: 'work' })
+    expect(parseBrowserArgs({ action: 'snapshot', format: 'aria' })).toEqual({ kind: 'snapshot', format: 'aria' })
+    expect(parseBrowserArgs({ action: 'click', selector: 'frame(#f)>>role:button|Go' }))
+      .toEqual({ kind: 'click', selector: 'frame(#f)>>role:button|Go' })
   })
 
   it('rejects unknown actions and missing required fields per action', () => {
@@ -46,6 +51,9 @@ describe('parseBrowserArgs', () => {
     expect(() => parseBrowserArgs({ action: 'navigate', url: 'javascript:alert(1)' })).toThrow(/http\(s\)/u)
     expect(() => parseBrowserArgs({ action: 'navigate', url: 'example.com' })).toThrow(/http\(s\)/u)
     expect(() => parseBrowserArgs({ action: 'click' })).toThrow(/selector/u)
+    expect(() => parseBrowserArgs({ action: 'click', selector: 'xy:12,4e5' })).toThrow(/xy:<x>,<y>/u)
+    expect(() => parseBrowserArgs({ action: 'click', selector: 'role:button|' })).toThrow(/role:<role>\|<name>/u)
+    expect(() => parseBrowserArgs({ action: 'fill', selector: 'label:', value: 'x' })).toThrow(/must be label:/u)
     expect(() => parseBrowserArgs({ action: 'click', selector: '  ' })).toThrow(/selector/u)
     expect(() => parseBrowserArgs({ action: 'fill' })).toThrow(/selector/u)
     expect(() => parseBrowserArgs({ action: 'fill', selector: 'input' })).toThrow(/value/u)

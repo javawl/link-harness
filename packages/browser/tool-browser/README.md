@@ -39,4 +39,5 @@ Stable tool schema and prompt section; no request-prefix churn across calls.
 ## Known Limitations and Deferred Work
 
 - **Tab addressing is per-caller** — the `page` argument threads through every action; navigate binds a new ref, later commands address it. One agent's calls stay serial (`isConcurrencySafe` false); cross-agent parallelism is orchestration (each child addresses its own ref), not this agent's parallel calls.
+- **Semantic selectors first** — `snapshot format=aria` returns the accessibility tree; selectors address by `role:<role>|<name>`, `label:`, `placeholder:`, `text:`, bare CSS as fallback, `frame(<css>)>>` chains into iframes, and click alone takes `xy:<x>,<y>`. `bringToFront` surfaces an offscreen window for human fallback.
 - **No cookie/storage inspection** — deliberate: sessions are opaque to the model; login state is observed through page snapshots only.

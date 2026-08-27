@@ -16,6 +16,7 @@ import { HarnessError } from '@deepseek-ai/dsh-llm'
 export type BrowserCommand =
   | BrowserNavigateCommand
   | BrowserSnapshotCommand
+  | BrowserBringToFrontCommand
   | BrowserClickCommand
   | BrowserFillCommand
   | BrowserSelectCommand
@@ -52,10 +53,17 @@ export interface BrowserNavigateCommand extends BrowserPageAddress {
 /** Capture url/title/text of the addressed page (whole page or one selector’s subtree). */
 export interface BrowserSnapshotCommand extends BrowserPageAddress {
   readonly kind: 'snapshot'
-  /** CSS selector limiting the capture; omitted = whole page body. */
+  /** Selector limiting the capture; omitted = whole page body. */
   readonly selector?: string
+  /** Capture shape: `text` = visible text, `aria` = the accessibility tree with element roles and names. */
+  readonly format?: 'text' | 'aria'
   /** Bound on the returned text; over-long text is truncated and flagged. */
   readonly maxChars?: number
+}
+
+/** Surface the addressed tab: focus its window and bring the tab to front. */
+export interface BrowserBringToFrontCommand extends BrowserPageAddress {
+  readonly kind: 'bringToFront'
 }
 
 /** Click the first element matching the selector on the addressed page. */

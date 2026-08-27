@@ -29,6 +29,12 @@ export interface Config {
   /** Extra Chromium launch arguments (proxy, window size, …). */
   readonly launchArgs?: string[]
   /**
+   * Initial window position `x,y` for Chrome. Offscreen values (for example
+   * `-32000,-32000`) keep the headed browser invisible while a human can still
+   * surface a tab with the `bringToFront` browser action.
+   */
+  readonly windowPosition?: string
+  /**
    * Playwright default launch arguments to omit, by exact flag. Omitting
    * `--enable-automation` keeps automation-hostile pages (notably the Google
    * account login) from rejecting the browser as unsafe.
@@ -43,6 +49,7 @@ export const Config: z<Config> = z.object({
   defaultTimeoutMs: z.number().default(15_000),
   launchArgs: z.array(z.string()).default([]),
   ignoreDefaultArgs: z.array(z.string()).default([]),
+  windowPosition: z.string(),
 })
 
 export function apply(ctx: Context, config: Config): void {

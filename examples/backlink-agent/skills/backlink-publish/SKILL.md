@@ -32,23 +32,24 @@ user-invocable: true
 对每个 item（顺序执行，同域连续操作之间自然停顿）：
 
 1. **选择 playbook**：按 `category` 选择（六类见 references/）。`submitUrl` 优先于 `sourceUrl`。
-2. **勘察优先**：先 `browser navigate` + `snapshot` 只读了解页面结构，再动手填写。表单字段名从 snapshot 里找。
-3. **需要注册/登录？** → 先 `browser snapshot` 看登录/注册页，按决策树走（细节见 [references/google-session.md](references/google-session.md)）：
+2. **勘察优先**：先 `browser navigate` + `snapshot format=aria` 只读了解页面结构（aria 快照带 role 和名称），再动手填写。
+3. **语义寻址**：定位元素优先用 aria 快照里看到的语义选择器——`role:button|Create Account`、`label:Email`、`placeholder:you@example.com`、`text:Sign in`；CSS 只作兜底；表单在 iframe 里时加 `frame(<iframe css>)>>` 前缀；截图后可 `xy:<x>,<y>` 坐标点击。禁止不看清 aria 快照就猜 CSS。
+4. **需要注册/登录？** → 先 `snapshot format=aria` 看登录/注册页，按决策树走（细节见 [references/google-session.md](references/google-session.md)）：
    - 页面有 "Continue with Google"（或同类 Google OAuth 按钮）→ 先 `browser navigate` 到 `https://accounts.google.com` 确认谷歌会话（检查完 navigate 回站点登录页）：
      - 已登录（显示账号头像/邮箱）→ 回到站点点 Google 按钮 → 账号选择器点账号（若只有一个账号多数站直接跳过）→ 授权页点 Allow/Continue → 跳回站点继续发布流程。授权弹窗若是新开窗口，操作会自动切到最后打开的页。
      - 未登录 → 回写 `failed + manual_required`，原因写"谷歌会话未初始化或已过期，请对智能体说『初始化谷歌会话』"。
      - Google 弹"确认是你本人"/二次验证 → 同样回写 manual_required 等人工处理一次。
    - 有邮箱注册表单 → `backlinks mailbox_create`（随机前缀 + screwdom.org 域）→ 注册 → `backlinks mail_wait`（默认等 120 秒）拿 `code`/`link` → 完成验证 → 登录。
-   - 只有 CAPTCHA/其他墙 → 现有人工兜底规则。
-4. **填写与提交**：锚文本和目标 URL 从 batch 详情的 `anchors` 里选（优先第一个 active 项）；描述文字要自然、贴站点的语言。提交前 snapshot 复查关键字段。
-5. **核验**：提交后 `browser navigate` 到公开列表页（非预览）+ `snapshot`，确认页面包含目标 URL/锚文本。
-6. **回写**（`item_result`）：
+   - 只有 CAPTCHA/其他墙 → 先 `browser bringToFront` 把窗口召回前台，再按现有人工兜底规则挂起（浏览器在屏幕外静默运行，人工时必须召回）。
+5. **填写与提交**：锚文本和目标 URL 从 batch 详情的 `anchors` 里选（优先第一个 active 项）；描述文字要自然、贴站点的语言。提交前 snapshot 复查关键字段。
+6. **核验**：提交后 `browser navigate` 到公开列表页（非预览）+ `snapshot`，确认页面包含目标 URL/锚文本。
+7. **回写**（`item_result`）：
    - 核验通过 → `live` + publicUrl + anchorText + targetUrl + evidence（一句话证据）
    - 明确"已提交待审核" → `submitted`
    - CAPTCHA/登录墙/需人工 → `failed` + `manual_required` + 原因（保留浏览器标签页不关）
    - 瞬时错误（超时/网络）→ `failed` + `retryable`
    - 付费/停服/资格不符 → `skipped` + 原因
-7. 对方要求先挂互换徽标时（"reciprocal/featured badge"），按此流程**在提交前完成**：
+8. 对方要求先挂互换徽标时（"reciprocal/featured badge"），按此流程**在提交前完成**：
    a. 从对方站点的徽标区拿到徽标 HTML（通常有 Light/Dark/Auto 三种，选一种）→ `backlinks badge_add`（`websiteId` 用批次里的网站 id，`name` 用对方站名）。
    b. **必须让徽标真正上线**：badge_add 返回 `callbackTriggered`；无论真假，都用 bash `curl -s "https://<我方站点host>/footer/refresh"`（supermanager 里该网站配置的回调地址）触发一次站点刷新。
    c. **必须实测确认**：`curl -s "https://<我方站点host>/"` 并 grep 对方域名，徽标 HTML 出现在页面里才算生效；没出现等 5 秒重试，最多 3 次。仍不出现 → 回写 `manual_required`（原因写"徽标已入库但站点未刷新"）。

@@ -39,4 +39,5 @@ Use the browser tool to drive one shared, persistent real-browser session (the a
 ## 已知限制与遗留工作
 
 - **标签页寻址按调用方隔离** — `page` 参数贯通所有动作；navigate 绑定新引用，后续命令按引用寻址。单个 agent 的调用保持串行（`isConcurrencySafe` 为 false）；跨 agent 并发靠编排（每个子任务寻址自己的引用），不是本 agent 的并行调用。
+- **语义选择器优先** —— `snapshot format=aria` 返回无障碍树；选择器支持 `role:<role>|<name>`、`label:`、`placeholder:`、`text:` 语义寻址，CSS 兜底，`frame(<css>)>>` 穿透 iframe，仅 click 额外接受 `xy:<x>,<y>` 坐标。`bringToFront` 把屏幕外窗口召回前台供人工介入。
 - **不检查 cookie/存储** — 有意为之：会话对模型不透明；登录态只通过页面快照观察。

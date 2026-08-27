@@ -20,6 +20,7 @@
 | `defaultTimeoutMs` | `15000` | 默认单操作超时 |
 | `launchArgs` | `[]` | 额外的 Chromium 启动参数（代理、窗口尺寸……） |
 | `ignoreDefaultArgs` | `[]` | 按精确标志省略的 Playwright 默认启动参数；去掉 `--enable-automation` 可避免对自动化敏感的页面（尤其是 Google 账号登录）把浏览器判定为不安全 |
+| `windowPosition` | 不设 | 初始窗口位置 `x,y`；屏幕外取值（如 `-32000,-32000`）让有头浏览器静默运行——需要人工介入时用 `bringToFront` 命令召回标签页 |
 
 每条命令分发把服务定义的闭合 `BrowserCommand` 联合映射到其寻址的标签页：命名 `page` 引用（由 navigate 绑定、此后复用），省略时为最近打开的标签页。同一标签页的命令在页内链上保序，不同标签页的命令可并行；Playwright 的裸失败包装为 `BROWSER_ACTION_FAILED`，启动失败包装为 `BROWSER_LAUNCH_FAILED`。
 

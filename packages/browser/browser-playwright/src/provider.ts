@@ -5,7 +5,7 @@
  */
 
 import { chromium } from 'playwright-core'
-import type { BrowserContext, Page } from 'playwright-core'
+import type { BrowserContext, Locator, Page } from 'playwright-core'
 import { assertNever } from '@deepseek-ai/dsh-llm'
 import type {
   BrowserAutomationProvider,
@@ -41,6 +41,13 @@ export interface ResolvedPlaywrightConfig {
    * default.
    */
   readonly ignoreDefaultArgs: readonly string[]
+  /**
+   * Initial window position as `x,y` passed to Chrome. Heading the browser
+   * offscreen (for example `-32000,-32000`) keeps a real headed fingerprint
+   * while the window never covers the operator's desktop; the `bringToFront`
+   * command surfaces a tab when a human must step in.
+   */
+  readonly windowPosition: string | undefined
 }
 
 function assertPositiveInteger(name: string, value: number): void {
@@ -53,6 +60,95 @@ function assertPositiveInteger(name: string, value: number): void {
 function truncate(text: string, maxChars: number): { text: string; truncated: boolean } {
   if (text.length <= maxChars) return { text, truncated: false }
   return { text: text.slice(0, maxChars), truncated: true }
+}
+
+/** How one `selector` addresses an element, parsed from its prefix. */
+type Addressing =
+  | { mode: 'css'; frames: readonly string[]; value: string }
+  | { mode: 'role'; frames: readonly string[]; value: string; name?: string }
+  | { mode: 'label' | 'placeholder' | 'text'; frames: readonly string[]; value: string }
+  | { mode: 'xy'; frames: readonly string[]; x: number; y: number }
+
+/**
+ * Parse one selector: optional `frame(<css>)>>` chains, then one of
+ * `role:<role>[|<name>]`, `label:<text>`, `placeholder:<text>`, `text:<text>`,
+ * `xy:<x>,<y>` (click only), or bare CSS.
+ * @param raw - the model-facing selector string.
+ * @returns the parsed addressing for locator construction.
+ */
+function parseSelector(raw: string): Addressing {
+  let rest = raw
+  const frames: string[] = []
+  while (true) {
+    const frame = /^frame\((.+)\)>>/u.exec(rest)
+    if (frame === null) break
+    frames.push(frame[1] as string)
+    rest = rest.slice(frame[0].length)
+  }
+  const prefixed = /^(role|label|placeholder|text|xy):(.*)$/su.exec(rest)
+  if (prefixed === null) return { mode: 'css', frames, value: rest }
+  const kind = prefixed[1] as string
+  const body = prefixed[2] as string
+  if (kind === 'xy') {
+    const xy = /^(\d+),(\d+)$/u.exec(body)
+    if (xy === null) {
+      throw new BrowserError(`browser xy selector must be xy:<x>,<y> with non-negative integers, got "${raw}"`, 'BROWSER_ACTION_FAILED')
+    }
+    return { mode: 'xy', frames, x: Number(xy[1]), y: Number(xy[2]) }
+  }
+  if (kind === 'role') {
+    const split = body.indexOf('|')
+    if (split < 0) return { mode: 'role', frames, value: body }
+    const role = body.slice(0, split)
+    const name = body.slice(split + 1)
+    if (role.length === 0 || name.length === 0) {
+      throw new BrowserError(`browser role selector must be role:<role>|<name> with both non-empty, got "${raw}"`, 'BROWSER_ACTION_FAILED')
+    }
+    return { mode: 'role', frames, value: role, name }
+  }
+  if (body.length === 0) {
+    throw new BrowserError(`browser ${kind} selector must be ${kind}:<text> with non-empty text`, 'BROWSER_ACTION_FAILED')
+  }
+  return { mode: kind as 'label' | 'placeholder' | 'text', frames, value: body }
+}
+
+/**
+ * Build the Playwright locator for one addressing, drilling through any frame
+ * chain. Coordinate addressing answers `undefined` only for the click path;
+ * every other command rejects it instead of silently no-oping.
+ */
+function buildLocator(page: Page, addressing: Addressing): Locator | undefined {
+  if (addressing.mode === 'xy') return undefined
+  let root: Locator | { getByRole: Locator['getByRole']; getByLabel: Locator['getByLabel']; getByPlaceholder: Locator['getByPlaceholder']; getByText: Locator['getByText']; locator: Locator['locator'] } = page
+  for (const frame of addressing.frames) {
+    root = (root as Page).frameLocator(frame)
+  }
+  switch (addressing.mode) {
+    case 'css':
+      return (root as Page).locator(addressing.value)
+    case 'role':
+      return (root as Page).getByRole(addressing.value as never,
+        ...addressing.name === undefined ? [] : [{ name: addressing.name }])
+    case 'label':
+      return (root as Page).getByLabel(addressing.value)
+    case 'placeholder':
+      return (root as Page).getByPlaceholder(addressing.value)
+    case 'text':
+      return (root as Page).getByText(addressing.value)
+    /* v8 ignore start -- closed-union default only defends future source widening */
+    default:
+      return assertNever(addressing, 'unhandled selector addressing')
+    /* v8 ignore stop */
+  }
+}
+
+/** The locator for any command except click; coordinate addressing is click-only. */
+function elementLocator(page: Page, addressing: Addressing): Locator {
+  const locator = buildLocator(page, addressing)
+  if (locator === undefined) {
+    throw new BrowserError('browser xy addressing supports click only', 'BROWSER_ACTION_FAILED')
+  }
+  return locator
 }
 
 /** Fail fast on a cancellation signal without touching the browser. */
@@ -132,21 +228,33 @@ class PlaywrightSession implements BrowserSession {
         }
         case 'snapshot': {
           const { page, ref } = await this.requirePage(command.page)
+          if (command.format === 'aria') {
+            const tree = await page.locator(command.selector ?? 'body').ariaSnapshot()
+            const { text, truncated } = truncate(tree, command.maxChars ?? this.defaultMaxChars)
+            return { kind: 'page', page: ref, url: page.url(), title: await page.title(), text, truncated }
+          }
           return await this.pageResult(page, ref, command.maxChars ?? this.defaultMaxChars, command.selector)
         }
         case 'click': {
           const { page } = await this.requirePage(command.page)
-          await page.click(command.selector, { timeout: this.defaultTimeoutMs })
+          const addressing = parseSelector(command.selector)
+          if (addressing.mode === 'xy') {
+            await page.mouse.click(addressing.x, addressing.y)
+            return { kind: 'acked' }
+          }
+          await buildLocator(page, addressing)?.click({ timeout: this.defaultTimeoutMs })
           return { kind: 'acked' }
         }
         case 'fill': {
           const { page } = await this.requirePage(command.page)
-          await page.fill(command.selector, command.value, { timeout: this.defaultTimeoutMs })
+          const locator = elementLocator(page, parseSelector(command.selector))
+          await locator.fill(command.value, { timeout: this.defaultTimeoutMs })
           return { kind: 'acked' }
         }
         case 'select': {
           const { page } = await this.requirePage(command.page)
-          await page.selectOption(command.selector, command.value, { timeout: this.defaultTimeoutMs })
+          const locator = elementLocator(page, parseSelector(command.selector))
+          await locator.selectOption(command.value, { timeout: this.defaultTimeoutMs })
           return { kind: 'acked' }
         }
         case 'press': {
@@ -156,9 +264,8 @@ class PlaywrightSession implements BrowserSession {
         }
         case 'upload': {
           const { page } = await this.requirePage(command.page)
-          await page.setInputFiles(command.selector, [...command.files], {
-            timeout: this.defaultTimeoutMs,
-          })
+          const locator = elementLocator(page, parseSelector(command.selector))
+          await locator.setInputFiles([...command.files], { timeout: this.defaultTimeoutMs })
           return { kind: 'acked' }
         }
         case 'screenshot': {
@@ -173,10 +280,16 @@ class PlaywrightSession implements BrowserSession {
           const { page } = await this.requirePage(command.page)
           const timeout = command.timeoutMs ?? this.defaultTimeoutMs
           if (command.selector !== undefined) {
-            await page.waitForSelector(command.selector, { timeout })
+            const locator = elementLocator(page, parseSelector(command.selector))
+            await locator.waitFor({ state: 'visible', timeout })
           } else {
             await page.waitForURL(command.url as string, { timeout })
           }
+          return { kind: 'acked' }
+        }
+        case 'bringToFront': {
+          const { page } = await this.requirePage(command.page)
+          await page.bringToFront()
           return { kind: 'acked' }
         }
         case 'closePage': {
@@ -310,7 +423,12 @@ export class PlaywrightBrowserProvider implements BrowserAutomationProvider {
         ...this.config.ignoreDefaultArgs.length > 0
           ? { ignoreDefaultArgs: [...this.config.ignoreDefaultArgs] }
           : {},
-        args: [...this.config.launchArgs],
+        args: [
+          ...this.config.windowPosition === undefined
+            ? []
+            : [`--window-position=${this.config.windowPosition}`],
+          ...this.config.launchArgs,
+        ],
       })
     } catch (error) {
       throw new BrowserError(

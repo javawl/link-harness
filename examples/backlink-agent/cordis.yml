@@ -78,6 +78,10 @@
         # Fail fast on wrong-selector guesses; the agent retries with the
         # next candidate instead of burning the full 20s per miss.
         defaultTimeoutMs: 8000
+        # Silent run: render the headed window offscreen so publishing never
+        # covers the operator's desktop. The agent calls bringToFront when a
+        # human must step in (CAPTCHA, login).
+        windowPosition: -32000,-32000
         # Google account login rejects Playwright's default --enable-automation
         # flag ("This browser or app may not be secure"); omit it and mask the
         # webdriver blink feature so the seeded Google session can log in.

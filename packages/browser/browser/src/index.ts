@@ -22,6 +22,7 @@ export { BrowserError } from './types.ts'
 export type {
   BrowserAckedResult,
   BrowserAutomationProvider,
+  BrowserBringToFrontCommand,
   BrowserClickCommand,
   BrowserClosePageCommand,
   BrowserCommand,

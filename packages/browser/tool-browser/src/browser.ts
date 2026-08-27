@@ -14,7 +14,7 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import type { BrowserCommand, BrowserResult } from '@deepseek-ai/dsh-browser'
 
 /** Tool actions, one per closed-union command kind. */
-const ACTIONS = ['navigate', 'snapshot', 'click', 'fill', 'select', 'press', 'upload', 'screenshot', 'waitFor', 'closePage'] as const
+const ACTIONS = ['navigate', 'snapshot', 'click', 'fill', 'select', 'press', 'upload', 'screenshot', 'waitFor', 'closePage', 'bringToFront'] as const
 
 type BrowserAction = typeof ACTIONS[number]
 
@@ -41,7 +41,7 @@ export function parseBrowserArgs(args: Record<string, unknown>): BrowserCommand 
   const action = args.action
   const page = readNonEmpty(args.page, 'page')
   const url = readNonEmpty(args.url, 'url')
-  const selector = readNonEmpty(args.selector, 'selector')
+  const selector = readSelector(args.selector)
   const value = readNonEmpty(args.value, 'value')
   const waitUntil = readWaitUntil(args.waitUntil)
   const timeoutMs = readPositiveInt(args.timeoutMs, 'timeoutMs')
@@ -51,13 +51,19 @@ export function parseBrowserArgs(args: Record<string, unknown>): BrowserCommand 
   )
 
   switch (action as BrowserAction) {
+    case 'bringToFront':
+      return addressed({ kind: 'bringToFront' })
     case 'navigate': {
       const target = readUrl(args.url)
       if (target === undefined) throw new Error('browser navigate requires an http(s) url.')
       return addressed({ kind: 'navigate', url: target, ...waitUntil === undefined ? {} : { waitUntil } })
     }
     case 'snapshot':
-      return addressed({ kind: 'snapshot', ...selector === undefined ? {} : { selector } })
+      return addressed({
+        kind: 'snapshot',
+        ...selector === undefined ? {} : { selector },
+        ...args.format === 'aria' ? { format: 'aria' as const } : {},
+      })
     case 'click':
       if (selector === undefined) throw new Error('browser click requires a selector.')
       return addressed({ kind: 'click', selector })
@@ -98,6 +104,27 @@ export function parseBrowserArgs(args: Record<string, unknown>): BrowserCommand 
     default:
       return assertNever(action as never, `browser action must be one of ${ACTIONS.join(', ')}.`)
   }
+}
+
+/**
+ * Reject selector prefixes the provider grammar cannot parse. Every prefix is
+ * `role:`, `label:`, `placeholder:`, `text:`, `xy:`, `frame(...)>>`, or bare
+ * CSS; anything else starting with those words but malformed surfaces here as
+ * a model-readable error instead of a provider timeout.
+ */
+function readSelector(value: unknown): string | undefined {
+  const raw = readNonEmpty(value, 'selector')
+  if (raw === undefined) return undefined
+  if (/^xy:(?!\d+,\d+$).*/u.test(raw)) {
+    throw new Error('browser xy selector must be xy:<x>,<y> with non-negative integers.')
+  }
+  if (/^role:[^|]*\|$/u.test(raw) || /^role:\|/u.test(raw)) {
+    throw new Error('browser role selector must be role:<role>|<name> with both parts non-empty.')
+  }
+  if (/^(label|placeholder|text):$/u.test(raw)) {
+    throw new Error(`browser ${raw.slice(0, -1)} selector must be ${raw}:<text> with non-empty text.`)
+  }
+  return raw
 }
 
 function readNonEmpty(value: unknown, field: string): string | undefined {
@@ -244,6 +271,9 @@ export function applyBrowserTool(ctx: Context, timeoutMs: number, maxOutputChars
     text: [
       'Use the browser tool to drive one shared, persistent real-browser session across tabs.',
       'Tabs: navigate returns a page ref like p2; pass that page on every later command for the tab you are working. Work several sites in parallel by giving each its own ref. Omit page only for single-tab serial work.',
+      'Selectors address semantically first: role:<role>|<name> (for example role:button|Submit), label:<text>, placeholder:<text>, text:<text>, or bare CSS as fallback; prefix frame(<iframe css>)>> to reach inside an iframe; click also takes xy:<x>,<y> viewport coordinates from a screenshot.',
+      'Prefer snapshot with format=aria to read element roles and names, then address them by role/label/placeholder — far more reliable than guessing CSS.',
+      'The window may run offscreen; when a human must step in (CAPTCHA, login), call bringToFront first so the window surfaces.',
       'Actions: navigate (absolute http(s) url), snapshot (url/title/text of the page or a selector), click/fill/select (CSS selector; fill and select need value), press (key like Enter), upload (selector + files), screenshot (PNG base64), waitFor (selector or url), closePage.',
       'The session persists cookies and logins across calls and runs; prefer it for sites that need JavaScript, logins, or form submission. Confirm outcomes with snapshot or waitFor after state-changing actions.',
     ].join(' '),
@@ -268,7 +298,11 @@ export function applyBrowserTool(ctx: Context, timeoutMs: number, maxOutputChars
       },
       selector: {
         type: 'string',
-        description: 'CSS selector for snapshot, click, fill, select, upload, waitFor.',
+        description: 'Element addressing: role:<role>|<name>, label:<text>, placeholder:<text>, text:<text>, bare CSS, optionally prefixed frame(<iframe css>)>>; click also accepts xy:<x>,<y>.',
+      },
+      format: {
+        type: 'string',
+        description: 'snapshot capture shape: text (visible text) or aria (accessibility tree with roles and names).',
       },
       value: {
         type: 'string',
