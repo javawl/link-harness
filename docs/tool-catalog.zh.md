@@ -2310,7 +2310,7 @@ browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使�
   "properties": {
     "action": {
       "type": "string",
-      "description": "One of batch_list, batch_get, batch_claim, lease_heartbeat, lease_release, item_result, badge_add, mailbox_create, mail_wait."
+      "description": "One of batch_list, batch_get, batch_claim, lease_heartbeat, lease_release, item_result, badge_add, source_tags, mailbox_create, mail_wait."
     },
     "batchId": {
       "type": "number",
@@ -2334,6 +2334,10 @@ browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使�
     "websiteId": {
       "type": "number",
       "description": "Website id for badge_add."
+    },
+    "sourceId": {
+      "type": "number",
+      "description": "Source id (target site) for source_tags; from batch item sourceId."
     },
     "status": {
       "type": "string",
@@ -2370,6 +2374,13 @@ browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使�
     "name": {
       "type": "string",
       "description": "Badge name for badge_add."
+    },
+    "tags": {
+      "type": "array",
+      "description": "source_tags: 1-10 tag names to attach to the target site, e.g. [可复用, 免徽章].",
+      "items": {
+        "type": "string"
+      }
     },
     "html": {
       "type": "string",

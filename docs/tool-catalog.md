@@ -2302,7 +2302,7 @@ Run the publish-batch workflow: list/detail/claim batches, keep the lease alive,
   "properties": {
     "action": {
       "type": "string",
-      "description": "One of batch_list, batch_get, batch_claim, lease_heartbeat, lease_release, item_result, badge_add, mailbox_create, mail_wait."
+      "description": "One of batch_list, batch_get, batch_claim, lease_heartbeat, lease_release, item_result, badge_add, source_tags, mailbox_create, mail_wait."
     },
     "batchId": {
       "type": "number",
@@ -2326,6 +2326,10 @@ Run the publish-batch workflow: list/detail/claim batches, keep the lease alive,
     "websiteId": {
       "type": "number",
       "description": "Website id for badge_add."
+    },
+    "sourceId": {
+      "type": "number",
+      "description": "Source id (target site) for source_tags; from batch item sourceId."
     },
     "status": {
       "type": "string",
@@ -2362,6 +2366,13 @@ Run the publish-batch workflow: list/detail/claim batches, keep the lease alive,
     "name": {
       "type": "string",
       "description": "Badge name for badge_add."
+    },
+    "tags": {
+      "type": "array",
+      "description": "source_tags: 1-10 tag names to attach to the target site, e.g. [可复用, 免徽章].",
+      "items": {
+        "type": "string"
+      }
     },
     "html": {
       "type": "string",

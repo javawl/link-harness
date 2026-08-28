@@ -109,6 +109,15 @@ async reportItemResult(itemId: number, result: BacklinkItemResult, signal?: Abor
 async addBadge(websiteId: number, badge: BacklinkBadgeInput, signal?: AbortSignal): Promise<BacklinkBadgeResult>
 
 /**
+ * Attach source tags by name on the batch work source.
+ * @param sourceId - the target source's backend id.
+ * @param names - tag names to attach; the backend creates missing ones.
+ * @param signal - optional cancellation forwarded to the provider.
+ * @returns the source id and each attached tag's id, name, and whether this call created it.
+ */
+async tagSource(sourceId: number, names: readonly string[], signal?: AbortSignal): Promise<BacklinkTagResult>
+
+/**
  * Create one mailbox address.
  * @param options - the desired local part and domain.
  * @param signal - optional cancellation forwarded to the provider.

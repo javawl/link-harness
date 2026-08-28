@@ -509,6 +509,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   BacklinkItemOutcome: 'backlinks.md',
   BacklinkBadgeInput: 'backlinks.md',
   BacklinkBadgeResult: 'backlinks.md',
+  BacklinkTagResult: 'backlinks.md',
   MailboxAddress: 'backlinks.md',
   MailPollOptions: 'backlinks.md',
   VerificationMail: 'backlinks.md',

@@ -560,6 +560,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the created badge id and whether the callback fired.',
       },
       {
+        signature: 'async tagSource(sourceId: number, names: readonly string[], signal?: AbortSignal): Promise<BacklinkTagResult>',
+        description: 'Attach source tags by name on the batch work source.',
+        parameters: [{ name: 'sourceId', description: 'the target source\'s backend id.' }, { name: 'names', description: 'tag names to attach; the backend creates missing ones.' }, { name: 'signal', description: 'optional cancellation forwarded to the provider.' }],
+        returns: 'the source id and each attached tag\'s id, name, and whether this call created it.',
+      },
+      {
         signature: 'async createMailbox(options: { readonly localPart: string; readonly domain: string }, signal?: AbortSignal): Promise<MailboxAddress>',
         description: 'Create one mailbox address.',
         parameters: [{ name: 'options', description: 'the desired local part and domain.' }, { name: 'signal', description: 'optional cancellation forwarded to the provider.' }],
@@ -3116,7 +3122,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BacklinkBatchSourceProvider',
-    declaration: 'export interface BacklinkBatchSourceProvider {\n    readonly id: string;\n    available(): boolean;\n    listBatches(signal?: AbortSignal): Promise<readonly BacklinkBatchSummary[]>;\n    getBatch(batchId: number, signal?: AbortSignal): Promise<BacklinkBatchDetail>;\n    claim(batchId: number, itemIds?: readonly number[], signal?: AbortSignal): Promise<BacklinkLeaseClaim>;\n    heartbeat(leaseId: number, signal?: AbortSignal): Promise<BacklinkHeartbeat>;\n    release(leaseId: number, signal?: AbortSignal): Promise<void>;\n    reportItemResult(itemId: number, result: BacklinkItemResult, signal?: AbortSignal): Promise<BacklinkItemOutcome>;\n    addBadge(websiteId: number, badge: BacklinkBadgeInput, signal?: AbortSignal): Promise<BacklinkBadgeResult>;\n}',
+    declaration: 'export interface BacklinkBatchSourceProvider {\n    readonly id: string;\n    available(): boolean;\n    listBatches(signal?: AbortSignal): Promise<readonly BacklinkBatchSummary[]>;\n    getBatch(batchId: number, signal?: AbortSignal): Promise<BacklinkBatchDetail>;\n    claim(batchId: number, itemIds?: readonly number[], signal?: AbortSignal): Promise<BacklinkLeaseClaim>;\n    heartbeat(leaseId: number, signal?: AbortSignal): Promise<BacklinkHeartbeat>;\n    release(leaseId: number, signal?: AbortSignal): Promise<void>;\n    reportItemResult(itemId: number, result: BacklinkItemResult, signal?: AbortSignal): Promise<BacklinkItemOutcome>;\n    addBadge(websiteId: number, badge: BacklinkBadgeInput, signal?: AbortSignal): Promise<BacklinkBadgeResult>;\n    tagSource(sourceId: number, names: readonly string[], signal?: AbortSignal): Promise<BacklinkTagResult>;\n}',
   },
   {
     name: 'BacklinkBatchSummary',
@@ -3137,6 +3143,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'BacklinkLeaseClaim',
     declaration: 'export interface BacklinkLeaseClaim {\n    readonly leaseId: number;\n    readonly leaseExpiresAt: string;\n    readonly items: readonly BacklinkBatchItem[];\n}',
+  },
+  {
+    name: 'BacklinkTagResult',
+    declaration: 'export interface BacklinkTagResult {\n    readonly sourceId: number;\n    readonly attached: readonly {\n        id: number;\n        name: string;\n        created: boolean;\n    }[];\n}',
   },
   {
     name: 'BacklinkWebsiteAnchor',

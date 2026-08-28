@@ -198,6 +198,13 @@ export class BacklinksRuntime extends Service {
     return this.resolveBatchSource().addBadge(websiteId, badge, signal)
   }
 
+  /**
+   * Attach source tags by name on the batch work source.
+   * @param sourceId - the target source's backend id.
+   * @param names - tag names to attach; the backend creates missing ones.
+   * @param signal - optional cancellation forwarded to the provider.
+   * @returns the source id and each attached tag's id, name, and whether this call created it.
+   */
   async tagSource(sourceId: number, names: readonly string[], signal?: AbortSignal): Promise<BacklinkTagResult> {
     return this.resolveBatchSource().tagSource(sourceId, names, signal)
   }
