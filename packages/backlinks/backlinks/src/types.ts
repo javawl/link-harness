@@ -23,6 +23,8 @@ export interface BacklinkBatchSummary {
     readonly failed: number
     readonly total: number
   }
+  /** True while an agent lease is actively executing this batch's items. */
+  readonly executing: boolean
 }
 
 /** One executable plan item: the target site and its current state. */

@@ -95,6 +95,10 @@
         timeoutMs: 180000
         maxOutputChars: 60000
 
+    # Read-only Remote face the Web publish console renders from.
+    - id: backlinks-console
+      name: '@deepseek-ai/dsh-backlinks-console'
+
     # Batch work source and verification mailboxes over the backend's open API.
     - id: backlinks
       name: '@deepseek-ai/dsh-backlinks'

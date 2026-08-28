@@ -8,6 +8,7 @@
     "rewriteRelativeImportExtensions": false
   },
   "include": [
+    "packages/backlinks/console/tests/console.spec.ts",
     "apps/web/tests/scaffold.ts",
     "apps/web/tests/default-model.e2e.ts",
     "apps/web/tests/declared-reasoning.e2e.ts",
@@ -241,6 +242,7 @@
     { "path": "./packages/backlinks/backlinks-supermanager" },
     { "path": "./packages/backlinks/backlinks-cloud-mail" },
     { "path": "./packages/backlinks/tool-backlinks" },
+    { "path": "./packages/backlinks/console" },
     { "path": "./packages/browser/browser" },
     { "path": "./packages/browser/browser-playwright" },
     { "path": "./packages/browser/tool-browser" },

@@ -75,6 +75,7 @@ function toBatchSummary(value: unknown): BacklinkBatchSummary {
     websiteHost: str(row.websiteHost),
     plannedAt: str(row.plannedAt),
     counts: toCounts(asRecord(row.counts)),
+    executing: row.executing === true,
   }
 }
 

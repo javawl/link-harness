@@ -2,6 +2,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import commandsRemote from '@deepseek-ai/dsh-commands/remote'
+import backlinksConsoleRemote from '@deepseek-ai/dsh-backlinks-console/remote'
 import goalsRemote from '@deepseek-ai/dsh-goal/remote'
 import dynamicRemote from '@deepseek-ai/dsh-cordis-host-runner/remote'
 import fileReferencesRemote from '@deepseek-ai/dsh-file-reference/remote'
@@ -114,7 +115,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const disposers: Array<() => Promise<void>> = []
   try {
     for (const contribution of [
-      commandsRemote, goalsRemote, dynamicRemote, fileReferencesRemote,
+      commandsRemote, backlinksConsoleRemote, goalsRemote, dynamicRemote, fileReferencesRemote,
       pluginInventoryRemote, messageFeedbackRemote, sessionReferencesRemote,
     ]) {
       disposers.push(await ctx.remote.$mount(contribution))

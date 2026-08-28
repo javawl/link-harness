@@ -454,6 +454,9 @@ importers:
       '@deepseek-ai/dsh-backlinks-cloud-mail':
         specifier: workspace:*
         version: link:../packages/backlinks/backlinks-cloud-mail
+      '@deepseek-ai/dsh-backlinks-console':
+        specifier: workspace:*
+        version: link:../packages/backlinks/console
       '@deepseek-ai/dsh-backlinks-supermanager':
         specifier: workspace:*
         version: link:../packages/backlinks/backlinks-supermanager
@@ -865,9 +868,15 @@ importers:
 
   packages/api/remotes:
     dependencies:
+      '@deepseek-ai/dsh-backlinks-console':
+        specifier: workspace:^
+        version: link:../../backlinks/console
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:^
         version: link:../../typert/protocol
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:^
@@ -1023,6 +1032,22 @@ importers:
       '@deepseek-ai/dsh-settings':
         specifier: workspace:^
         version: link:../../settings/settings
+
+  packages/backlinks/console:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-backlinks':
+        specifier: workspace:^
+        version: link:../backlinks
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:^
+        version: link:../../typert/protocol
 
   packages/backlinks/tool-backlinks:
     dependencies:
@@ -1480,6 +1505,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-attachment':
         specifier: workspace:^
         version: link:../../client/ui-attachment
+      '@deepseek-ai/dsh-client-ui-backlinks-console':
+        specifier: workspace:*
+        version: link:../../client/ui-backlinks-console
       '@deepseek-ai/dsh-client-ui-brand-official':
         specifier: workspace:^
         version: link:../../client/ui-brand-official
@@ -1945,6 +1973,21 @@ importers:
       react-dom:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
+
+  packages/client/ui-backlinks-console:
+    devDependencies:
+      '@deepseek-ai/dsh-backlinks':
+        specifier: workspace:^
+        version: link:../../backlinks/backlinks
+      '@deepseek-ai/dsh-backlinks-console':
+        specifier: workspace:^
+        version: link:../../backlinks/console
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
 
   packages/client/ui-brand-official:
     devDependencies:

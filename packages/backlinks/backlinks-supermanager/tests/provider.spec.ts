@@ -45,7 +45,7 @@ const batchRow = {
   websiteName: 'site',
   websiteHost: 'site.test',
   plannedAt: '2026-08-25T02:00:00.000Z',
-  counts: { pending: 12, executed: 3, skipped: 1, failed: 2, total: 18 },
+  counts: { pending: 12, executed: 3, skipped: 1, failed: 2, total: 18 }, executing: false,
 }
 
 const itemRow = {
@@ -85,7 +85,7 @@ describe('SupermanagerBatchSource', () => {
     expect(batches).toEqual([{
       id: 176, name: 'PB-1', websiteId: 82, websiteName: 'site', websiteHost: 'site.test',
       plannedAt: '2026-08-25T02:00:00.000Z',
-      counts: { pending: 12, executed: 3, skipped: 1, failed: 2, total: 18 },
+      counts: { pending: 12, executed: 3, skipped: 1, failed: 2, total: 18 }, executing: false,
     }])
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('http://127.0.0.1:3000/api/agent/batches')

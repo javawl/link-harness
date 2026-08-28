@@ -42,12 +42,12 @@ beforeEach(async () => {
     available: () => true,
     listBatches: async () => [{
       id: 176, name: 'PB-1', websiteId: 82, websiteName: 'site', websiteHost: 'site.test',
-      plannedAt: 't', counts: { pending: 2, executed: 0, skipped: 0, failed: 0, total: 2 },
+      plannedAt: 't', counts: { pending: 2, executed: 0, skipped: 0, failed: 0, total: 2 }, executing: false,
     }],
     getBatch: async id => ({
       batch: {
         id, name: 'PB-1', websiteId: 82, websiteName: 'site', websiteHost: 'site.test',
-        plannedAt: 't', counts: { pending: 2, executed: 0, skipped: 0, failed: 0, total: 2 },
+        plannedAt: 't', counts: { pending: 2, executed: 0, skipped: 0, failed: 0, total: 2 }, executing: false,
       },
       website: { id: 82, name: 'site', siteUrl: 'https://site.test', siteHost: 'site.test' },
       anchors: [{ id: 1, anchorText: 'Site', targetUrl: 'https://site.test/' }],

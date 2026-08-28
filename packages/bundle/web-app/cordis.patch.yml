@@ -242,6 +242,11 @@
     - id: ui-input-trigger
       name: '@deepseek-ai/dsh-client-ui-input-trigger'
 
+    # Publish-batch console: batch cards + one-click publish into a fresh
+    # session (shell overlay + sidebar footer action).
+    - id: ui-backlinks-console
+      name: '@deepseek-ai/dsh-client-ui-backlinks-console'
+
     - id: ui-commands
       name: '@deepseek-ai/dsh-client-ui-commands'
 

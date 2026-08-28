@@ -26,6 +26,7 @@ import type {
 import { BacklinksError } from './types.ts'
 
 export { BacklinksError } from './types.ts'
+export type * from './types.ts'
 export type {
   BacklinkBadgeInput,
   BacklinkBadgeResult,
