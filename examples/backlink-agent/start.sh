@@ -8,6 +8,8 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 cd "$ROOT"
 # 依赖未安装时给出明确指引，代替 node 的模块解析堆栈
 [[ -d node_modules/tsx ]] || { echo "依赖未安装：请先运行 bash examples/backlink-agent/setup.sh。"; exit 1; }
+# 构建产物（lib/）不进 git，缺失说明从未构建过
+compgen -G 'packages/*/*/lib/typert.host.js' > /dev/null || { echo "构建产物缺失：请先运行 bash examples/backlink-agent/setup.sh（或 pnpm run build）。"; exit 1; }
 # 读入 .env 只为提示缺失项，不导出：环境变量须保持比 .env 更高的优先级
 # （与 dsh 凭据解析一致），文件由 dsh 进程启动时自行加载。
 if [[ -f .env ]]; then

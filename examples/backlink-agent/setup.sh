@@ -43,8 +43,10 @@ fi
 [[ -f "$ROOT/package.json" ]] || { echo "请在 harness 仓库内运行本脚本"; exit 1; }
 cd "$ROOT"
 
-echo "== 3/4 依赖（首次较慢） =="
+echo "== 3/4 依赖（首次较慢，含一次全量构建） =="
 pnpm install
+# lib/ 构建产物不进 git：typert 等加载方直接 import lib 下的文件，源码启动前必须构建一次
+pnpm run build
 
 echo "== 4/4 配置 =="
 echo "令牌（NEWAPI_API_KEY / SUPERMANAGER_TOKEN / CLOUDMAIL_TOKEN）不再需要改文件："
