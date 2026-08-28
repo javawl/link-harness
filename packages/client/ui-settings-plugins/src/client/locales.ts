@@ -11,6 +11,12 @@ export type PluginsSettingsLocaleKey =
   | 'webSearchTitle' | 'webSearchDescription'
   | 'webSearchApiKey' | 'webSearchApiKeyHint' | 'webSearchApiKeySet' | 'webSearchApiKeyUnset'
   | 'webSearchBaseUrl' | 'webSearchBaseUrlHint' | 'webSearchMaxUses' | 'webSearchMaxUsesHint'
+  | 'supermanagerTitle' | 'supermanagerDescription'
+  | 'supermanagerBaseUrl' | 'supermanagerBaseUrlHint'
+  | 'supermanagerToken' | 'supermanagerTokenHint' | 'supermanagerTokenSet' | 'supermanagerTokenUnset'
+  | 'cloudMailTitle' | 'cloudMailDescription'
+  | 'cloudMailBaseUrl' | 'cloudMailBaseUrlHint'
+  | 'cloudMailToken' | 'cloudMailTokenHint' | 'cloudMailTokenSet' | 'cloudMailTokenUnset'
 
 /** English copy. */
 export const en: Record<PluginsSettingsLocaleKey, string> = {
@@ -51,6 +57,22 @@ export const en: Record<PluginsSettingsLocaleKey, string> = {
   webSearchBaseUrlHint: 'Leave blank to use the provider default.',
   webSearchMaxUses: 'Max searches per request',
   webSearchMaxUsesHint: 'How many times one request may search before it must answer.',
+  supermanagerTitle: 'Supermanager',
+  supermanagerDescription: 'The backlink batch work source.',
+  supermanagerBaseUrl: 'Backend endpoint',
+  supermanagerBaseUrlHint: 'Production domain or a local dev instance; leave blank to keep the composed default.',
+  supermanagerToken: 'Agent token',
+  supermanagerTokenHint: 'Stored in the local settings file. Leave blank to keep the current token.',
+  supermanagerTokenSet: 'A token is configured.',
+  supermanagerTokenUnset: 'No token is configured; batches are unavailable until one is.',
+  cloudMailTitle: 'Cloud-mail',
+  cloudMailDescription: 'The verification-mailbox provider.',
+  cloudMailBaseUrl: 'API endpoint',
+  cloudMailBaseUrlHint: 'Leave blank to keep the composed default.',
+  cloudMailToken: 'API token',
+  cloudMailTokenHint: 'Stored in the local settings file. Leave blank to keep the current token.',
+  cloudMailTokenSet: 'A token is configured.',
+  cloudMailTokenUnset: 'No token is configured; mailboxes are unavailable until one is.',
 }
 
 /** Simplified Chinese copy. */
@@ -92,4 +114,20 @@ export const zh: Record<PluginsSettingsLocaleKey, string> = {
   webSearchBaseUrlHint: '留空则使用提供方默认地址。',
   webSearchMaxUses: '单次请求最多搜索次数',
   webSearchMaxUsesHint: '一次请求在必须作答前最多可以搜索多少次。',
+  supermanagerTitle: 'Supermanager',
+  supermanagerDescription: '外链批次工作源。',
+  supermanagerBaseUrl: '后端地址',
+  supermanagerBaseUrlHint: '生产域名或本地开发实例；留空保持组合文件预置值。',
+  supermanagerToken: 'Agent 令牌',
+  supermanagerTokenHint: '保存在本机设置文件里。留空表示保持当前令牌。',
+  supermanagerTokenSet: '已配置令牌。',
+  supermanagerTokenUnset: '未配置令牌；配置之前批次功能不可用。',
+  cloudMailTitle: 'Cloud-mail',
+  cloudMailDescription: '验证邮箱提供方。',
+  cloudMailBaseUrl: '接口地址',
+  cloudMailBaseUrlHint: '留空保持组合文件预置值。',
+  cloudMailToken: '接口令牌',
+  cloudMailTokenHint: '保存在本机设置文件里。留空表示保持当前令牌。',
+  cloudMailTokenSet: '已配置令牌。',
+  cloudMailTokenUnset: '未配置令牌；配置之前邮箱功能不可用。',
 }

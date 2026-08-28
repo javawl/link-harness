@@ -42,12 +42,12 @@ interface Section {
   /** Base URL of the worker API; the composition entry's value applies when unset. */
   readonly baseUrl: string
   /** Open-API token, redacted on configuration surfaces; falls back to the environment. */
-  readonly token: string
+  readonly token?: string
 }
 
 const Section: z<Section> = z.object({
   baseUrl: z.string().default(''),
-  token: z.string().role('secret').default(''),
+  token: z.string().role('secret'),
 })
 
 /**
@@ -66,11 +66,15 @@ export function apply(ctx: Context, config: Config): void {
   if (!Number.isSafeInteger(resolved.requestTimeoutMs) || resolved.requestTimeoutMs <= 0) {
     throw new Error(`backlinks-cloud-mail: requestTimeoutMs must be a positive integer, got ${resolved.requestTimeoutMs}`)
   }
-  let source: () => Section = () => ({ baseUrl: resolved.baseUrl, token: resolved.token })
+  const entry: Section = {
+    baseUrl: resolved.baseUrl,
+    ...resolved.token.length > 0 ? { token: resolved.token } : {},
+  }
+  let source: () => Section = () => entry
   let dispose: (() => void) | undefined
   const install = (): void => {
     const section = source()
-    const token = section.token.length > 0
+    const token = section.token !== undefined && section.token.length > 0
       ? section.token
       : launchEnvironmentOf(ctx).get('CLOUDMAIL_TOKEN')?.value ?? ''
     dispose?.()
@@ -81,7 +85,7 @@ export function apply(ctx: Context, config: Config): void {
     }))
   }
   install()
-  installSettingsSection(ctx, NS, Section, { baseUrl: resolved.baseUrl, token: resolved.token }, {
+  installSettingsSection(ctx, NS, Section, entry, {
     validate: (section) => {
       assertHttpBaseUrl(section.baseUrl)
     },

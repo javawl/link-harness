@@ -126,7 +126,7 @@ describe('ui-settings-plugins apply', () => {
     await ctx.plugin({ inject: [...inject], apply }).await()
 
     expect(slots.entries('settings.plugin.item').map(entry => entry.options.key))
-      .toEqual(['shell', 'agent-loop', 'web-search-deepseek'])
+      .toEqual(['shell', 'agent-loop', 'web-search-deepseek', 'backlinks-supermanager', 'backlinks-cloud-mail'])
   })
 
   it('dispatches the served namespaces its cards claim, and no others', async () => {
@@ -141,6 +141,21 @@ describe('ui-settings-plugins apply', () => {
     await vi.waitFor(() => {
       expect(face.hooks.configurablePlugins.getSnapshot().namespaces)
         .toEqual(['agent-loop', 'web-search-deepseek'])
+    })
+  })
+
+  it('surfaces a backlinks card only when the Host serves its namespace', async () => {
+    // The backlinks providers ride the backlink-agent overlay, so a base
+    // deployment serves neither namespace and ships both cards dormant.
+    const { ctx, slots } = await bench(['backlinks-supermanager'])
+    declareRoot(slots)
+    await ctx.plugin({ inject: [...inject], apply }).await()
+
+    const tab = slots.entries('settings.plugins.tab')[0]!
+    const face = (tab.inject as unknown as () => ConfigurablePluginsTabFace)()
+    await vi.waitFor(() => {
+      expect(face.hooks.configurablePlugins.getSnapshot().namespaces)
+        .toEqual(['backlinks-supermanager'])
     })
   })
 
@@ -212,7 +227,7 @@ describe('ui-settings-plugins apply', () => {
     declareRoot(slots)
     const fiber = ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
-    expect(slots.entries('settings.plugin.item')).toHaveLength(3)
+    expect(slots.entries('settings.plugin.item')).toHaveLength(5)
 
     await fiber.dispose()
 

@@ -229,13 +229,13 @@ export class SupermanagerBatchSource implements BacklinkBatchSourceProvider {
     const record = asRecord(body)
     const attached = Array.isArray(record.attached)
       ? record.attached.map((entry: unknown) => {
-          const row = asRecord(entry)
-          return {
-            id: toNumber(row.id),
-            name: str(row.name),
-            created: row.created === true,
-          }
-        })
+        const row = asRecord(entry)
+        return {
+          id: toNumber(row.id),
+          name: str(row.name),
+          created: row.created === true,
+        }
+      })
       : []
     return { sourceId: toNumber(record.sourceId), attached }
   }

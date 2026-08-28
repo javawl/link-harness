@@ -18,6 +18,13 @@ done
 if ((${#missing[@]} > 0)); then
   echo "提示：${missing[*]} 未配置 —— 可启动后在网页设置页填写，或写入仓库根 .env（模板 examples/backlink-agent/.env.example）/ export。"
 fi
+# 端口被占时给出一句话原因，代替 webserver 深处的 EADDRINUSE 堆栈
+pid="$(lsof -tnP -iTCP:8787 -sTCP:LISTEN 2>/dev/null || true)"
+if [[ -n "$pid" ]]; then
+  echo "端口 8787 已被 PID $pid 占用 —— 多半已有一个 backlink-agent 在运行：" >&2
+  echo "  直接访问 http://127.0.0.1:8787 ；要重启先执行 kill $pid 再重跑本脚本。" >&2
+  exit 1
+fi
 if command -v node >/dev/null && node -e 'process.exit(process.versions.node.split(".")[0] >= 24 ? 0 : 1)' 2>/dev/null; then
   :
 else

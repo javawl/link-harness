@@ -17,9 +17,12 @@ import { ConfigurablePluginsTab } from '../src/client/ConfigurablePluginsTab.tsx
 import type { ConfigurablePluginsTabProps } from '../src/client/ConfigurablePluginsTab.tsx'
 import { PluginsSettingsSection } from '../src/client/PluginsSettingsSection.tsx'
 import type { PluginsSettingsSectionProps, PluginsSettingsTabEntry } from '../src/client/PluginsSettingsSection.tsx'
+import { CloudMailCard, SupermanagerCard } from '../src/client/BacklinksCard.tsx'
+import type { BacklinksProviderCardProps } from '../src/client/BacklinksCard.tsx'
 import { WebSearchCard } from '../src/client/WebSearchCard.tsx'
 import type { WebSearchCardProps } from '../src/client/WebSearchCard.tsx'
 import type { AgentLoopCardState } from '../src/client/agent-loop-card-controller.ts'
+import type { BacklinksCardState } from '../src/client/backlinks-card-controller.ts'
 import type { BashCardState } from '../src/client/bash-card-controller.ts'
 import type { CardFieldState, CardShell } from '../src/client/card-form.ts'
 import type { ConfigurablePluginsTabState } from '../src/client/tab-store.ts'
@@ -415,5 +418,64 @@ describe('WebSearchCard', () => {
       ['maxUses', '4'],
     ])
     expect(actions.resetField.mock.calls).toEqual([['baseURL'], ['maxUses']])
+  })
+})
+
+describe('Backlinks cards', () => {
+  function renderBacklinks(
+    Component: typeof SupermanagerCard,
+    state: Partial<BacklinksCardState> = {},
+  ) {
+    const store = createSnapshotStore<BacklinksCardState>({
+      ...settled,
+      baseUrl: field(''),
+      token: field(''),
+      tokenConfigured: false,
+      ...state,
+    })
+    const actions = cardActions()
+    const props = { ...actions, t, useBacklinksCard: bindSnapshotSelector(store) } as unknown as BacklinksProviderCardProps
+    render(<Component {...props} />)
+    return actions
+  }
+
+  it('reports the token state without ever showing the literal', () => {
+    renderBacklinks(SupermanagerCard, { tokenConfigured: true })
+    fireEvent.click(screen.getByText(en.supermanagerTitle))
+
+    expect(screen.getByText(en.supermanagerTokenSet)).toBeTruthy()
+    expect(screen.getByLabelText(en.supermanagerToken)).toHaveProperty('type', 'password')
+  })
+
+  it('shows the unset badge while no token is stored', () => {
+    renderBacklinks(CloudMailCard)
+    fireEvent.click(screen.getByText(en.cloudMailTitle))
+
+    expect(screen.getByText(en.cloudMailTokenUnset)).toBeTruthy()
+  })
+
+  it('stages the endpoint with its reset, and the token without one', () => {
+    const actions = renderBacklinks(CloudMailCard, { baseUrl: field('https://mail.test/api', { overridden: true }) })
+    fireEvent.click(screen.getByText(en.cloudMailTitle))
+
+    fireEvent.change(screen.getByLabelText(en.cloudMailBaseUrl), { target: { value: 'https://mail2.test/api' } })
+    fireEvent.change(screen.getByLabelText(en.cloudMailToken), { target: { value: 'mail-secret' } })
+    const resets = screen.getAllByRole('button', { name: en.reset })
+    expect(resets).toHaveLength(1)
+    fireEvent.click(resets[0]!)
+
+    expect(actions.edit.mock.calls).toEqual([
+      ['baseUrl', 'https://mail2.test/api'],
+      ['token', 'mail-secret'],
+    ])
+    expect(actions.resetField.mock.calls).toEqual([['baseUrl']])
+  })
+
+  it('disables both controls while the document is read-only', () => {
+    renderBacklinks(SupermanagerCard, { writable: false })
+    fireEvent.click(screen.getByText(en.supermanagerTitle))
+
+    expect(screen.getByLabelText(en.supermanagerBaseUrl)).toHaveProperty('disabled', true)
+    expect(screen.getByLabelText(en.supermanagerToken)).toHaveProperty('disabled', true)
   })
 })

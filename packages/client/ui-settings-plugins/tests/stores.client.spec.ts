@@ -9,10 +9,12 @@ import { CardForm, numberField, textField } from '../src/client/card-form.ts'
 import { AgentLoopCardController, type AgentLoopSettings } from '../src/client/agent-loop-card-controller.ts'
 import { BashCardController, type BashSettings } from '../src/client/bash-card-controller.ts'
 import {
-  SettingsDescribeMirror, type SettingsMirrorSnapshot,
+  SettingsDescribeMirror,
+  type SettingsDescribeFace, type SettingsDescribeView, type SettingsMirrorSnapshot,
 } from '@deepseek-ai/dsh-client-ui-settings/src/client/settings-mirror.ts'
 import { ConfigurablePluginsTabController } from '../src/client/tab-store.ts'
 import { WebSearchCardController, type WebSearchSettings } from '../src/client/web-search-card-controller.ts'
+import { BacklinksCardController, type BacklinksSettings } from '../src/client/backlinks-card-controller.ts'
 
 /** Make the stub behave like a Host that accepts every write. */
 function acceptWrites<T>(host: StubSettingsScope<T>): void {
@@ -683,5 +685,136 @@ describe('ConfigurablePluginsTabController', () => {
 
     expect(controller.inject().hooks.configurablePlugins.getSnapshot())
       .toEqual({ loaded: true, namespaces: [] })
+  })
+})
+
+describe('BacklinksCardController', () => {
+  /** Describe-face stand-in the controller's configured badge rides on. */
+  function describeFace(rows: readonly { ns: string; secretSet: boolean }[] = []) {
+    const toView = (): SettingsDescribeView => ({
+      writable: true,
+      hasDocument: true,
+      namespaces: rows.map(row => ({
+        ns: row.ns,
+        schema: {},
+        value: {},
+        applies: 'live' as const,
+        secrets: row.secretSet ? [{ path: ['token'], set: true }] : [],
+        revision: 0,
+      })),
+    })
+    const listeners = new Set<() => void>()
+    let snapshot: SettingsMirrorSnapshot = { status: 'ready', view: toView(), error: null }
+    return {
+      face: {
+        getSnapshot: () => snapshot,
+        subscribe: (listener: () => void) => {
+          listeners.add(listener)
+          return () => { listeners.delete(listener) }
+        },
+        ensure: () => Promise.resolve(),
+      } as SettingsDescribeFace,
+      publish(next: readonly { ns: string; secretSet: boolean }[]): void {
+        rows = next
+        snapshot = { ...snapshot, view: toView() }
+        for (const listener of listeners) listener()
+      },
+    }
+  }
+
+  function rig(ns = 'backlinks-supermanager') {
+    const host = stubSettingsScope<BacklinksSettings>()
+    acceptWrites(host)
+    const mirror = describeFace()
+    const controller = new BacklinksCardController(host.scope, mirror.face, ns)
+    host.publish({
+      status: 'ready',
+      writable: true,
+      value: { baseUrl: 'https://sm.test' },
+      base: { baseUrl: 'https://sm.test' },
+      user: {},
+    })
+    return { host, mirror, controller }
+  }
+
+  it('seeds the endpoint and a blank token over the redacted section', () => {
+    const { controller } = rig()
+    expect(controller.inject().hooks.backlinksCard.getSnapshot()).toMatchObject({
+      baseUrl: { text: 'https://sm.test', overridden: false },
+      token: { text: '', overridden: false },
+      tokenConfigured: false,
+    })
+  })
+
+  it('follows the token slot the describe mirror reports for its namespace', () => {
+    const { mirror, controller } = rig()
+    const state = () => controller.inject().hooks.backlinksCard.getSnapshot()
+
+    mirror.publish([{ ns: 'backlinks-supermanager', secretSet: true }])
+    expect(state().tokenConfigured).toBe(true)
+
+    // Another provider's secret slot is not this card's.
+    mirror.publish([{ ns: 'backlinks-cloud-mail', secretSet: true }])
+    expect(state().tokenConfigured).toBe(false)
+  })
+
+  it('writes the staged token into the section on save', async () => {
+    const { host, controller } = rig()
+    const face = controller.inject()
+
+    face.edit('token', 'smag-secret')
+    expect(face.hooks.backlinksCard.getSnapshot().dirty).toBe(true)
+    expect(host.set).not.toHaveBeenCalled()
+
+    face.save()
+    await vi.waitFor(() => { expect(host.set).toHaveBeenCalledWith('token', 'smag-secret') })
+    await vi.waitFor(() => {
+      expect(face.hooks.backlinksCard.getSnapshot()).toMatchObject({ dirty: false, failed: false })
+    })
+  })
+
+  it('keeps the stored token when the draft stays blank', () => {
+    const { host, controller } = rig()
+    const face = controller.inject()
+
+    face.edit('token', '   ')
+
+    expect(face.hooks.backlinksCard.getSnapshot().dirty).toBe(false)
+    face.save()
+
+    expect(host.set).not.toHaveBeenCalled()
+  })
+
+  it('marks the save failed and keeps the draft when the write is refused', async () => {
+    const { host, controller } = rig()
+    host.set.mockRejectedValueOnce(new Error('stale revision'))
+    const face = controller.inject()
+
+    face.edit('token', 'smag-secret')
+    face.save()
+    await vi.waitFor(() => {
+      expect(face.hooks.backlinksCard.getSnapshot()).toMatchObject({ dirty: true, failed: true })
+    })
+  })
+
+  it('stages the endpoint like an ordinary section field', () => {
+    const { controller } = rig()
+    const face = controller.inject()
+
+    face.edit('baseUrl', 'https://sm2.test')
+
+    expect(face.hooks.backlinksCard.getSnapshot().baseUrl).toMatchObject({
+      text: 'https://sm2.test',
+      overridden: true,
+    })
+  })
+
+  it('stops following the mirror after dispose', () => {
+    const { mirror, controller } = rig()
+    controller.dispose()
+
+    mirror.publish([{ ns: 'backlinks-supermanager', secretSet: true }])
+
+    expect(controller.inject().hooks.backlinksCard.getSnapshot().tokenConfigured).toBe(false)
   })
 })
