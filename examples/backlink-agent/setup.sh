@@ -19,16 +19,20 @@ fi
 PNPM_PIN="11.7.0"
 if [[ -f "$ROOT/package.json" ]]; then
   pin_from_manifest="$(sed -n 's/.*"packageManager": *"pnpm@\([^+"]*\).*/\1/p' "$ROOT/package.json")"
-  [[ -n "$pin_from_manifest" ]] && PNPM_PIN="$pin_from_manifest"
+  if [[ -n "$pin_from_manifest" ]]; then
+    PNPM_PIN="$pin_from_manifest"
+  fi
 fi
 pnpm_pinned() { command -v pnpm >/dev/null && [[ "$(pnpm --version 2>/dev/null)" == "$PNPM_PIN" ]]; }
 pnpm_pinned || {
-  echo "安装 pnpm@$PNPM_PIN（与仓库锁定版本一致；仅装依赖时使用，日常 start.sh 启动不需要）..."
-  npm install -g "pnpm@$PNPM_PIN"
+  # ${PNPM_PIN} 必须带花括号：macOS 自带 bash 3.2 在 UTF-8 locale 下会把紧随变量的
+  # 多字节字符并入变量名（报 PNPM_PIN?: unbound variable）
+  echo "安装 pnpm@${PNPM_PIN}（与仓库锁定版本一致；仅装依赖时使用，日常 start.sh 启动不需要）..."
+  npm install -g "pnpm@${PNPM_PIN}"
 }
 # npm 全局 bin 目录可能不在 PATH（新机器常见）：解析出来供本脚本后续步骤使用
 command -v pnpm >/dev/null || export PATH="$(npm prefix -g)/bin:$PATH"
-pnpm_pinned || { echo "pnpm@$PNPM_PIN 不可用：请手动执行 npm install -g pnpm@$PNPM_PIN 后重跑本脚本"; exit 1; }
+pnpm_pinned || { echo "pnpm@${PNPM_PIN} 不可用：请手动执行 npm install -g pnpm@${PNPM_PIN} 后重跑本脚本"; exit 1; }
 command -v "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" >/dev/null 2>&1 \
   || echo "未检测到 Google Chrome：发布批次需要时再安装 https://www.google.com/chrome/（不影响安装与启动）"
 
