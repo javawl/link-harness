@@ -388,7 +388,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/backlinks/backlinks-cloud-mail/src/index.ts:20`](../packages/backlinks/backlinks-cloud-mail/src/index.ts)
+Source: [`packages/backlinks/backlinks-cloud-mail/src/index.ts:25`](../packages/backlinks/backlinks-cloud-mail/src/index.ts)
 
 <a id="deepseek-aidsh-backlinks-supermanager"></a>
 
@@ -408,7 +408,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/backlinks/backlinks-supermanager/src/index.ts:20`](../packages/backlinks/backlinks-supermanager/src/index.ts)
+Source: [`packages/backlinks/backlinks-supermanager/src/index.ts:26`](../packages/backlinks/backlinks-supermanager/src/index.ts)
 
 <a id="deepseek-aidsh-bash-local"></a>
 
@@ -473,7 +473,7 @@ export interface BrowserRuntimeConfig {
 }
 ```
 
-Source: [`packages/browser/browser/src/index.ts:53`](../packages/browser/browser/src/index.ts)
+Source: [`packages/browser/browser/src/index.ts:55`](../packages/browser/browser/src/index.ts)
 
 <a id="deepseek-aidsh-browser-playwright"></a>
 
@@ -494,6 +494,18 @@ export interface Config {
   readonly defaultTimeoutMs?: number
   /** Extra Chromium launch arguments (proxy, window size, …). */
   readonly launchArgs?: string[]
+  /**
+   * Initial window position `x,y` for Chrome. Offscreen values (for example
+   * `-32000,-32000`) keep the headed browser invisible while a human can still
+   * surface a tab with the `bringToFront` browser action.
+   */
+  readonly windowPosition?: string
+  /**
+   * Playwright default launch arguments to omit, by exact flag. Omitting
+   * `--enable-automation` keeps automation-hostile pages (notably the Google
+   * account login) from rejecting the browser as unsafe.
+   */
+  readonly ignoreDefaultArgs?: string[]
 }
 ```
 

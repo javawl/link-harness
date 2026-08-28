@@ -27,6 +27,9 @@
       "path": "../../util/launch-environment"
     },
     {
+      "path": "../../settings/settings"
+    },
+    {
       "path": "../../runtime-diagnostics/invariants"
     }
   ]

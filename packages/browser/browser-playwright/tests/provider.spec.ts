@@ -481,7 +481,7 @@ describe('PlaywrightSession command dispatch', () => {
 
   it('opens a new tab bound to the caller-named ref and reuses it after', async () => {
     const first = fakePage()
-    const { session, context, mocks } = await mount([first.page])
+    const { session, mocks } = await mount([first.page])
 
     const opened = await session.act({ kind: 'navigate', page: 'work', url: 'https://a.test/' })
     expect(opened).toMatchObject({ kind: 'page', page: 'work' })
@@ -491,7 +491,7 @@ describe('PlaywrightSession command dispatch', () => {
     const again = await session.act({ kind: 'navigate', page: 'work', url: 'https://a.test/2' })
     expect(again).toMatchObject({ kind: 'page', page: 'work' })
     expect(mocks.newPage).toHaveBeenCalledTimes(1)
-    expect(context.pages().at(-1)!.goto).toHaveBeenCalledWith('https://a.test/2', expect.anything())
+    expect(mocks.created[0]?.mocks.goto).toHaveBeenCalledWith('https://a.test/2', expect.anything())
   })
 
   it('rejects a command naming an unknown or closed ref', async () => {

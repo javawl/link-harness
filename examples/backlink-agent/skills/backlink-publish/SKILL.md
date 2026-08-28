@@ -51,7 +51,12 @@ user-invocable: true
    - 只有 CAPTCHA/其他墙 → 先 `browser bringToFront` 把窗口召回前台，再按现有人工兜底规则挂起（浏览器在屏幕外静默运行，人工时必须召回）。
 5. **填写与提交**：锚文本和目标 URL 从 batch 详情的 `anchors` 里选（优先第一个 active 项）；描述文字要自然、贴站点的语言。提交前 snapshot 复查关键字段。
 6. **核验**：提交后 `browser navigate` 到公开列表页（非预览）+ `snapshot`，确认页面包含目标 URL/锚文本。
-7. **回写**（`item_result`）：
+7. **回写**（`item_result`）后**立即自动打标**（`source_tags`，参数 `sourceId` 取条目的 sourceId，`tags` 按本次观察多选，幂等只加不删）：
+   - 站点未要求徽章即可提交 → 加 `免徽章`
+   - 站点要求挂徽章/徽标验证 → 加 `要徽章`
+   - 本条发布成功（live 或 submitted）→ 加 `可复用`
+   - 遇到 Cloudflare 盾（Turnstile/质询页，无论过没过）→ 加 `有盾`
+   把所打标签记进 evidence。回写内容：
    - 核验通过 → `live` + publicUrl + anchorText + targetUrl + evidence（一句话证据）
    - 明确"已提交待审核" → `submitted`
    - CAPTCHA/登录墙/需人工 → `failed` + `manual_required` + 原因（保留浏览器标签页不关）

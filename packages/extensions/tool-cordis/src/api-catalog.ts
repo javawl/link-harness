@@ -586,7 +586,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'act(command: BrowserCommand, signal?: AbortSignal): Promise<BrowserResult>',
-        description: 'Perform one command on the shared session, opening it lazily through the selected provider on first use. Commands serialize: each dispatch observes the previous one\'s settled state. Provider selection and session open throw BrowserError before any page work runs.',
+        description: 'Perform one command on the shared session, opening it lazily (and single-flight) through the selected provider on first use. Ordering is per addressed tab: same-tab commands serialize in dispatch order while different-tab commands may overlap. Provider selection and session open throw BrowserError before any page work runs.',
         parameters: [{ name: 'command', description: 'the closed-union command to execute.' }, { name: 'signal', description: 'optional cancellation signal checked before dispatch.' }],
         returns: 'the closed-union outcome for the command kind.',
       },
@@ -3167,32 +3167,40 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BrowserAutomationProvider {\n    readonly id: string;\n    available(): boolean;\n    open(signal?: AbortSignal): Promise<BrowserSession>;\n}',
   },
   {
+    name: 'BrowserBringToFrontCommand',
+    declaration: 'export interface BrowserBringToFrontCommand extends BrowserPageAddress {\n    readonly kind: \'bringToFront\';\n}',
+  },
+  {
     name: 'BrowserClickCommand',
-    declaration: 'export interface BrowserClickCommand {\n    readonly kind: \'click\';\n    readonly selector: string;\n}',
+    declaration: 'export interface BrowserClickCommand extends BrowserPageAddress {\n    readonly kind: \'click\';\n    readonly selector: string;\n}',
   },
   {
     name: 'BrowserClosePageCommand',
-    declaration: 'export interface BrowserClosePageCommand {\n    readonly kind: \'closePage\';\n}',
+    declaration: 'export interface BrowserClosePageCommand extends BrowserPageAddress {\n    readonly kind: \'closePage\';\n}',
   },
   {
     name: 'BrowserCommand',
-    declaration: 'export type BrowserCommand = BrowserNavigateCommand | BrowserSnapshotCommand | BrowserClickCommand | BrowserFillCommand | BrowserSelectCommand | BrowserPressCommand | BrowserUploadCommand | BrowserScreenshotCommand | BrowserWaitForCommand | BrowserClosePageCommand;',
+    declaration: 'export type BrowserCommand = BrowserNavigateCommand | BrowserSnapshotCommand | BrowserBringToFrontCommand | BrowserClickCommand | BrowserFillCommand | BrowserSelectCommand | BrowserPressCommand | BrowserUploadCommand | BrowserScreenshotCommand | BrowserWaitForCommand | BrowserClosePageCommand;',
   },
   {
     name: 'BrowserFillCommand',
-    declaration: 'export interface BrowserFillCommand {\n    readonly kind: \'fill\';\n    readonly selector: string;\n    readonly value: string;\n}',
+    declaration: 'export interface BrowserFillCommand extends BrowserPageAddress {\n    readonly kind: \'fill\';\n    readonly selector: string;\n    readonly value: string;\n}',
   },
   {
     name: 'BrowserNavigateCommand',
-    declaration: 'export interface BrowserNavigateCommand {\n    readonly kind: \'navigate\';\n    readonly url: string;\n    readonly waitUntil?: \'load\' | \'domcontentloaded\' | \'networkidle\';\n    readonly maxChars?: number;\n}',
+    declaration: 'export interface BrowserNavigateCommand extends BrowserPageAddress {\n    readonly kind: \'navigate\';\n    readonly url: string;\n    readonly waitUntil?: \'load\' | \'domcontentloaded\' | \'networkidle\';\n    readonly maxChars?: number;\n}',
+  },
+  {
+    name: 'BrowserPageAddress',
+    declaration: 'export interface BrowserPageAddress {\n    readonly page?: string;\n}',
   },
   {
     name: 'BrowserPageResult',
-    declaration: 'export interface BrowserPageResult {\n    readonly kind: \'page\';\n    readonly url: string;\n    readonly title: string;\n    readonly text: string;\n    readonly truncated: boolean;\n}',
+    declaration: 'export interface BrowserPageResult {\n    readonly kind: \'page\';\n    readonly page: string;\n    readonly url: string;\n    readonly title: string;\n    readonly text: string;\n    readonly truncated: boolean;\n}',
   },
   {
     name: 'BrowserPressCommand',
-    declaration: 'export interface BrowserPressCommand {\n    readonly kind: \'press\';\n    readonly key: string;\n}',
+    declaration: 'export interface BrowserPressCommand extends BrowserPageAddress {\n    readonly kind: \'press\';\n    readonly key: string;\n}',
   },
   {
     name: 'BrowserResult',
@@ -3200,7 +3208,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserScreenshotCommand',
-    declaration: 'export interface BrowserScreenshotCommand {\n    readonly kind: \'screenshot\';\n}',
+    declaration: 'export interface BrowserScreenshotCommand extends BrowserPageAddress {\n    readonly kind: \'screenshot\';\n}',
   },
   {
     name: 'BrowserScreenshotResult',
@@ -3208,7 +3216,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserSelectCommand',
-    declaration: 'export interface BrowserSelectCommand {\n    readonly kind: \'select\';\n    readonly selector: string;\n    readonly value: string;\n}',
+    declaration: 'export interface BrowserSelectCommand extends BrowserPageAddress {\n    readonly kind: \'select\';\n    readonly selector: string;\n    readonly value: string;\n}',
   },
   {
     name: 'BrowserSession',
@@ -3216,15 +3224,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserSnapshotCommand',
-    declaration: 'export interface BrowserSnapshotCommand {\n    readonly kind: \'snapshot\';\n    readonly selector?: string;\n    readonly maxChars?: number;\n}',
+    declaration: 'export interface BrowserSnapshotCommand extends BrowserPageAddress {\n    readonly kind: \'snapshot\';\n    readonly selector?: string;\n    readonly format?: \'text\' | \'aria\';\n    readonly maxChars?: number;\n}',
   },
   {
     name: 'BrowserUploadCommand',
-    declaration: 'export interface BrowserUploadCommand {\n    readonly kind: \'upload\';\n    readonly selector: string;\n    readonly files: readonly string[];\n}',
+    declaration: 'export interface BrowserUploadCommand extends BrowserPageAddress {\n    readonly kind: \'upload\';\n    readonly selector: string;\n    readonly files: readonly string[];\n}',
   },
   {
     name: 'BrowserWaitForCommand',
-    declaration: 'export interface BrowserWaitForCommand {\n    readonly kind: \'waitFor\';\n    readonly selector?: string;\n    readonly url?: string;\n    readonly timeoutMs?: number;\n}',
+    declaration: 'export interface BrowserWaitForCommand extends BrowserPageAddress {\n    readonly kind: \'waitFor\';\n    readonly selector?: string;\n    readonly url?: string;\n    readonly timeoutMs?: number;\n}',
   },
   {
     name: 'CancelOptions',

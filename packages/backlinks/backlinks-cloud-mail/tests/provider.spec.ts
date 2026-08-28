@@ -175,7 +175,12 @@ describe('backlinks-cloud-mail plugin apply', () => {
     const defaulted = Config({ baseUrl: 'https://mail.test/api' }) as ResolvedCloudMailConfig & { token?: string }
     process.env.CLOUDMAIL_TOKEN = 'env-token'
     try {
-      apply({ backlinks: { registerMailboxProvider }, get: () => undefined } as never, defaulted)
+      apply({
+        backlinks: { registerMailboxProvider },
+        get: () => undefined,
+        inject: () => {},
+        effect: () => () => {},
+      } as never, defaulted)
     } finally {
       delete process.env.CLOUDMAIL_TOKEN
     }

@@ -16,7 +16,7 @@ import type { BacklinkBadgeInput, BacklinkItemResult } from '@deepseek-ai/dsh-ba
 /** Tool actions, one per seam operation. */
 const ACTIONS = [
   'batch_list', 'batch_get', 'batch_claim', 'lease_heartbeat', 'lease_release',
-  'item_result', 'badge_add', 'mailbox_create', 'mail_wait',
+  'item_result', 'badge_add', 'source_tags', 'mailbox_create', 'mail_wait',
 ] as const
 
 type BacklinksAction = typeof ACTIONS[number]
@@ -29,6 +29,7 @@ export interface BacklinksToolInput {
   readonly leaseId?: number
   readonly itemId?: number
   readonly websiteId?: number
+  readonly tagNames?: readonly string[]
   readonly status?: 'live' | 'submitted' | 'failed' | 'skipped'
   readonly publicUrl?: string
   readonly anchorText?: string
@@ -207,6 +208,7 @@ export function applyBacklinksTool(ctx: Context, timeoutMs: number): void {
       '→ per item: browser publishes on the target site, then item_result reports live/submitted/failed/skipped',
       '→ lease_release when done. mailbox_create + mail_wait receive site verification codes (returns code and first link).',
       'badge_add installs a reciprocal footer badge when a site requires exchange.',
+      'source_tags attaches tags to the target site by name after a publish attempt (免徽章/要徽章/可复用/有盾…); idempotent add-only.',
       'Never re-submit an item whose outcome is unknown: report failed with failureMode manual_required instead.',
     ].join(' '),
   })
@@ -229,6 +231,7 @@ export function applyBacklinksTool(ctx: Context, timeoutMs: number): void {
       leaseId: { type: 'number', description: 'Lease id for lease_heartbeat / lease_release.' },
       itemId: { type: 'number', description: 'Plan item id for item_result.' },
       websiteId: { type: 'number', description: 'Website id for badge_add.' },
+      sourceId: { type: 'number', description: 'Source id (target site) for source_tags; from batch item sourceId.' },
       status: { type: 'string', description: 'item_result status: live, submitted, failed, or skipped.' },
       publicUrl: { type: 'string', description: 'Verified public listing URL (required for live).' },
       anchorText: { type: 'string', description: 'Anchor text used (live/submitted).' },
@@ -238,6 +241,11 @@ export function applyBacklinksTool(ctx: Context, timeoutMs: number): void {
       failureReason: { type: 'string', description: 'Why the item failed.' },
       skipReason: { type: 'string', description: 'Why the item is skipped.' },
       name: { type: 'string', description: 'Badge name for badge_add.' },
+      tags: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'source_tags: 1-10 tag names to attach to the target site, e.g. [可复用, 免徽章].',
+      },
       html: { type: 'string', description: 'Badge HTML for badge_add.' },
       isActive: { type: 'boolean', description: 'Activate the badge immediately (default true).' },
       localPart: { type: 'string', description: 'Mailbox local part for mailbox_create.' },
@@ -320,6 +328,18 @@ export function applyBacklinksTool(ctx: Context, timeoutMs: number): void {
             + (outcome.callbackTriggered
               ? 'site refresh callback fired — still curl the site page to confirm the badge is live'
               : 'site refresh callback did NOT fire — curl the website footer refresh URL, then verify the badge on the live page')
+          data = outcome as unknown as JsonValue
+          break
+        }
+        case 'source_tags': {
+          const names = args.tags
+          if (!Array.isArray(names) || names.length === 0 || names.length > 10
+            || names.some(name => typeof name !== 'string' || name.trim().length === 0 || name.trim().length > 100)) {
+            throw new Error('backlinks source_tags requires a tags array of 1-10 non-empty names.')
+          }
+          const unique = [...new Set((names as string[]).map(name => name.trim()))]
+          const outcome = await ctx.backlinks.tagSource(readId(args, 'sourceId'), unique, exec.signal)
+          summary = `tags ${unique.join(', ')} attached to source ${readId(args, 'sourceId')}`
           data = outcome as unknown as JsonValue
           break
         }

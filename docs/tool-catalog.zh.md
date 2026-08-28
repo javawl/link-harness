@@ -2244,7 +2244,11 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
   "properties": {
     "action": {
       "type": "string",
-      "description": "One of navigate, snapshot, click, fill, select, press, upload, screenshot, waitFor, closePage."
+      "description": "One of navigate, snapshot, click, fill, select, press, upload, screenshot, waitFor, closePage, bringToFront."
+    },
+    "page": {
+      "type": "string",
+      "description": "Tab ref from a navigate result. Pass it on EVERY command while working a tab: navigate with a new ref opens that tab, later commands address it. Omit only for single-tab serial work."
     },
     "url": {
       "type": "string",
@@ -2252,7 +2256,11 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     },
     "selector": {
       "type": "string",
-      "description": "CSS selector for snapshot, click, fill, select, upload, waitFor."
+      "description": "Element addressing: role:<role>|<name>, label:<text>, placeholder:<text>, text:<text>, bare CSS, optionally prefixed frame(<iframe css>)>>; click also accepts xy:<x>,<y>."
+    },
+    "format": {
+      "type": "string",
+      "description": "snapshot capture shape: text (visible text) or aria (accessibility tree with roles and names)."
     },
     "value": {
       "type": "string",

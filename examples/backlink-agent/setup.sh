@@ -15,8 +15,8 @@ if ! command -v node >/dev/null || ! node -e 'process.exit(process.versions.node
   echo '后续命令请先: export PATH="/opt/homebrew/opt/node@24/bin:$PATH"'
 fi
 command -v pnpm >/dev/null || { echo "安装 pnpm（仅本脚本装依赖时使用，日常 start.sh 启动不需要）..."; npm install -g pnpm; }
-command -v "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" >/dev/null 2>&1 || {
-  echo "未检测到 Google Chrome，请先安装: https://www.google.com/chrome/"; exit 1; }
+command -v "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" >/dev/null 2>&1 \
+  || echo "未检测到 Google Chrome：发布批次需要时再安装 https://www.google.com/chrome/（不影响安装与启动）"
 
 echo "== 2/4 代码 =="
 if [[ -n "$REPO_URL" && ! -d "$ROOT/package.json" ]]; then
@@ -29,14 +29,8 @@ echo "== 3/4 依赖（首次较慢） =="
 pnpm install
 
 echo "== 4/4 配置 =="
-if [[ ! -f .env ]]; then
-  cp "$HERE/.env.example" .env
-  chmod 600 .env
-  echo "已生成 .env 模板 —— 请编辑填入三个令牌后再运行 start.sh："
-  echo "  $ROOT/.env"
-else
-  echo ".env 已存在，跳过（如需更新对照 $HERE/.env.example）"
-fi
+echo "令牌（NEWAPI_API_KEY / SUPERMANAGER_TOKEN / CLOUDMAIL_TOKEN）不再需要改文件："
+echo "启动后在网页设置页填写即可，保存即生效。也可选用仓库根 .env（模板 $HERE/.env.example）。"
 
 echo
 echo "完成。日常启动：bash $HERE/start.sh"

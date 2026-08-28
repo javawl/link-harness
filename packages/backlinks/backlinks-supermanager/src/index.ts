@@ -1,13 +1,16 @@
 /**
  * Service Provider for the backlinks batch work-source seam: a Bearer-token HTTP client for the supermanager
  * `/api/agent/*` surface (batch listing/detail, lease claim/heartbeat/release, per-item result write-back,
- * reciprocal badges). The token resolves from config or `SUPERMANAGER_TOKEN`.
+ * reciprocal badges). The base URL and token resolve per-field from the settings user section, the
+ * composition entry, then `SUPERMANAGER_TOKEN`, in that order; a settings change re-registers the
+ * provider without a restart.
  * @module @deepseek-ai/dsh-backlinks-supermanager
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
+import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-backlinks'
 import { SupermanagerBatchSource, type ResolvedSupermanagerConfig } from './provider.ts'
 
@@ -15,6 +18,9 @@ import { SupermanagerBatchSource, type ResolvedSupermanagerConfig } from './prov
 export const name = 'backlinks-supermanager'
 /** The backlinks seam this provider registers into. */
 export const inject = ['backlinks']
+
+/** Settings namespace this provider surfaces in configuration UIs. */
+const NS = settingsNamespace('backlinks-supermanager')
 
 /** Configuration for the supermanager batch work-source provider. */
 export interface Config {
@@ -32,21 +38,60 @@ export const Config: z<Config> = z.object({
   requestTimeoutMs: z.number().default(15_000),
 })
 
+/** User-editable settings section layered over the composition entry's `baseUrl`/`token`. */
+interface Section {
+  /** Base URL of the deployment; the composition entry's value applies when unset. */
+  readonly baseUrl: string
+  /** Bearer agent token, redacted on configuration surfaces; falls back to the environment. */
+  readonly token: string
+}
+
+const Section: z<Section> = z.object({
+  baseUrl: z.string().default(''),
+  token: z.string().role('secret').default(''),
+})
+
+/**
+ * Reject a non-empty base URL that is not an http(s) URL.
+ * @param baseUrl - candidate base URL; the empty string passes (the field is simply unconfigured).
+ */
+function assertHttpBaseUrl(baseUrl: string): void {
+  if (baseUrl.length > 0 && !/^https?:\/\//u.test(baseUrl)) {
+    throw new Error(`backlinks-supermanager: baseUrl must be an http(s) URL, got ${baseUrl}`)
+  }
+}
+
 export function apply(ctx: Context, config: Config): void {
   const resolved = config as ResolvedSupermanagerConfig
-  if (resolved.baseUrl.length > 0 && !/^https?:\/\//u.test(resolved.baseUrl)) {
-    throw new Error(`backlinks-supermanager: baseUrl must be an http(s) URL, got ${resolved.baseUrl}`)
-  }
+  assertHttpBaseUrl(resolved.baseUrl)
   if (!Number.isSafeInteger(resolved.requestTimeoutMs) || resolved.requestTimeoutMs <= 0) {
     throw new Error(`backlinks-supermanager: requestTimeoutMs must be a positive integer, got ${resolved.requestTimeoutMs}`)
   }
-  const token = resolved.token.length > 0
-    ? resolved.token
-    : launchEnvironmentOf(ctx).get('SUPERMANAGER_TOKEN')?.value ?? ''
-  ctx.backlinks.registerBatchSourceProvider(new SupermanagerBatchSource({
-    ...resolved,
-    token,
-  }))
+  let source: () => Section = () => ({ baseUrl: resolved.baseUrl, token: resolved.token })
+  let dispose: (() => void) | undefined
+  const install = (): void => {
+    const section = source()
+    const token = section.token.length > 0
+      ? section.token
+      : launchEnvironmentOf(ctx).get('SUPERMANAGER_TOKEN')?.value ?? ''
+    dispose?.()
+    dispose = ctx.backlinks.registerBatchSourceProvider(new SupermanagerBatchSource({
+      baseUrl: section.baseUrl,
+      token,
+      requestTimeoutMs: resolved.requestTimeoutMs,
+    }))
+  }
+  install()
+  installSettingsSection(ctx, NS, Section, { baseUrl: resolved.baseUrl, token: resolved.token }, {
+    validate: (section) => {
+      assertHttpBaseUrl(section.baseUrl)
+    },
+    setSource: (current) => {
+      source = current
+    },
+    onChange: install,
+  })
+  ctx.effect(() => () => dispose?.())
 }
 
 export { SUPERMANAGER_BATCH_SOURCE_ID } from './provider.ts'

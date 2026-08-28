@@ -70,6 +70,7 @@ beforeEach(async () => {
       return { itemStatus: 'executed', publishRecordId: 917 }
     },
     addBadge: async websiteId => ({ backlinkId: 643, callbackTriggered: websiteId > 50 }),
+    tagSource: async (sourceId, names) => ({ sourceId, attached: names.map((name, i) => ({ id: 90 + i, name, created: false })) }),
   })
   disposeMailbox = ctx.backlinks.registerMailboxProvider({
     id: 'scripted',
@@ -119,6 +120,11 @@ describe('backlinks tool integration over the real seam', () => {
     })
     expect(badge.value).toMatchObject({
       summary: 'badge 643 created; site refresh callback fired — still curl the site page to confirm the badge is live',
+    })
+
+    const tagged = await call({ action: 'source_tags', sourceId: 156, tags: ['可复用', ' 免徽章 '] })
+    expect(tagged.value).toMatchObject({
+      summary: 'tags 可复用, 免徽章 attached to source 156',
     })
 
     const badgeNoCallback = await call({ action: 'badge_add', websiteId: 50, name: 'P3', html: '<b>3</b>' })

@@ -54,9 +54,10 @@ Selection semantics (resolved at execution time, never order-dependent):
 registerProvider(provider: BrowserAutomationProvider): () => void
 
 /**
- * Perform one command on the shared session, opening it lazily through the
- * selected provider on first use. Commands serialize: each dispatch observes
- * the previous one's settled state. Provider selection and session open
+ * Perform one command on the shared session, opening it lazily (and
+ * single-flight) through the selected provider on first use. Ordering is
+ * per addressed tab: same-tab commands serialize in dispatch order while
+ * different-tab commands may overlap. Provider selection and session open
  * throw {@link BrowserError} before any page work runs.
  * @param command - the closed-union command to execute.
  * @param signal - optional cancellation signal checked before dispatch.

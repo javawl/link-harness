@@ -156,6 +156,22 @@ export interface BacklinkBatchSourceProvider {
    * @returns the created badge id and whether the callback fired.
    */
   addBadge(websiteId: number, badge: BacklinkBadgeInput, signal?: AbortSignal): Promise<BacklinkBadgeResult>
+  /**
+   * Attach tags to one source by NAME (workspace-local tag ids never cross the
+   * provider boundary); missing names are created by the backend, repeats are
+   * idempotent no-ops, and nothing is ever detached.
+   * @param sourceId - the target site's source id from the batch items.
+   * @param names - tag names to attach, 1-10 per call.
+   * @param signal - optional cancellation for the request.
+   * @returns the resolved tag ids and whether each was newly created.
+   */
+  tagSource(sourceId: number, names: readonly string[], signal?: AbortSignal): Promise<BacklinkTagResult>
+}
+
+/** One attached source tag resolution outcome. */
+export interface BacklinkTagResult {
+  readonly sourceId: number
+  readonly attached: readonly { id: number; name: string; created: boolean }[]
 }
 
 /** A created mailbox address. */

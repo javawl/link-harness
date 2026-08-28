@@ -165,6 +165,29 @@ describe('SupermanagerBatchSource', () => {
       .toEqual({ name: 'P', html: '<b>P</b>' })
   })
 
+  it('attaches source tags by name and returns the resolution', async () => {
+    fetchMock.mockResolvedValueOnce(ok({
+      ok: true,
+      sourceId: 156,
+      attached: [
+        { id: 95, name: '可复用', created: false },
+        { id: 99, name: '有盾', created: true },
+      ],
+    }))
+    const provider = new SupermanagerBatchSource(resolved())
+
+    await expect(provider.tagSource(156, ['可复用', '有盾'])).resolves.toEqual({
+      sourceId: 156,
+      attached: [
+        { id: 95, name: '可复用', created: false },
+        { id: 99, name: '有盾', created: true },
+      ],
+    })
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('http://127.0.0.1:3000/api/agent/sources/156/tags')
+    expect(jsonBody(init.body)).toEqual({ tags: ['可复用', '有盾'] })
+  })
+
   it('maps HTTP statuses onto the error taxonomy with Retry-After preserved', async () => {
     const provider = new SupermanagerBatchSource(resolved())
 
@@ -233,7 +256,12 @@ describe('backlinks-supermanager plugin apply', () => {
 
     process.env.SUPERMANAGER_TOKEN = 'smag_env'
     try {
-      apply({ backlinks: { registerBatchSourceProvider }, get: () => undefined } as never, defaulted)
+      apply({
+        backlinks: { registerBatchSourceProvider },
+        get: () => undefined,
+        inject: () => {},
+        effect: () => () => {},
+      } as never, defaulted)
     } finally {
       delete process.env.SUPERMANAGER_TOKEN
     }

@@ -10,6 +10,7 @@ import z from '@deepseek-ai/schemastery'
 import type {
   BacklinkBadgeInput,
   BacklinkBadgeResult,
+  BacklinkTagResult,
   BacklinkBatchDetail,
   BacklinkBatchSourceProvider,
   BacklinkBatchSummary,
@@ -28,6 +29,7 @@ export { BacklinksError } from './types.ts'
 export type {
   BacklinkBadgeInput,
   BacklinkBadgeResult,
+  BacklinkTagResult,
   BacklinkBatchDetail,
   BacklinkBatchItem,
   BacklinkBatchSourceProvider,
@@ -194,6 +196,10 @@ export class BacklinksRuntime extends Service {
    */
   async addBadge(websiteId: number, badge: BacklinkBadgeInput, signal?: AbortSignal): Promise<BacklinkBadgeResult> {
     return this.resolveBatchSource().addBadge(websiteId, badge, signal)
+  }
+
+  async tagSource(sourceId: number, names: readonly string[], signal?: AbortSignal): Promise<BacklinkTagResult> {
+    return this.resolveBatchSource().tagSource(sourceId, names, signal)
   }
 
   /**

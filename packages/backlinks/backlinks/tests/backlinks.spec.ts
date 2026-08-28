@@ -33,6 +33,7 @@ function makeBatchSource(options: {
     release: async () => { calls.push('release') },
     reportItemResult: async () => { calls.push('reportItemResult'); throw new Error('unused') },
     addBadge: async () => { calls.push('addBadge'); throw new Error('unused') },
+    tagSource: async (sourceId, names) => { calls.push(`tags:${sourceId}:${names.join(',')}`); throw new Error('unused') },
   }
   return { provider, calls }
 }
@@ -131,6 +132,7 @@ describe('BacklinksRuntime passthrough', () => {
       release: async (leaseId) => { calls.push(`release:${leaseId}`) },
       reportItemResult: async (itemId) => { calls.push(`result:${itemId}`); throw new Error('unused') },
       addBadge: async (websiteId) => { calls.push(`badge:${websiteId}`); throw new Error('unused') },
+      tagSource: async (sourceId, names) => { calls.push(`tags:${sourceId}:${names.join(',')}`); throw new Error('unused') },
     })
 
     await backlinks.listBatches()
@@ -141,6 +143,7 @@ describe('BacklinksRuntime passthrough', () => {
     await backlinks.release(9)
     await expect(backlinks.reportItemResult(10, { status: 'skipped', skipReason: 'x' })).rejects.toThrow()
     await expect(backlinks.addBadge(11, { name: 'n', html: '<b/>' })).rejects.toThrow()
+    await expect(backlinks.tagSource(12, ['可复用'])).rejects.toThrow()
 
     expect(calls).toEqual([
       'listBatches',
@@ -150,7 +153,7 @@ describe('BacklinksRuntime passthrough', () => {
       'heartbeat:9',
       'release:9',
       'result:10',
-      'badge:11',
+      'badge:11', 'tags:12:可复用',
     ])
   })
 

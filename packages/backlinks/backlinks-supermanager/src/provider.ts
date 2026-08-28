@@ -7,6 +7,7 @@
 import type {
   BacklinkBadgeInput,
   BacklinkBadgeResult,
+  BacklinkTagResult,
   BacklinkBatchDetail,
   BacklinkBatchItem,
   BacklinkBatchSourceProvider,
@@ -218,6 +219,25 @@ export class SupermanagerBatchSource implements BacklinkBatchSourceProvider {
       backlinkId: toNumber(record.backlinkId),
       callbackTriggered: record.callbackTriggered === true,
     }
+  }
+
+  async tagSource(sourceId: number, names: readonly string[], signal?: AbortSignal): Promise<BacklinkTagResult> {
+    const body = await this.requestJson(`/api/agent/sources/${sourceId}/tags`, {
+      method: 'POST',
+      payload: { tags: [...names] },
+    }, signal)
+    const record = asRecord(body)
+    const attached = Array.isArray(record.attached)
+      ? record.attached.map((entry: unknown) => {
+          const row = asRecord(entry)
+          return {
+            id: toNumber(row.id),
+            name: str(row.name),
+            created: row.created === true,
+          }
+        })
+      : []
+    return { sourceId: toNumber(record.sourceId), attached }
   }
 
   /** Flatten the closed union into the wire shape the agent API validates. */
