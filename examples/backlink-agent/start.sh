@@ -6,6 +6,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 cd "$ROOT"
+# 依赖未安装时给出明确指引，代替 node 的模块解析堆栈
+[[ -d node_modules/tsx ]] || { echo "依赖未安装：请先运行 bash examples/backlink-agent/setup.sh。"; exit 1; }
 # 读入 .env 只为提示缺失项，不导出：环境变量须保持比 .env 更高的优先级
 # （与 dsh 凭据解析一致），文件由 dsh 进程启动时自行加载。
 if [[ -f .env ]]; then

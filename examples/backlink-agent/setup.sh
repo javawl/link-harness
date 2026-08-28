@@ -15,6 +15,9 @@ if ! command -v node >/dev/null || ! node -e 'process.exit(process.versions.node
   echo '后续命令请先: export PATH="/opt/homebrew/opt/node@24/bin:$PATH"'
 fi
 command -v pnpm >/dev/null || { echo "安装 pnpm（仅本脚本装依赖时使用，日常 start.sh 启动不需要）..."; npm install -g pnpm; }
+# npm 全局 bin 目录可能不在 PATH（新机器常见）：解析出来供本脚本后续步骤使用
+command -v pnpm >/dev/null || export PATH="$(npm prefix -g)/bin:$PATH"
+command -v pnpm >/dev/null || { echo "pnpm 安装后仍不可用：请手动执行 npm install -g pnpm 并重跑本脚本"; exit 1; }
 command -v "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" >/dev/null 2>&1 \
   || echo "未检测到 Google Chrome：发布批次需要时再安装 https://www.google.com/chrome/（不影响安装与启动）"
 
