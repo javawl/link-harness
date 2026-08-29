@@ -65,6 +65,15 @@ function toCounts(value: Record<string, unknown>): BacklinkBatchSummary['counts'
   }
 }
 
+/** One optional website-profile field: present and non-empty on the wire, else omitted. */
+function profileField(
+  source: Record<string, unknown>,
+  field: 'shortDescription' | 'longDescription' | 'logoUrl' | 'screenshotUrl' | 'keyFeatures' | 'pricingType',
+): { [key: string]: string } {
+  const value = source[field]
+  return typeof value === 'string' && value.length > 0 ? { [field]: value } : {}
+}
+
 function toBatchSummary(value: unknown): BacklinkBatchSummary {
   const row = asRecord(value)
   return {
@@ -120,6 +129,12 @@ function toDetail(value: Record<string, unknown>): BacklinkBatchDetail {
       name: String(website.name),
       siteUrl: String(website.siteUrl),
       siteHost: String(website.siteHost),
+      ...profileField(website, 'shortDescription'),
+      ...profileField(website, 'longDescription'),
+      ...profileField(website, 'logoUrl'),
+      ...profileField(website, 'screenshotUrl'),
+      ...profileField(website, 'keyFeatures'),
+      ...profileField(website, 'pricingType'),
     },
     anchors: Array.isArray(value.anchors) ? value.anchors.map(toAnchor) : [],
     items: Array.isArray(value.items) ? value.items.map(toItem) : [],

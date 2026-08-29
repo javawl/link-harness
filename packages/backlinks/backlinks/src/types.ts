@@ -58,7 +58,19 @@ export interface BacklinkWebsiteAnchor {
 /** Batch detail: everything an executor needs before claiming. */
 export interface BacklinkBatchDetail {
   readonly batch: BacklinkBatchSummary
-  readonly website: { readonly id: number; readonly name: string; readonly siteUrl: string; readonly siteHost: string }
+  readonly website: {
+    readonly id: number
+    readonly name: string
+    readonly siteUrl: string
+    readonly siteHost: string
+    /** 提交资料包：有值时发布方优先使用，缺失时自行获取。 */
+    readonly shortDescription?: string
+    readonly longDescription?: string
+    readonly logoUrl?: string
+    readonly screenshotUrl?: string
+    readonly keyFeatures?: string
+    readonly pricingType?: string
+  }
   readonly anchors: readonly BacklinkWebsiteAnchor[]
   readonly items: readonly BacklinkBatchItem[]
 }

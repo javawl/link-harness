@@ -49,13 +49,14 @@ user-invocable: true
      - Google 弹"确认是你本人"/二次验证 → 同样回写 manual_required 等人工处理一次。
    - 有邮箱注册表单 → `backlinks mailbox_create`（随机前缀 + screwdom.org 域）→ 注册 → `backlinks mail_wait`（默认等 120 秒）拿 `code`/`link` → 完成验证 → 登录。
    - 只有 CAPTCHA/其他墙 → 先 `browser bringToFront` 把窗口召回前台，再按现有人工兜底规则挂起（浏览器在屏幕外静默运行，人工时必须召回）。
-5. **填写与提交**：锚文本和目标 URL 从 batch 详情的 `anchors` 里选（优先第一个 active 项）；描述文字要自然、贴站点的语言。提交前 snapshot 复查关键字段。
+5. **填写与提交**：锚文本和目标 URL 从 batch 详情的 `anchors` 里选（优先第一个 active 项）。**提交资料优先用批次详情 website 里的"提交资料包"**（shortDescription/longDescription/logoUrl/screenshotUrl/keyFeatures/pricingType 有值就直接用，描述按目标站字数裁剪，图片下载后按需裁剪尺寸，evidence 注明"使用后台资料包"）；资料包缺失的项才自行获取（抓网站 og:image / apple-touch-icon、现写该段文案，evidence 注明"该项自获取"）。核心事实（名称/URL/特性）以后台资料为准，措辞可微调贴目标站调性。提交前 snapshot 复查关键字段。
 6. **核验**：提交后 `browser navigate` 到公开列表页（非预览）+ `snapshot`，确认页面包含目标 URL/锚文本。
 7. **回写**（`item_result`）后**立即自动打标**（`source_tags`，参数 `sourceId` 取条目的 sourceId，`tags` 按本次观察多选，幂等只加不删）：
-   - 站点未要求徽章即可提交 → 加 `免徽章`
+   - 站点未要求徽章即可提交（打了 `付费` 的站点不加）→ 加 `免徽章`
    - 站点要求挂徽章/徽标验证 → 加 `要徽章`
    - 本条发布成功（live 或 submitted）→ 加 `可复用`
    - 遇到 Cloudflare 盾（Turnstile/质询页，无论过没过）→ 加 `有盾`
+   - 只有付费才能提交（付款墙是唯一提交途径；有免费途径的不加，即使同时提供付费加速）→ 加 `付费`
    把所打标签记进 evidence。回写内容：
    - 核验通过 → `live` + publicUrl + anchorText + targetUrl + evidence（一句话证据）
    - 明确"已提交待审核" → `submitted`
