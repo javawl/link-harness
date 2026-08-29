@@ -64,9 +64,13 @@ exports[`sidebar shell snapshots > renders the collapsed rail after the crossfad
       class="regionArea"
     >
       <div
-        data-slot="sidebar.workspaces"
-        style="display: contents;"
-      />
+        class="sessionsPane"
+      >
+        <div
+          data-slot="sidebar.workspaces"
+          style="display: contents;"
+        />
+      </div>
     </div>
     <div
       class="footArea"
@@ -190,9 +194,39 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
       class="regionArea"
     >
       <div
-        data-slot="sidebar.workspaces"
-        style="display: contents;"
-      />
+        aria-label="Sessions"
+        class="tabStrip"
+        role="tablist"
+      >
+        <button
+          aria-selected="true"
+          class="tabButton tabButtonActive"
+          role="tab"
+          type="button"
+        >
+          Sessions
+        </button>
+        <div
+          data-slot="sidebar.panel.tab"
+          style="display: contents;"
+        />
+      </div>
+      <div
+        class="sessionsPane"
+      >
+        <div
+          data-slot="sidebar.workspaces"
+          style="display: contents;"
+        />
+      </div>
+      <div
+        class="panelPane panelHidden"
+      >
+        <div
+          data-slot="sidebar.panel.body"
+          style="display: contents;"
+        />
+      </div>
     </div>
     <div
       class="footArea"
@@ -316,9 +350,39 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
       class="regionArea"
     >
       <div
-        data-slot="sidebar.workspaces"
-        style="display: contents;"
-      />
+        aria-label="会话"
+        class="tabStrip"
+        role="tablist"
+      >
+        <button
+          aria-selected="true"
+          class="tabButton tabButtonActive"
+          role="tab"
+          type="button"
+        >
+          会话
+        </button>
+        <div
+          data-slot="sidebar.panel.tab"
+          style="display: contents;"
+        />
+      </div>
+      <div
+        class="sessionsPane"
+      >
+        <div
+          data-slot="sidebar.workspaces"
+          style="display: contents;"
+        />
+      </div>
+      <div
+        class="panelPane panelHidden"
+      >
+        <div
+          data-slot="sidebar.panel.body"
+          style="display: contents;"
+        />
+      </div>
     </div>
     <div
       class="footArea"

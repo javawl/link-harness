@@ -15,7 +15,7 @@
  * scrollbar indirection away while it is elsewhere, so a list the user is not
  * pointing at carries no bar.
  */
-import { useEffect, useRef, useState } from 'react'
+import { Children, useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   FishLogo, IconNewChatOutline16, IconPanelLeftOutline16, Tooltip,
@@ -34,6 +34,9 @@ const COLLAPSE_SETTLE_MS = 150
  */
 const SCROLLBAR_LINGER_MS = 2000
 
+/** localStorage key remembering the last selected sidebar panel tab. */
+const SIDEBAR_TAB_STORAGE_KEY = 'dsh.sidebar.panel'
+
 /**
  * Render the sidebar column shell.
  * @param props - composed slot props (runtime share + injected callbacks, contract/slots.ts).
@@ -50,6 +53,18 @@ export function SidebarRoot({
   // Wide content stays mounted while the collapse animates (fading via
   // .collapsed .wide), unmounts at settle, and remounts right away on expand.
   const [settled, setSettled] = useState(collapsed)
+
+  // Sidebar tab selection: '' is the built-in Sessions tab; a panel entry
+  // names itself by activating. The choice survives reloads via storage and
+  // falls back to Sessions when the stored panel is gone.
+  const [activePanel, setActivePanel] = useState<string>(() => {
+    const stored = window.localStorage.getItem(SIDEBAR_TAB_STORAGE_KEY)
+    return stored === null ? '' : stored
+  })
+  const activatePanel = (id: string): void => {
+    window.localStorage.setItem(SIDEBAR_TAB_STORAGE_KEY, id)
+    setActivePanel(id)
+  }
   useEffect(() => {
     if (!collapsed) { setSettled(false); return }
     const timer = window.setTimeout(() => { setSettled(true) }, COLLAPSE_SETTLE_MS)
@@ -110,6 +125,15 @@ export function SidebarRoot({
       cancelLinger()
     }
   }, [pointerInside])
+
+  // The strip renders only when at least one panel registered; its nodes are
+  // rendered once here and reused in the tree below.
+  const panelTabNodes = renderSlot('sidebar.panel.tab', {
+    wide,
+    activeId: activePanel,
+    activate: activatePanel,
+  })
+  const panelCount = Children.count(panelTabNodes)
 
   return (
     <div
@@ -188,12 +212,39 @@ export function SidebarRoot({
       </Tooltip>
 
       {/* The browsing region fills the column between the controls and the
-          foot in both states; its rail icon column rides the same slot. */}
+          foot in both states; its rail icon column rides the same slot.
+          Registered sidebar panels become tabs beside Sessions: the strip and
+          the panel bodies render only while wide, and the Sessions region
+          stays mounted (hidden by CSS) so its state survives switches. */}
       <div className={css.regionArea}>
-        {renderSlot('sidebar.workspaces', {
-          wide,
-          expandSidebar: () => { if (collapsed) toggleSidebar() },
-        })}
+        {wide && panelCount > 0 ? (
+          <div className={css.tabStrip} role="tablist" aria-label={t('tab.sessions')}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activePanel === ''}
+              className={clsx(css.tabButton, activePanel === '' && css.tabButtonActive)}
+              onClick={() => { activatePanel('') }}
+            >
+              {t('tab.sessions')}
+            </button>
+            {panelTabNodes}
+          </div>
+        ) : null}
+        <div
+          className={css.sessionsPane}
+          style={activePanel === '' || !wide ? undefined : { display: 'none' }}
+        >
+          {renderSlot('sidebar.workspaces', {
+            wide,
+            expandSidebar: () => { if (collapsed) toggleSidebar() },
+          })}
+        </div>
+        {wide ? (
+          <div className={clsx(css.panelPane, activePanel === '' && css.panelHidden)}>
+            {renderSlot('sidebar.panel.body', { wide, activeId: activePanel })}
+          </div>
+        ) : null}
       </div>
 
       {/* Footer actions stack above Settings in both sidebar widths. */}

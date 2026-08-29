@@ -1,0 +1,175 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  gap: 6px;
+  padding: 4px 8px 8px;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.search {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: transparent;
+  color: inherit;
+}
+
+.toolButton {
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: transparent;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.row {
+  border: 1px solid rgba(127, 127, 127, 0.2);
+  border-radius: 8px;
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rowHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  padding: 2px 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  min-width: 0;
+}
+
+.rowTitle {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.rowChips {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.pending,
+.done,
+.failed {
+  font-size: 10px;
+  border-radius: 9999px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.pending { background: rgba(59, 130, 246, 0.15); color: #2563eb; }
+.done { background: rgba(16, 185, 129, 0.15); color: #059669; }
+.failed { background: rgba(239, 68, 68, 0.15); color: #dc2626; }
+
+.pulseDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: #3b82f6;
+  animation: backlinksPanelPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes backlinksPanelPulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.35; }
+  100% { opacity: 1; }
+}
+
+.items {
+  border-top: 1px solid rgba(127, 127, 127, 0.15);
+  padding-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.itemHost {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  opacity: 0.75;
+}
+
+.itemStatus { opacity: 0.6; white-space: nowrap; }
+.itemFailed { color: #dc2626; white-space: nowrap; }
+
+.rowActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.publishButton {
+  border: none;
+  border-radius: 6px;
+  padding: 3px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: white;
+  background: #3b82f6;
+  cursor: pointer;
+}
+
+.publishButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.note {
+  font-size: 12px;
+  opacity: 0.7;
+  margin: 0;
+}
+
+.error {
+  font-size: 12px;
+  color: #dc2626;
+  margin: 0;
+  word-break: break-all;
+}
+
+.tab {
+  composes: tabButton from '@deepseek-ai/dsh-client-ui-sidebar/SidebarRoot.module.css';
+}

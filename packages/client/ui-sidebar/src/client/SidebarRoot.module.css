@@ -337,3 +337,53 @@
     animation: none;
   }
 }
+
+/* ── sidebar panel tabs ─────────────────────────────────────────────────── */
+
+.tabStrip {
+  display: flex;
+  gap: 2px;
+  margin: 6px 8px 2px;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.10);
+  padding: 2px;
+}
+
+.tabStrip [role='tab'] {
+  flex: 1 1 0;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: inherit;
+  opacity: 0.65;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tabStrip [role='tab']:hover {
+  opacity: 0.9;
+}
+
+.tabStrip .tabButtonActive,
+.tabStrip [role='tab'][aria-selected='true'] {
+  background: var(--dsw-alias-bg-surface, rgba(255, 255, 255, 0.9));
+  opacity: 1;
+  font-weight: 500;
+}
+
+.sessionsPane,
+.panelPane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.panelHidden {
+  display: none !important;
+}

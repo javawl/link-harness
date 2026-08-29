@@ -44,7 +44,38 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * package's 'sidebar' entry; each action receives only the column state.
      */
     'sidebar.footer.action': { kind: 'list'; scope: 'root'; owner: SidebarFooterActionOwnerProps }
+    /**
+     * One sidebar tab per entry, beside the built-in Sessions tab. Each entry
+     * renders its own tab button from the activation share; declaring is
+     * claiming, and the shell hides the whole strip while no entry is
+     * registered.
+     */
+    'sidebar.panel.tab': { kind: 'list'; scope: 'root'; owner: SidebarPanelTabOwnerProps }
+    /**
+     * One sidebar panel body per tab entry. Each entry receives the same
+     * activation share and renders null while it is not the active panel, so
+     * the shell's Sessions region keeps its mount between switches.
+     */
+    'sidebar.panel.body': { kind: 'list'; scope: 'root'; owner: SidebarPanelBodyOwnerProps }
   }
+}
+
+/** The tab activation share every sidebar panel tab receives. */
+export interface SidebarPanelTabOwnerProps {
+  /** The active panel id ('' = the built-in Sessions tab). */
+  activeId: string
+  /** Make the named panel the active tab; the entry passes its own id. */
+  activate: (id: string) => void
+  /** Whether the sidebar renders wide content (false = 56px rail). */
+  wide: boolean
+}
+
+/** The body share every sidebar panel receives; entries render null while inactive. */
+export interface SidebarPanelBodyOwnerProps {
+  /** The active panel id ('' = the built-in Sessions tab). */
+  activeId: string
+  /** Whether the sidebar renders wide content (false = 56px rail). */
+  wide: boolean
 }
 
 /** Geometry supplied to the sidebar brand-mark occupant. */
@@ -114,5 +145,7 @@ export type SidebarRootComponentProps =
     | 'sidebar.workspaces'
     | 'sidebar.settings'
     | 'sidebar.footer.action'
+    | 'sidebar.panel.tab'
+    | 'sidebar.panel.body'
   >
   & SidebarRootInjected & PropsLocale<'sidebar'>
