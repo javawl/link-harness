@@ -43,7 +43,9 @@ export interface BacklinkBatchItem {
   readonly status: string
   readonly failureMode: string | null
   readonly failureReason: string | null
+  /** 该条目已执行发布记录的公开 URL；非空 ⇒ 来源已发布，跳过、绝不重复提交。 */
   readonly publishedUrl: string | null
+  /** 该条目已执行发布记录的状态（submitted/live/…）；submitted 或 live ⇒ 已发布，跳过、绝不重复提交。 */
   readonly publishStatus: string | null
   readonly plannedAt: string
 }

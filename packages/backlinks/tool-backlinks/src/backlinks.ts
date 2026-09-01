@@ -209,6 +209,7 @@ export function applyBacklinksTool(ctx: Context, timeoutMs: number): void {
       '→ lease_release when done. mailbox_create + mail_wait receive site verification codes (returns code and first link).',
       'badge_add installs a reciprocal footer badge when a site requires exchange.',
       'source_tags attaches tags to the target site by name after a publish attempt (免徽章/要徽章/可复用/有盾…); idempotent add-only.',
+      'Verify before publishing: an item whose publishStatus is submitted or live, or whose publishedUrl is set, is already published — never claim or re-submit it, and a source with such a record on any item of the batch is done too; an existing link to the promoted website found on the target site also means already published — report skipped with the reason.',
       'Never re-submit an item whose outcome is unknown: report failed with failureMode manual_required instead.',
     ].join(' '),
   })

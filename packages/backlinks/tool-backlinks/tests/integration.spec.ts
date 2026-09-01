@@ -96,6 +96,15 @@ function call(args: unknown): Promise<ToolExecutionResult> {
 }
 
 describe('backlinks tool integration over the real seam', () => {
+  it('pins the duplicate-publish guard in its prompt section', async () => {
+    const assembly = await ctx.systemPrompt.assemble()
+    const section = assembly.sections.find(s => s.name === 'tool:backlinks')
+    expect(section?.text).toContain('Verify before publishing')
+    expect(section?.text).toContain('already published — never claim or re-submit it')
+    expect(section?.text).toContain('report skipped with the reason')
+    expect(section?.text).toContain('Never re-submit an item whose outcome is unknown')
+  })
+
   it('lists batches through the resolved provider', async () => {
     const out = await call({ action: 'batch_list' })
     expect(out.isError).toBe(false)

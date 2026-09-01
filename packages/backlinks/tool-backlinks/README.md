@@ -26,7 +26,7 @@ The backlinks tool contributes the guidance below at registration time.
 ##### Backlinks tool guidance
 
 ```markdown
-Use the backlinks tool to run the publish-batch workflow against the backlink management backend: batch_list → batch_get (pick a batch) → batch_claim (grants a lease; heartbeat every ~30s while working) → per item: browser publishes on the target site, then item_result reports live/submitted/failed/skipped → lease_release when done. mailbox_create + mail_wait receive site verification codes (returns code and first link). badge_add installs a reciprocal footer badge when a site requires exchange. Never re-submit an item whose outcome is unknown: report failed with failureMode manual_required instead.
+Use the backlinks tool to run the publish-batch workflow against the backlink management backend: batch_list → batch_get (pick a batch) → batch_claim (grants a lease; heartbeat every ~30s while working) → per item: browser publishes on the target site, then item_result reports live/submitted/failed/skipped → lease_release when done. mailbox_create + mail_wait receive site verification codes (returns code and first link). badge_add installs a reciprocal footer badge when a site requires exchange. Verify before publishing: an item whose publishStatus is submitted or live, or whose publishedUrl is set, is already published — never claim or re-submit it, and a source with such a record on any item of the batch is done too; an existing link to the promoted website found on the target site also means already published — report skipped with the reason. Never re-submit an item whose outcome is unknown: report failed with failureMode manual_required instead.
 ```
 
 #### Token effect

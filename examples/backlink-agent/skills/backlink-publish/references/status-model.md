@@ -5,7 +5,9 @@
 | 情形 | item_result 回写 |
 |---|---|
 | 公开页已核验含目标链接 | live + publicUrl/anchorText/targetUrl/evidence |
-| 已提交、明确待审核/收录 | submitted |
+| 已提交、明确待审/收录 | submitted |
+| 发布记录已存在（本条或同源条目 publishStatus=submitted/live、publishedUrl 非空） | skipped + skipReason（"发布记录已存在：<状态>，跳过重复发布"） |
+| 目标站已能找到本站链接（勘察时检索命中） | skipped + skipReason（"目标站已存在本站链接，跳过重复发布"） |
 | CAPTCHA、需人工登录、人工审核 | failed + manual_required |
 | 网络/超时/后端瞬时错误 | failed + retryable |
 | 提交了但拿不到回执（结果未知） | failed + manual_required（铁律：绝不重试） |
