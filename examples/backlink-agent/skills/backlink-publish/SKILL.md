@@ -27,7 +27,7 @@ user-invocable: true
 4. **选择执行拓扑**：
    - **条目 ≥3 且分布在不同域名** → 用并发拓扑（默认并发 3）：
      a. 按 `sourceHost` 把条目分组——**同域名的条目必须进同一组串行**（防频控）；
-     b. 一次回复里并发调用 `subagent` 工具派出至多 3 个子任务（或逐个以 run_in_background 派发再轮询）。每个子任务的提示词必须包含：该组全部条目的完整信息（id/sourceId/sourceUrl/submitUrl/category/anchors/tags/notes/publishStatus/publishedUrl）、`leaseId`、以及这段话："你是并行发布子任务。执行模式：{智能匹配|全部尝试}。先用 browser navigate 并带 page:"组名" 打开专属标签页，此后每一条 browser 命令都必须带同一个 page 参数；严格按 backlink-publish 技能的单条目循环执行（注意第 1 步发布前验证：已发布的条目回写 skipped，绝不重复提交；注意所选模式的类型规则）；每条完成立即用 backlinks item_result（带 leaseId）诚实回写；CAPTCHA/登录墙回写 manual_required 并保留标签页；不要认领批次、不要 lease_release、不要问用户问题。"
+     b. 一次回复里并发调用 `subagent` 工具派出至多 3 个子任务（或逐个以 run_in_background 派发再轮询）。每个子任务的提示词必须包含：该组全部条目的完整信息（id/sourceId/sourceUrl/submitUrl/category/anchors/tags/notes/publishStatus/publishedUrl）、`leaseId`、以及这段话（子任务不会加载技能文件，四段硬纪律全靠这段话送达）："你是并行发布子任务。执行模式：{智能匹配|全部尝试}。先用 browser navigate 并带 page:"组名" 打开专属标签页，此后每一条 browser 命令都必须带同一个 page 参数。四条硬纪律：(1) 勘察——判'无评论区/无入口'前必须依次 waitFor 常见锚点（#comments/#respond/[id*='comment']/iframe）或等 3-5 秒、press End 滚到页底、见'Load comments'类按钮先点击、快照里的 iframe 用 frame() 前缀进入、兜底 navigate 到 URL#comments；全走完仍无才 skipped，措辞固定'评论区延迟加载探测后仍不存在'，禁止凭一次首屏快照判'静态页面'。(2) 带链——表单有 Website 字段优先填字段；contenteditable 富文本框/带工具栏禁止把 <a> 当文本输入（会被原样转义），必须先输观点句、选中锚文本、点工具栏链接按钮填 targetUrl；真纯文本框才直写 <a href="targetUrl">anchorText</a>；BBCode 框用 [url=targetUrl]anchorText[/url]；一段只嵌 1 个链接，锚文本融进观点句。(3) 核验与查重——aria 快照 role:link 且名称含锚文本才算链接嵌上，目标 URL 裸字符串（含被转义的 <a> 文本）不算；'目标站已存在本站链接'同口径，自己被转义的旧评论不算已发布；转义回写 failed + manual_required 绝不重发。(4) 注册——评论区/发帖要求登录时先自助注册：进 Sign Up/Register 走邮箱注册表单，backlinks mailbox_create 必须带两个参数（localPart=随机前缀、domain=screwdom.org，缺 domain 会直接报错）拿邮箱 → 填表注册 → backlinks mail_wait（默认等 120 秒）拿验证码/链接 → 完成验证后回来登录发布。'要求登录'本身不是人工事件——Wix 'Log in to publish as a member' 这类能一次性邮箱注册的登录墙是正常流程；仅 reCAPTCHA/人机验证、仅 Google OAuth 且会话未初始化、或注册被拒才回写 failed + manual_required。已发布的条目回写 skipped 绝不重复提交；每条完成立即用 backlinks item_result（带 leaseId）诚实回写；人机验证墙回写 manual_required 并 bringToFront 保留标签页；不要认领批次、不要 lease_release、不要问用户问题。"
      c. 等待子任务期间，主任务每约 60 秒调一次 `lease_heartbeat` 保活租约；
      d. 全部子任务返回后核对各条目回写状态，`lease_release`，输出汇总表（含每条的 live/submitted/failed/skipped，另单列本次"已发布跳过"的条目）。
    - **条目 <3 或集中在同一域名** → 串行拓扑：自己逐条执行单条目循环，每 1-2 个条目 `lease_heartbeat`，结束后 `lease_release` 输出汇总。
@@ -43,17 +43,17 @@ user-invocable: true
    - **智能匹配模式**：勘察后六类都不匹配 → 该条回写 `skipped`（"类型不识别，智能匹配模式下跳过"），继续下一条；
    - **全部尝试模式**：不匹配 → 直接走通用主循环发（本技能 5-8 步），绝不因类型跳过。
  `submitUrl` 优先于 `sourceUrl`。
-3. **勘察优先**：先 `browser navigate` + `snapshot format=aria` 只读了解页面结构（aria 快照带 role 和名称），再动手填写。
+3. **勘察优先**：先 `browser navigate` + `snapshot format=aria` 只读了解页面结构（aria 快照带 role 和名称），再动手填写。异步挂载的区块（评论区、Disqus 类 iframe、折叠面板）常缺席于首屏快照——判"无评论区/无入口"前必须依次：`waitFor` 常见锚点（`#comments`/`#respond`/`[id*='comment']`/`iframe`）或等 3-5 秒再 snapshot → `press` End 滚到页底再 snapshot → 见「Load comments」类按钮先点击再 snapshot → 快照里的 iframe 用 `frame()` 前缀进入 → 兜底 `navigate` 到 `URL#comments`。全走完仍无才回写 `skipped`（措辞固定："评论区延迟加载探测后仍不存在"），禁止凭一次首屏快照下"静态页面无入口"的结论。
 4. **语义寻址**：定位元素优先用 aria 快照里看到的语义选择器——`role:button|Create Account`、`label:Email`、`placeholder:you@example.com`、`text:Sign in`；CSS 只作兜底；表单在 iframe 里时加 `frame(<iframe css>)>>` 前缀；截图后可 `xy:<x>,<y>` 坐标点击。禁止不看清 aria 快照就猜 CSS。
 5. **需要注册/登录？** → 先 `snapshot format=aria` 看登录/注册页，按决策树走（细节见 [references/google-session.md](references/google-session.md)）：
    - 页面有 "Continue with Google"（或同类 Google OAuth 按钮）→ 先 `browser navigate` 到 `https://accounts.google.com` 确认谷歌会话（检查完 navigate 回站点登录页）：
      - 已登录（显示账号头像/邮箱）→ 回到站点点 Google 按钮 → 账号选择器点账号（若只有一个账号多数站直接跳过）→ 授权页点 Allow/Continue → 跳回站点继续发布流程。授权弹窗若是新开窗口，操作会自动切到最后打开的页。
      - 未登录 → 回写 `failed + manual_required`，原因写"谷歌会话未初始化或已过期，请对智能体说『初始化谷歌会话』"。
      - Google 弹"确认是你本人"/二次验证 → 同样回写 manual_required 等人工处理一次。
-   - 有邮箱注册表单 → `backlinks mailbox_create`（随机前缀 + screwdom.org 域）→ 注册 → `backlinks mail_wait`（默认等 120 秒）拿 `code`/`link` → 完成验证 → 登录。
+   - 有邮箱注册表单 → 先 `backlinks mailbox_create`（`localPart`=随机前缀、`domain`=screwdom.org，**两个参数都要给，缺 domain 直接报错**）→ 注册 → `backlinks mail_wait`（默认等 120 秒）拿 `code`/`link` → 完成验证 → 登录。**"要求登录"本身不是人工事件**——Wix "Log in to publish as a member" 这类能一次性邮箱注册的登录墙走本路径，不要回写 manual_required。
    - 只有 CAPTCHA/其他墙 → 先 `browser bringToFront` 把窗口召回前台，再按现有人工兜底规则挂起（浏览器在屏幕外静默运行，人工时必须召回）。
-6. **填写与提交**：锚文本和目标 URL 从 batch 详情的 `anchors` 里选（优先第一个 active 项）。**提交资料优先用批次详情 website 里的"提交资料包"**（shortDescription/longDescription/logoUrl/screenshotUrl/keyFeatures/pricingType 有值就直接用，描述按目标站字数裁剪，图片下载后按需裁剪尺寸，evidence 注明"使用后台资料包"）；资料包缺失的项才自行获取（抓网站 og:image / apple-touch-icon、现写该段文案，evidence 注明"该项自获取"）。核心事实（名称/URL/特性）以后台资料为准，措辞可微调贴目标站调性。提交前 snapshot 复查关键字段。
-7. **核验**：提交后 `browser navigate` 到公开列表页（非预览）+ `snapshot`，确认页面包含目标 URL/锚文本。
+6. **填写与提交**：锚文本和目标 URL 从 batch 详情的 `anchors` 里选（优先第一个 active 项）。评论/正文框的带链方式按框型选：表单有 Website 字段 → 填字段、正文不带链；**contenteditable 富文本框/带工具栏（Wix 博客评论框即此类）禁止把 `<a>` 当文本输入——会被原样转义（pullcommunityoutreach 实证），必须先输完整观点句、选中锚文本片段、点工具栏链接按钮填 targetUrl**；真纯文本框才直写 `<a href="targetUrl">anchorText</a>`；BBCode 框用 `[url=targetUrl]anchorText[/url]`。一段只嵌 1 个链接，锚文本融进观点句读得通。**提交资料优先用批次详情 website 里的"提交资料包"**（shortDescription/longDescription/logoUrl/screenshotUrl/keyFeatures/pricingType 有值就直接用，描述按目标站字数裁剪，图片下载后按需裁剪尺寸，evidence 注明"使用后台资料包"）；资料包缺失的项才自行获取（抓网站 og:image / apple-touch-icon、现写该段文案，evidence 注明"该项自获取"）。核心事实（名称/URL/特性）以后台资料为准，措辞可微调贴目标站调性。提交前 snapshot 复查关键字段。
+7. **核验**：提交后 `browser navigate` 到公开列表页（非预览）+ `snapshot`，确认目标链接以**可点击链接**出现（aria 快照 `role:link`，名称含锚文本或指向 targetUrl）。目标 URL 以裸字符串出现——包括被转义显示的 `<a href=…>` 文本——不算链接嵌上；嵌链被转义 → 回写 `failed + manual_required`，绝不重发。**查重（"目标站已存在本站链接"）同口径：只认可点链接，裸文本 URL 不算**——自己被转义的旧评论不是已发布，不能挡住重发。
 8. **回写**（`item_result`）后**立即自动打标**（`source_tags`，参数 `sourceId` 取条目的 sourceId，`tags` 按本次观察多选，幂等只加不删）：
    - 站点未要求徽章即可提交（打了 `付费` 的站点不加）→ 加 `免徽章`
    - 站点要求挂徽章/徽标验证 → 加 `要徽章`
