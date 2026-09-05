@@ -1,8 +1,6 @@
 /**
- * Console presentation state: open/closed, data cache, and the publish flow.
- * The store owns no timers — components drive refresh; it owns the one-shot
- * publish choreography (start session → wait for the blank session → send the
- * command text → close the console).
+ * Console data, batch selection, and submission into a workspace's blank
+ * session. Components own refresh timers; submission is serialized here.
  */
 
 import type { BacklinkBatchDetail, BacklinkBatchSummary } from '@deepseek-ai/dsh-backlinks/types'
@@ -15,7 +13,7 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 
-/** What the overlay renders. */
+/** What the publish panel renders. */
 export interface ConsoleViewState {
   open: boolean
   status: 'idle' | 'loading' | 'ready' | 'error'
@@ -23,8 +21,9 @@ export interface ConsoleViewState {
   batches: readonly BacklinkBatchSummary[]
   /** Expanded batch id → its detail (loaded lazily on first expand). */
   details: Record<number, BacklinkBatchDetail>
-  /** Batch id currently being published (null when none). */
-  publishing: number | null
+  selectedBatchIds: readonly number[]
+  /** Batch ids being submitted to Harness (null when no submission is pending). */
+  publishing: readonly number[] | null
 }
 
 /** The console store face: snapshot feed plus actions. */
@@ -34,21 +33,25 @@ export interface ConsoleStore {
   close(): void
   refresh(): Promise<void>
   toggleDetail(batchId: number): Promise<void>
-  /** Start a fresh session pre-loaded with the publish command for one batch. */
+  /**
+   * Select or deselect listed batches; ignored while submission is pending.
+   * @param batchIds - batch ids to update; unknown ids are ignored.
+   * @param selected - whether to include the batches in the next submission.
+   */
+  selectBatches(batchIds: readonly number[], selected: boolean): void
+  /**
+   * Submit one batch into a blank session; failures appear in the panel.
+   * @param batchId - batch to publish.
+   */
   publish(batchId: number): Promise<void>
-  /** The publish choreography, surfaced through publish()'s error path. */
-  publishIntoFreshSession(batchId: number): Promise<void>
+  /** Submit the selection in descending id order as one Harness request. */
+  publishSelected(): Promise<void>
 }
-
-/** How long publish() waits for the blank session to connect (ms per probe). */
-const PUBLISH_PROBE_INTERVAL_MS = 100
-/** Upper bound on the blank-session wait before publish() gives up loudly. */
-const PUBLISH_PROBE_BUDGET_MS = 8_000
 
 /**
  * Build the console store over the client context.
  * @param ctx - client root context carrying the Remote and sessions domains.
- * @returns the store handle the overlay components consume.
+ * @returns the store handle the sidebar components consume.
  */
 export function createConsoleStore(ctx: ClientContext): ConsoleStore {
   const store = createSnapshotStore<ConsoleViewState>({
@@ -57,19 +60,52 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
     error: null,
     batches: [],
     details: {},
+    selectedBatchIds: [],
     publishing: null,
   })
 
   const readBatches = async (): Promise<readonly BacklinkBatchSummary[]> => {
     const result = await ctx.remote.backlinksConsole.batches()
     if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
-    return result.value
+    return [...result.value].sort((a, b) => b.id - a.id)
   }
 
   const readBatch = async (batchId: number): Promise<BacklinkBatchDetail> => {
     const result = await ctx.remote.backlinksConsole.batch(batchId)
     if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
     return result.value
+  }
+
+  const publishBatches = async (batchIds: readonly number[]): Promise<void> => {
+    if (store.getSnapshot().publishing !== null || batchIds.length === 0) return
+    const ids = [...new Set(batchIds)].sort((a, b) => b - a)
+    store.update((state) => { state.publishing = ids; state.error = null })
+    try {
+      const current = ctx.sessions.list.getSnapshot().current
+      const workspaces = ctx.workspaces.list.getSnapshot()
+      const workspaceId = workspaces.items.find(item => current !== undefined && item.sessionIds.includes(current))?.workspaceId
+        ?? workspaces.recentWorkspaceId
+      if (workspaceId === undefined) throw new Error('publish: select a workspace first')
+      const sessionId = await ctx.workspaces.connectWorkspace(workspaceId)
+      const scope = ctx.sessions.scope(sessionId)
+      if (scope === undefined) throw new Error('publish: new session is unavailable')
+      const command = `/backlink-publish ${ids.join(' ')}`
+        + (ids.length > 1 ? '\n请按以上批次号顺序依次发布，仅处理这些批次。' : '')
+      await scope.inject(['conversation'], async (bound) => {
+        await bound.conversation.send(command)
+      })
+      ctx.sessions.open(sessionId)
+      store.update((state) => {
+        state.selectedBatchIds = state.selectedBatchIds.filter(id => !ids.includes(id))
+        state.open = false
+      })
+    } catch (error) {
+      store.update((state) => {
+        state.error = error instanceof Error ? error.message : String(error)
+      })
+    } finally {
+      store.update((state) => { state.publishing = null })
+    }
   }
 
   return {
@@ -85,7 +121,11 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
       store.update((state) => { state.status = 'loading'; state.error = null })
       try {
         const batches = await readBatches()
-        store.update((state) => { state.batches = batches; state.status = 'ready' })
+        store.update((state) => {
+          state.batches = batches
+          state.selectedBatchIds = state.selectedBatchIds.filter(id => batches.some(batch => batch.id === id))
+          state.status = 'ready'
+        })
       } catch (error) {
         store.update((state) => {
           state.status = 'error'
@@ -95,7 +135,7 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
     },
     async toggleDetail(batchId: number): Promise<void> {
       if (store.getSnapshot().details[batchId] !== undefined) {
-        store.update((state) => { delete state.details[batchId] })
+        store.update((state) => { Reflect.deleteProperty(state.details, batchId) })
         return
       }
       try {
@@ -107,42 +147,22 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
         })
       }
     },
-    async publish(batchId: number): Promise<void> {
-      store.update((state) => { state.publishing = batchId })
-      try {
-        await this.publishIntoFreshSession(batchId)
-      } catch (error) {
-        store.update((state) => {
-          state.error = error instanceof Error ? error.message : String(error)
-        })
-      } finally {
-        store.update((state) => { state.publishing = null })
-      }
-    },
-
-    /** The publish choreography; surfaced through publish()'s error path. */
-    async publishIntoFreshSession(batchId: number): Promise<void> {
-      {
-        ctx.workspaces.startSession()
-        const deadline = Date.now() + PUBLISH_PROBE_BUDGET_MS
-        while (Date.now() < deadline) {
-          await new Promise((resolve) => { setTimeout(resolve, PUBLISH_PROBE_INTERVAL_MS) })
-          const current = ctx.sessions.list.getSnapshot().current
-          if (current === undefined) continue
-          const scope = ctx.sessions.scope(current)
-          if (scope === undefined) continue
-          // The conversation face is a scoped service; inject binds it to this
-          // fresh scope before the send (ui-conversation owns the face).
-          await scope.inject(['conversation'], async (bound) => {
-            await bound.conversation.send(`/backlink-publish ${String(batchId)}`)
-          })
-          store.update((state) => { state.open = false })
-          return
+    selectBatches(batchIds, selected): void {
+      if (store.getSnapshot().publishing !== null) return
+      store.update((state) => {
+        const ids = new Set(state.selectedBatchIds)
+        for (const id of batchIds) {
+          if (selected && state.batches.some(batch => batch.id === id)) ids.add(id)
+          else ids.delete(id)
         }
-        store.update((state) => {
-          state.error = 'publish: new session did not connect in time'
-        })
-      }
+        state.selectedBatchIds = [...ids].sort((a, b) => b - a)
+      })
+    },
+    async publish(batchId): Promise<void> {
+      await publishBatches([batchId])
+    },
+    async publishSelected(): Promise<void> {
+      await publishBatches(store.getSnapshot().selectedBatchIds)
     },
   }
 }
