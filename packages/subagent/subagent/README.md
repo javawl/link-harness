@@ -32,6 +32,8 @@ Follow-up authority comes from the exact live direct parent recorded in the chil
 
 Same-process requests, descriptors, results, and event payloads are trusted typed values borrowed as immutable. The service does not clone or freeze them; serialization and hostile-input validation belong at actual process, worker, persistence, and model boundaries.
 
+`SubagentResult.stopReason` distinguishes `budget-exhausted` (a provider-enforced per-run limit) from `error` (model or infrastructure failure). Consumers may continue unrelated work after a local budget stop, but must first reconcile side effects; it does not authorize retrying that child.
+
 ## Capabilities
 
 Start-time features are advertised in `provider.capabilities` because the service must reject an unsupported one-shot request before child creation:
@@ -40,6 +42,8 @@ Start-time features are advertised in `provider.capabilities` because the servic
 - `depthLimit` — enforce `maxDepth`.
 - `toolFilter` — apply the requested child tool restriction.
 - `persona` — apply a per-child persona.
+
+Native child model inheritance reads the parent's latest recorded request provider/model, falling back to its creation options when no request header exists. Explicit child `agentOptions` take precedence; `maxTokens` inherits the parent's creation-time cap unless overridden. A model switch affects children started from the parent's subsequent request, without changing children already running.
 
 Every in-process child is composed by one call, `applyChildComposition(childCtx, parent, composition)`, which joins the parent's agent-preset composition before applying the child's own persona and tool filter. The join is what gives the child its capabilities: with every model-facing row on the agent plane, a child that joined nothing would reach the model with an empty tool registry ([`dsh-agent-presets`](../../preset/agent-presets/README.md)). Taking the parent as a parameter is deliberate — it makes composing a child WITHOUT that join unrepresentable at the call sites, which is the defect the one call exists to prevent. A deployment composing no preset roster joins nothing and needs nothing: its model-facing rows sit in the host composition, where the child already resolves them through the tool registry's global layer.
 

@@ -88,6 +88,9 @@ description: 仅提供持久 bash 与 str_replace_editor 的双工具编码 Agen
 | `default` | 必填 | 调用方未指定时挂载的 preset id |
 | `roots` | `[]` | 按优先级排列的扫描目录；每项提供 `path`（开头的 `~` 会展开）与 `trust`（默认为 `user`） |
 | `includeUserRoot` | `true` | 在全部已配置根目录之后，追加 `<dshHome>/.agent-presets` 作为 `user` 根目录 |
+| `overrides` | 无 | 按 preset id 配置覆盖列表；每项包含现有条目的 `id`、可选的完整替换 `config` 和可选的 `disabled` |
+
+宿主覆盖补丁不会进入单独加载的 preset。通过 `overrides.standard`（或其他 preset id）在 standing mount 之前配置这些条目。覆盖会完整替换所提供的 config，保留未填写字段，且不会改写 preset 文件。新建和恢复的会话加入同一配置后的组合，子任务继承该组合。修改部署覆盖配置后需重启宿主。
 
 根目录不存在时视为不提供任何 preset，而非失败：用户根目录在写出第一个本地 preset 之前并不存在，而指定了没有任何根目录提供的默认值，在解析时本就会明确报错。
 

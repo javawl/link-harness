@@ -32,6 +32,10 @@ subagent seam 允许一个 agent（智能体）通过具名提供方把工作委
 
 同进程请求、描述符、结果和事件 payload 都是可信的类型值，并按不可变约定借用。服务不会克隆或冻结它们；序列化和不可信输入校验属于真实的进程、worker、持久化和模型边界。
 
+`SubagentResult.stopReason` 区分 `budget-exhausted`（提供方限制的单次运行预算）与 `error`（模型或基础设施错误）。消费方可以在局部预算停止后继续无关工作，但须先核对副作用；这不授权重试该子任务。
+
+<a id="capabilities"></a>
+
 ## 能力
 
 启动时功能通过 `provider.capabilities` 声明，因为服务必须在创建子 agent 前拒绝不受支持的一次性请求：
@@ -40,6 +44,8 @@ subagent seam 允许一个 agent（智能体）通过具名提供方把工作委
 - `depthLimit`：强制执行 `maxDepth`；
 - `toolFilter`：应用请求的子 agent 工具限制；
 - `persona`：应用每个子 agent 独立的 persona。
+
+原生子任务从父任务最近一次已记录请求继承 provider/model；没有请求 header 时使用父任务创建配置。显式子任务 `agentOptions` 优先；`maxTokens` 默认继承父任务创建时的上限，可单独覆盖。切换模型会影响父任务后续请求启动的子任务，不改变已运行的子任务。
 
 每个进程内子 agent 都通过一次 `applyChildComposition(childCtx, parent, composition)` 调用完成组装：先加入父级的 agent-preset 组合，再应用子 agent 自己的 persona 和工具限制。加入父级组合正是子 agent 获得能力的途径：所有面向模型的行都位于 agent 平面，完全没有加入任何组合的子 agent 抵达模型时会看到空的工具注册表（见 [`dsh-agent-presets`](../../preset/agent-presets/README.zh.md)）。将父级作为参数是刻意设计：这让“组装子 agent 却不做该加入”在各调用点无法表达，而这正是这一次调用所要杜绝的缺陷。未组装 preset roster 的部署不加入任何组合、也不需要加入；其面向模型的行位于宿主组合中，子 agent 已能通过工具注册表的全局层解析到它们。
 

@@ -64,7 +64,7 @@ export {
 } from './authoring.ts'
 export { resolveSessionPreset, type PresetBearingSession } from './session.ts'
 export { PresetMountError, UnknownPresetError } from './preset.ts'
-export type { AgentPreset, Config, PresetRoot, PresetTrust } from './preset.ts'
+export type { AgentPreset, Config, PresetEntryOverride, PresetRoot, PresetTrust } from './preset.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -90,6 +90,11 @@ export class AgentPresets extends Service {
       trust: z.union(['system', 'user'] as const).default('user'),
     })).default([]),
     includeUserRoot: z.boolean().default(true),
+    overrides: z.dict(z.array(z.object({
+      id: z.string().required(),
+      config: z.dict(z.any()).default(undefined as unknown as Record<string, unknown>),
+      disabled: z.boolean(),
+    }))),
   }) as z<Config>
 
   /**
@@ -521,7 +526,7 @@ export class AgentPresets extends Service {
         if (stamp === undefined) {
           throw new PresetMountError(preset.id, `composition file is unreadable: ${preset.path}`)
         }
-        await mountPreset(scope.ctx, preset)
+        await mountPreset(scope.ctx, preset, this.config.overrides?.[preset.id])
         return { key, scope, stamp }
       } catch (error) {
         this.standing.delete(preset.id)

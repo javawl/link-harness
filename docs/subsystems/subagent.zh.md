@@ -362,6 +362,8 @@ interface SubagentStopReasonMap {
   error: 'error'
   /** The child hit its token ceiling before finishing. */
   'max-tokens': 'max-tokens'
+  /** A provider-enforced per-run token, step, elapsed-time, or repeated-failure budget was exhausted. */
+  'budget-exhausted': 'budget-exhausted'
   /** The child declined the task. */
   refusal: 'refusal'
 }

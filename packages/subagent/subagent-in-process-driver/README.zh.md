@@ -16,7 +16,9 @@
 4. 发布子 agent，保留返回的 `AgentHandle`，并通过先调用 `child.followup(prompt)`、再调用 `child.whenIdle()` 来驱动一项任务。
 5. 从完整的自有子运行中读取子 agent 自身的输出——最后一条非空 assistant 消息（记录 usage 的空内容消息会被跳过），若没有这类消息则取其累积的 assistant 文本——以及最终持久化的轮次原因，并排除任何 fork 初始内容。
 
-子 agent 会获得父 agent 的工作目录／会话谱系；除非 `request.agentOptions` 覆盖，否则还会继承父 agent 的提供方、模型和输出 token 上限。它获得全新的扁平注册作用域：父级所有权不会导入父 agent 的工具限制，也不会建立权限子集。
+子 agent 会获得父 agent 的工作目录／会话谱系，并使用能力接口的[模型继承规则](../subagent/README.zh.md#capabilities)；`request.agentOptions` 可覆盖继承值。它获得全新的扁平注册作用域：父级所有权不会导入父 agent 的工具限制，也不会建立权限子集。
+
+错误轮次返回诊断 `Child turn failed (<code>). Inspect the child session log for details.`，保留 `QUOTA`、`AUTH` 等有界机器代码；非法代码改为 `UNKNOWN`。提供方原始消息可能包含凭据或协议载荷，因此保留在子任务日志中。预算错误使用专用诊断。
 
 该结果边界成立，是因为提供方拥有从发布到完全停稳的隔离子 agent 生命周期。在该生命周期内提交的 steering（中途引导）属于子运行；提供方不会声称输出只归初始 follow-up 所有。
 
@@ -30,9 +32,17 @@
 
 ## spawn 与 fork 输入
 
-`InProcessRunOptions` 的形态为 `{ seed?: SessionEvent[] }`。spawn 省略该值。fork 提供已配平的已完成轮次前缀，并记录其长度，确保结果读取器不会把作为初始内容的父 agent 消息误认为子 agent 输出。
+`InProcessRunOptions` 的形态为 `{ seed?: SessionEvent[]; workBudget?: InProcessWorkBudget }`。spawn 省略该值。fork 提供已配平的已完成轮次前缀，并记录其长度，确保结果读取器不会把作为初始内容的父 agent 消息误认为子 agent 输出。
 
 深度强制在 `startInProcessRun` 内部完成：它通过 `delegationDepthOf` 读取父 agent 深度（持久化的 `SessionHeader.delegationDepth` 具有权威性；运行时 `AgentOptions.subagentDepth` 可以加深但绝不能降低该值，因此恢复后的子 agent 会保留预算），缺失值按顶层深度零处理，拒绝格式错误的存储值，并报告尝试的子 agent 深度超过 `maxDepth`。超过安全整数范围、无法表示的深度会触发 `RangeError`。子 agent 深度写入子 agent header，因此会在持久化和恢复后保留。
+
+<a id="work-budgets"></a>
+
+## 工作预算
+
+提供方在加载时校验可选的 `workBudget`。四个正整数限制均必填：`maxTokens` 累计各次尝试报告的请求输入、缓存与输出；`maxSteps` 限制模型步骤；`maxElapsedMs` 检查经过时间；`maxRepeatedToolFailures` 统计相同名称与参数的工具失败，该调用成功时清零。fork 初始历史不计入。预算只适用于单次运行；配置预算的原生提供方拒绝可续接启动。
+
+驱动器在发布子 agent 前安装守卫，在下一步骤和每次请求（包括重试）前检查。已经派发的工具会执行完并保留日志。预算耗尽会记录轮次错误，并返回 `stopReason: budget-exhausted`、诊断和部分输出；调用方取消仍返回 aborted。终止性的提供方错误保留错误分类，即使其用量也超过本地预算。单次请求可能超过 token 阈值，提供方未报告的用量及直接压缩调用不在此计数内，经过时间也不是中断式截止时间。卡住的操作由工具超时限制。提交结果未知时必须先复核，才能重试。
 
 ## 结构化输出
 

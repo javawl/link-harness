@@ -30,6 +30,8 @@ An unresolved name reports that the skill is unknown or no longer available. Inv
 
 Tool execution does not add a synthetic context message. Its freshly loaded result is already recorded as the tool result and becomes available to the next model step without duplicating the body. Only the catalog projection adds replacement summaries.
 
+An unchanged full skill body already visible from a skill invocation or a successful skill tool result is not sent again. The tool returns `alreadyLoaded: true` with empty `content` and renders `Skill "<name>" is already loaded in the current context. Follow its existing instructions.` Repeated user gestures likewise avoid another body. Provider lookup still checks current content and permissions; a changed body or compaction that removes the full instructions requires a fresh load. Text from unrelated tools cannot suppress loading.
+
 ## Model Experience
 
 ### Session catalog

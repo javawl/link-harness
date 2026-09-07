@@ -30,6 +30,8 @@
 
 工具执行不会添加合成上下文消息。新加载的结果已作为工具结果记录，并在下一个模型步骤可用，无需重复正文。只有目录投影会添加替换摘要。
 
+若未变化的完整技能正文仍通过技能调用或成功的 skill 工具结果出现在当前上下文中，就不再次发送。工具返回 `alreadyLoaded: true` 和空 `content`，呈现 `Skill "<name>" is already loaded in the current context. Follow its existing instructions.`；重复的用户手势也不再注入正文。仍会查询提供方以检查当前内容和权限；正文变化或压缩移除完整指令后须重新加载。无关工具的文本不能阻止加载。
+
 ## 模型体验
 
 ### 会话目录

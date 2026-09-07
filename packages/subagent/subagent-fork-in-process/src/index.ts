@@ -18,7 +18,7 @@ import type {
   SubagentCapabilities,
   SubagentProvider,
 } from '@deepseek-ai/dsh-subagent'
-import { startInProcessRun } from '@deepseek-ai/dsh-subagent-in-process-driver'
+import { startInProcessRun, resolveWorkBudget, WorkBudgetSchema, type InProcessWorkBudget } from '@deepseek-ai/dsh-subagent-in-process-driver'
 
 export const name = 'subagent-fork-in-process'
 // `tools` is deliberately NOT injected — same rationale as subagent-spawn-in-process: the
@@ -31,10 +31,13 @@ export const inject = ['subagents']
 export interface Config {
   /** Provider name on `ctx.subagents` (default `fork`). */
   providerName: string
+  /** Per-run limits; configured budgets require one-shot delegation. */
+  workBudget?: InProcessWorkBudget
 }
 
 export const Config: z<Config> = z.object({
   providerName: z.string().default('fork'),
+  workBudget: WorkBudgetSchema,
 })
 
 /**
@@ -63,11 +66,18 @@ class ForkInProcessProvider implements SubagentProvider {
   // Context contract: a forked child IS seeded with the parent's completed-turn prefix.
   readonly inheritsParentContext = true
 
-  constructor(readonly name: string) {}
+  constructor(readonly name: string, private readonly workBudget: InProcessWorkBudget | undefined) {
+    if (workBudget === undefined) this.prepareContinuable = (request) => {
+      // Capture the completed prefix once; cold resume replays this child's seed.
+      const seed = completedTurnPrefix(request.parent)
+      return Promise.resolve(seed.length > 0 ? { seed } : {})
+    }
+  }
 
   start(request: ResolvedSubagentStartRequest) {
     const seed = completedTurnPrefix(request.parent)
     return startInProcessRun(request, {
+      ...this.workBudget === undefined ? {} : { workBudget: this.workBudget },
       // Only pass a seed when there's a completed turn to inherit; an empty seed
       // is equivalent to a fresh child, so omit it to keep the session unseeded.
       ...seed.length > 0 ? { seed } : {},
@@ -80,15 +90,9 @@ class ForkInProcessProvider implements SubagentProvider {
   // the prefix reuse a fork exists for. Reopening needs a byte-identical child
   // system prompt and tool schemas; see issue #2124 and
   // .agents/notes/implemented/architecture/2026-08-10-fork-children-stay-one-shot.md.
-  prepareContinuable(request: ContinuableCreateRequest): Promise<ContinuableCreateSpec> {
-    // The fork prefix is captured ONCE, at creation: it becomes part of the
-    // child's own durable transcript, so a later cold resume replays that
-    // prefix instead of re-forking the parent's newer history.
-    const seed = completedTurnPrefix(request.parent)
-    return Promise.resolve(seed.length > 0 ? { seed } : {})
-  }
+  readonly prepareContinuable?: (request: ContinuableCreateRequest) => Promise<ContinuableCreateSpec>
 }
 
 export function apply(ctx: Context, config: Config): void {
-  ctx.subagents.registerProvider(new ForkInProcessProvider(config.providerName))
+  ctx.subagents.registerProvider(new ForkInProcessProvider(config.providerName, resolveWorkBudget(config.workBudget)))
 }

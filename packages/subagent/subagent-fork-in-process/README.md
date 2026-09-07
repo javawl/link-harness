@@ -23,6 +23,7 @@ Fork advertises `{ outputSchema: true, depthLimit: true, toolFilter: true, perso
 | Key | Meaning |
 |---|---|
 | `providerName` | Registry name on `ctx.subagents` (default `fork`). |
+| `workBudget` | Optional one-shot run limits; see [shared driver](../subagent-in-process-driver/README.md#work-budgets). Configured budgets reject continuable starts. |
 See [`dsh-subagent-spawn-in-process`](../subagent-spawn-in-process/README.md) for the run lifecycle, model inheritance, and depth tracking — all shared.
 
 ## Model Experience

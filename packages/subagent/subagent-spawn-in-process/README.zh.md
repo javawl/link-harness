@@ -19,6 +19,7 @@ spawn 声明 `{ outputSchema: true, depthLimit: true, toolFilter: true, persona:
 | 键 | 含义 |
 |---|---|
 | `providerName` | `ctx.subagents` 上的注册表名称（默认 `spawn`）。 |
+| `workBudget` | 可选的单次运行限制，见[共享驱动器](../subagent-in-process-driver/README.zh.md#work-budgets)。配置预算后会拒绝可续接启动。 |
 
 ## 模型体验
 

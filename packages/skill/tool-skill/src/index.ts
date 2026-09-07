@@ -120,9 +120,12 @@ export function apply(ctx: Context, config: Config = {}): void {
             ],
           },
           content: { type: 'string', required: true },
+          alreadyLoaded: { type: 'boolean' },
         },
       },
-      render: (_args, value) => [{ type: 'text', text: renderSkillContent(value) }],
+      render: (_args, value) => [{ type: 'text', text: value.alreadyLoaded === true
+        ? `Skill "${value.name}" is already loaded in the current context. Follow its existing instructions.`
+        : renderSkillContent(value) }],
     },
     async execute(args, exec) {
       if (!isSkillName(args.name)) {
@@ -145,13 +148,15 @@ export function apply(ctx: Context, config: Config = {}): void {
       if (!isModelInvocable(skill)) {
         throw new Error(`skill "${args.name}" is not available for model invocation`)
       }
+      const alreadyLoaded = exec.agent !== undefined && visibleSkillBody(exec.agent, renderSkillContent(skill))
       return {
         name: skill.name,
         provider: skill.provider,
         ...skill.resourceBase !== undefined ? {
           resourceBase: { ...skill.resourceBase },
         } : {},
-        content: skill.content,
+        content: alreadyLoaded ? '' : skill.content,
+        ...alreadyLoaded ? { alreadyLoaded: true } : {},
       }
     },
     presentCall(args) {
@@ -193,9 +198,13 @@ export function apply(ctx: Context, config: Config = {}): void {
       // on the loaded definition — the single lookup that produces what is
       // actually injected.
       if (skill === undefined || !isUserInvocable(skill)) continue
+      const body = renderSkillContent(skill)
+      if (visibleSkillBody(agent, body) || decision.messages.some(message =>
+        message.source.kind === 'skill-invocation'
+        && message.content.some(block => block.type === 'text' && block.text === body))) continue
       const source: SkillInvocationSource = { kind: 'skill-invocation', name, form: 'instructions' }
       injections.push(createUserMessage({
-        content: [{ type: 'text', text: renderSkillContent(skill) }],
+        content: [{ type: 'text', text: body }],
         source,
       }))
     }
@@ -248,6 +257,23 @@ export function apply(ctx: Context, config: Config = {}): void {
         ? [...decision.messages, catalog]
         : decision.messages.map(message => message.id === existing.message.id ? catalog : message),
     }
+  })
+}
+
+/** Only unchanged, still-visible skill instructions suppress a reload; other tool output cannot forge it. */
+function visibleSkillBody(agent: Agent, body: string): boolean {
+  const visible = new Set(agent.session.surface.nodes)
+  const calls = new Set(agent.session.events.flatMap(event =>
+    event.type === 'tool/call' && event.data.name === 'skill' ? [event.data.callId] : []))
+  return agent.session.events.some((event) => {
+    if (!visible.has(event.seq)) return false
+    if (event.type === 'user/message' && event.data.source.kind === 'skill-invocation') {
+      return event.data.content.some(block => block.type === 'text' && block.text === body)
+    }
+    if (event.type !== 'tool/result') return false
+    const result = event.data.message.content[0]
+    return calls.has(result.toolCallId) && result.isError !== true
+      && result.content.some(block => block.type === 'text' && block.text === body)
   })
 }
 

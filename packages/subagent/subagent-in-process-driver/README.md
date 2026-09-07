@@ -16,7 +16,9 @@ The driver follows this sequence:
 4. Publish the child, retain the returned `AgentHandle`, and drive one task with `child.followup(prompt)` followed by `child.whenIdle()`.
 5. Read the child's own output — its last non-empty assistant message (an empty-content message that records usage is skipped), or its accumulated assistant text when no such message exists — and the final durable turn reason from the complete owned child run, excluding any fork seed.
 
-The child gets the parent's working-directory/session lineage and inherits the parent provider, model, and output-token cap unless `request.agentOptions` overrides them. It gets a fresh flat registration scope: parent ownership does not import parent tool restrictions or establish an authority subset.
+The child gets the parent's working-directory/session lineage and uses the seam's [model inheritance](../subagent/README.md#capabilities); `request.agentOptions` overrides inherited values. It gets a fresh flat registration scope: parent ownership does not import parent tool restrictions or establish an authority subset.
+
+An error turn returns `Child turn failed (<code>). Inspect the child session log for details.` as a diagnostic, preserving a bounded machine code such as `QUOTA` or `AUTH`; an invalid code becomes `UNKNOWN`. Raw provider messages remain in the child's log because they may contain credentials or protocol payloads. Budget failures retain their dedicated diagnostic.
 
 This result boundary is valid because the provider owns an isolated child lifecycle from publication through quiescence. Steering submitted during that lifecycle belongs to the child run; the provider does not pretend the initial follow-up alone owns its output.
 
@@ -30,9 +32,17 @@ After fulfillment, the caller owns the run. Provider-plugin unload does not revo
 
 ## Spawn and fork inputs
 
-`InProcessRunOptions` is `{ seed?: SessionEvent[] }`. Spawn omits it. Fork supplies a balanced completed-turn prefix and records its length so the result reader never mistakes a seeded parent message for child output.
+`InProcessRunOptions` is `{ seed?: SessionEvent[]; workBudget?: InProcessWorkBudget }`. Spawn omits it. Fork supplies a balanced completed-turn prefix and records its length so the result reader never mistakes a seeded parent message for child output.
 
 Depth enforcement is internal to `startInProcessRun`: it reads the parent depth via `delegationDepthOf` (the persisted `SessionHeader.delegationDepth` is authoritative; runtime `AgentOptions.subagentDepth` may deepen but never lower it, so a resumed child keeps its budget), treats absence as top-level depth zero, rejects malformed stored values, and reports an attempted child depth above `maxDepth`. An unrepresentable depth above the safe-integer domain is a `RangeError`. The child depth is written to the child header, so it survives persistence and resume.
+
+<a id="work-budgets"></a>
+
+## Work budgets
+
+Providers validate an optional `workBudget` at load time. All four positive integer limits are required: `maxTokens` sums reported request input, cache and output across attempts; `maxSteps` caps model steps; `maxElapsedMs` checks elapsed time; `maxRepeatedToolFailures` counts failures with identical names and arguments, cleared by success for that call. A fork seed is excluded. Budgets apply only to one-shot runs; configured native providers reject continuable starts.
+
+The driver installs guards before child publication and checks before the next step and each request, including retries. Dispatched tools finish and remain logged. Exhaustion records a turn error and returns `stopReason: budget-exhausted`, a diagnostic and partial output; caller cancellation still returns aborted. A terminal provider error retains its error classification even if its usage also exceeds a local budget. A request can overshoot the token threshold, unreported provider usage and direct compaction calls are outside this counter, and elapsed time is not an interrupting deadline. Use tool timeouts for stuck operations. Unknown submission outcomes require review before retrying.
 
 ## Structured output
 

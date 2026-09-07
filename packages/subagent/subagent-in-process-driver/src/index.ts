@@ -38,6 +38,10 @@ import {
   attachStructuredRuntime,
   type StructuredAttachment,
 } from './structured.ts'
+import { attachWorkBudget, type InProcessWorkBudget } from './work-budget.ts'
+
+export { WorkBudgetSchema, resolveWorkBudget } from './work-budget.ts'
+export type { InProcessWorkBudget } from './work-budget.ts'
 
 export {
   STRUCTURED_OUTPUT_TOOL,
@@ -68,6 +72,8 @@ function toStopReason(reason: TurnEndReason | undefined): SubagentStopReason {
 export interface InProcessRunOptions {
   /** Completed-turn seed for fork, or undefined for a fresh spawn. */
   readonly seed?: SessionEvent[]
+  /** Resolved provider-owned budget for this one-shot activation. */
+  readonly workBudget?: InProcessWorkBudget
 }
 
 /** Error used when cancellation wins before the child publication boundary. */
@@ -117,6 +123,7 @@ export async function startInProcessRun(
   const inherited = captureDelegatedPolicyOverrides(parent)
 
   let structured: StructuredAttachment | undefined
+  let budgetDiagnostic: (() => string | undefined) | undefined
   const setup = (childCtx: Context): void => {
     appendDelegatedPolicyOverrides((childCtx.agent as Agent).session, inherited)
     applyChildComposition(childCtx, parent, {
@@ -127,6 +134,9 @@ export async function startInProcessRun(
       structured = attachStructuredRuntime(childCtx, request.outputSchema)
     }
     attachDescriptorAppend(childCtx, request.descriptor)
+    if (options.workBudget !== undefined) {
+      budgetDiagnostic = attachWorkBudget(childCtx, options.workBudget, activationBoundary)
+    }
   }
 
   const handle = await parent.ctx.agents.create({
@@ -144,6 +154,7 @@ export async function startInProcessRun(
     childId,
     activationBoundary,
     structured,
+    budgetDiagnostic,
   )
 }
 
@@ -158,6 +169,7 @@ function drivePublishedRun(
   childId: SessionId,
   boundary: number,
   structured: StructuredAttachment | undefined,
+  budgetDiagnostic: (() => string | undefined) | undefined,
 ): SubagentRun {
   const child = handle.agent
   const flags = { cancelled: false }
@@ -177,12 +189,18 @@ function drivePublishedRun(
         child.followup(createUserMessage({ content: prompt, source: { kind: 'user' } }))
         await child.whenIdle()
       }
-      return readResult(
+      const settled = readResult(
         child,
         boundary,
         flags.cancelled,
         structured ? { captured: structured.captured() } : undefined,
       )
+      const diagnostic = budgetDiagnostic?.()
+      return diagnostic === undefined ? settled : {
+        ...settled,
+        stopReason: settled.stopReason === 'aborted' ? 'aborted' : 'budget-exhausted',
+        diagnostic: `Work budget exhausted: ${diagnostic}. Inspect recorded item results; do not retry an unknown submission.`,
+      }
     } finally {
       signal.removeEventListener('abort', onAbort)
     }
@@ -223,11 +241,18 @@ function readResult(
   // Disposal can tear the owner down before the loop records its ordinary
   // `aborted` end, yielding `disposed` instead.
   const stopReason: SubagentStopReason = cancelled && recorded !== 'completed' ? 'aborted' : recorded
+  const result: SubagentResult = { output, stopReason }
+  const reason = lastEnd?.data.reason
+  // Only bounded machine codes leave the child's log; provider messages can contain credentials.
+  const code = reason?.kind === 'error' && /^[A-Z][A-Z0-9_]{0,63}$/.test(reason.error.code) ? reason.error.code : 'UNKNOWN'
+  const diagnostic = reason?.kind === 'error'
+    ? { diagnostic: `Child turn failed (${code}). Inspect the child session log for details.` }
+    : {}
   if (structured !== undefined) {
     if (structured.captured !== undefined) {
-      return { output, structured: structured.captured.value, stopReason }
+      return { ...result, ...diagnostic, structured: structured.captured.value }
     }
-    if (stopReason === 'completed') return { output, stopReason: cancelled ? 'aborted' : 'error' }
+    if (stopReason === 'completed') return { ...result, stopReason: cancelled ? 'aborted' : 'error' }
   }
-  return { output, stopReason }
+  return { ...result, ...diagnostic }
 }

@@ -14,7 +14,7 @@ import type {
   SubagentCapabilities,
   SubagentProvider,
 } from '@deepseek-ai/dsh-subagent'
-import { startInProcessRun } from '@deepseek-ai/dsh-subagent-in-process-driver'
+import { startInProcessRun, resolveWorkBudget, WorkBudgetSchema, type InProcessWorkBudget } from '@deepseek-ai/dsh-subagent-in-process-driver'
 
 export const name = 'subagent-spawn-in-process'
 // `tools` is deliberately not injected: the child factory already provides it during setup,
@@ -25,10 +25,13 @@ export const inject = ['subagents']
 export interface Config {
   /** Provider name on `ctx.subagents` (default `spawn`). */
   providerName: string
+  /** Per-run limits; configured budgets require one-shot delegation. */
+  workBudget?: InProcessWorkBudget
 }
 
 export const Config: z<Config> = z.object({
   providerName: z.string().default('spawn'),
+  workBudget: WorkBudgetSchema,
 })
 
 /**
@@ -43,22 +46,21 @@ class SpawnInProcessProvider implements SubagentProvider {
   // Context contract: a spawned child starts fresh — it never sees the parent conversation.
   readonly inheritsParentContext = false
 
-  constructor(readonly name: string) {}
+  readonly prepareContinuable?: () => Promise<ContinuableCreateSpec>
+
+  constructor(readonly name: string, private readonly workBudget: InProcessWorkBudget | undefined) {
+    if (workBudget === undefined) this.prepareContinuable = () => Promise.resolve({})
+  }
 
   start(request: ResolvedSubagentStartRequest) {
     // Fresh child: no seed. The shared driver mints ids, stamps cwd/lineage/
     // depth, drives the one-shot (including the structured capture when the
     // request carries an outputSchema), and maps the result.
-    return startInProcessRun(request, {})
+    return startInProcessRun(request, { ...this.workBudget === undefined ? {} : { workBudget: this.workBudget } })
   }
 
-  prepareContinuable(): Promise<ContinuableCreateSpec> {
-    // A spawned child starts fresh, so it contributes no seed; the continuation
-    // manager owns every later operation on it.
-    return Promise.resolve({})
-  }
 }
 
 export function apply(ctx: Context, config: Config): void {
-  ctx.subagents.registerProvider(new SpawnInProcessProvider(config.providerName))
+  ctx.subagents.registerProvider(new SpawnInProcessProvider(config.providerName, resolveWorkBudget(config.workBudget)))
 }

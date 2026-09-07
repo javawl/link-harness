@@ -65,6 +65,16 @@ function disposeChildLifecycle(parent: Agent): void {
 }
 
 describe('dsh-subagent-spawn-in-process', () => {
+  it('withholds continuable creation when a one-shot budget is configured', async () => {
+    const { ctx } = await setup([])
+    await ctx.plugin(spawn, { providerName: 'bounded', workBudget: {
+      maxTokens: 1000, maxSteps: 10, maxElapsedMs: 60_000, maxRepeatedToolFailures: 3,
+    } })
+    expect(ctx.subagents.getProvider('bounded')).toMatchObject({ name: 'bounded' })
+    expect(typeof ctx.subagents.getProvider('bounded')?.prepareContinuable).toBe('undefined')
+    await ctx.fiber.dispose()
+  })
+
   it('runs a fresh child to completion and returns its final assistant output', async () => {
     // One model call for the child: a plain text answer.
     const { ctx, parent } = await setup([textResponse('child answer')])

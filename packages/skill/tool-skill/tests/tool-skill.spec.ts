@@ -3,13 +3,13 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
-import { createUserMessage, CallId, type Message } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, createToolResultMessage, CallId, type Message } from '@deepseek-ai/dsh-llm'
 import { createScope, type Scope } from '@deepseek-ai/dsh-scope'
 import { Session, SessionId, type SessionEvent, type UserMessage } from '@deepseek-ai/dsh-session'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { agentEvents, Inbox, type Agent, type PreStepDecision } from '@deepseek-ai/dsh-agent'
-import SkillRegistry from '@deepseek-ai/dsh-skill'
+import SkillRegistry, { renderSkillContent } from '@deepseek-ai/dsh-skill'
 import * as SkillFileSystem from '@deepseek-ai/dsh-skill-filesystem'
 import * as toolSkill from '@deepseek-ai/dsh-tool-skill'
 
@@ -157,6 +157,34 @@ async function mintAgentScope(ctx: Context, subject: string | Agent): Promise<{ 
 }
 
 describe('dsh-tool-skill', () => {
+  it('does not resend a visible unchanged skill, and reloads it after compaction or a body edit', async () => {
+    const ctx = await setup(await tempDir('skill-dedupe'))
+    let dispose = ctx.skills.register({ name: 'publish', description: 'Publish', source: 'runtime', content: 'Publication instructions.' })
+    const agent = agentForCwd('/workspace')
+    openMessageTurn(agent.session)
+    const skill = await ctx.skills.get('publish', { scope: agent })
+    if (skill === undefined) throw new Error('missing skill')
+    const initial = agent.session.append('user/message', createUserMessage({
+      source: { kind: 'skill-invocation', name: 'publish', form: 'instructions' },
+      content: [{ type: 'text', text: renderSkillContent(skill) }],
+    }), { surfaceOp: 'append' })
+    const call = () => ctx.tools.execute({ signal: testToolSignal, callId: CallId('load-publish'), name: 'skill', arguments: { name: 'publish' }, agent })
+    expect((await call()).value).toMatchObject({ content: '', alreadyLoaded: true })
+    agent.session.append('user/message', createUserMessage({ source: { kind: 'plugin', plugin: 'compact' }, content: [{ type: 'text', text: 'Summary only.' }] }), {
+      surfaceOp: { op: 'replace', start: initial.seq, end: initial.seq }, sourceEventSeqs: [initial.seq],
+    })
+    const loaded = await call()
+    expect(loaded.value).toMatchObject({ content: 'Publication instructions.' })
+    agent.session.append('tool/call', { turn: 1, step: 1, callId: CallId('load-publish'), name: 'skill', arguments: '{"name":"publish"}' })
+    agent.session.append('tool/result', { turn: 1, step: 1, message: createToolResultMessage({ callId: CallId('load-publish'), content: loaded.content, isError: false }) }, { surfaceOp: 'append' })
+    expect((await call()).value).toMatchObject({ alreadyLoaded: true })
+    dispose()
+    dispose = ctx.skills.register({ name: 'publish', description: 'Publish', source: 'runtime', content: 'Updated publication instructions.' })
+    expect((await call()).value).toMatchObject({ content: 'Updated publication instructions.' })
+    dispose()
+    await ctx.fiber.dispose()
+  })
+
   it('registers the skill tool schema and removes it on dispose', async () => {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
@@ -769,7 +797,7 @@ describe('dsh-tool-skill', () => {
       callId: CallId('c1'),
       name: 'skill',
       arguments: { name: 'project-skill' },
-      agent: { session: { header: { cwd: project } } } as never,
+      agent: agentForCwd(project),
     })
 
     expect(result.isError).toBe(false)

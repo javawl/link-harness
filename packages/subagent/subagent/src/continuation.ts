@@ -313,7 +313,7 @@ function settlementSummary(childId: SessionId, stopReason: SubagentResult['stopR
      * needs a backend that adds a variant; an unnameable ending is reported as unfinished
      * rather than silently as success. */
     default:
-      return `${subject} ended abnormally (${String(stopReason)}) before it finished.`
+      return `${subject} ended abnormally (${stopReason}) before it finished.`
   }
 }
 

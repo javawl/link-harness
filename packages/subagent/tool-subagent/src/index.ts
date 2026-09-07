@@ -39,6 +39,8 @@ export interface Config {
    * parameter and reject forced background calls.
    */
   enableRunInBackground?: boolean
+  /** Maximum prompts in one foreground call (default `1`). Values above one require foreground-only one-shot mode. */
+  maxBatchSize?: number
   /**
    * Background execution policy (default `one-shot`). `one-shot` defaults calls
    * to foreground; `continuable` defaults them to background, requires a provider
@@ -82,6 +84,7 @@ export const Config: z<Config> = z.object({
   provider: z.string().required(),
   toolName: z.string().default('subagent'),
   enableRunInBackground: z.boolean().default(true),
+  maxBatchSize: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
   backgroundMode: z.union(['one-shot', 'continuable'] as const).default('one-shot'),
   // Prevent Schemastery from materializing omitted agentOptions as `{}`.
   agentOptions: z.object({
@@ -132,6 +135,8 @@ function stopReasonError(result: SubagentResult): string | undefined {
       return 'subagent run failed'
     case 'max-tokens':
       return 'subagent run hit its token limit before finishing'
+    case 'budget-exhausted':
+      return 'subagent run exhausted its work budget'
     case 'refusal':
       return 'subagent declined the task'
     // Merge-extensible union: a backend may add stop reasons. Treat an unknown
@@ -283,6 +288,13 @@ export function apply(ctx: Context, config: Config): void {
   }
   const backgroundEnabled = config.enableRunInBackground !== false
   const continuable = (config.backgroundMode ?? 'one-shot') === 'continuable'
+  const maxBatchSize = config.maxBatchSize ?? 1
+  if (!Number.isSafeInteger(maxBatchSize) || maxBatchSize < 1) {
+    throw new Error('tool-subagent: maxBatchSize must be a positive safe integer')
+  }
+  if (maxBatchSize > 1 && (backgroundEnabled || continuable)) {
+    throw new Error('tool-subagent: maxBatchSize above 1 requires enableRunInBackground: false and backgroundMode: one-shot')
+  }
   const toolName = config.toolName ?? 'subagent'
   // Mirror provider lifecycle because sibling load order and HMR replacement
   // can change provider availability while this fiber remains active.
@@ -312,7 +324,9 @@ export function apply(ctx: Context, config: Config): void {
         ? continuable
           ? ' This tool runs in the background by default, immediately returns a durable subagent id, and keeps the child conversation available for later turns. When that run settles, the runtime sends the parent a notice containing its outcome and any final assistant message; `send_message` starts a later turn in the same child conversation. Set `run_in_background: false` only when your next action depends on receiving the result.'
           : ' This call waits for the result by default. Set `run_in_background: true` to return a job id; collect with `job_output` and stop with `job_kill`.'
-        : ' This call waits for the subagent and returns its result.'),
+        : maxBatchSize > 1
+          ? ` Send up to ${maxBatchSize} independent tasks together as a prompt array. All start concurrently; this call waits for every result and returns outcomes in prompt order. Do not send a group as successive single-task calls.`
+          : ' This call waits for the subagent and returns its result.'),
       parameters: {
         description: {
           type: 'string',
@@ -320,9 +334,16 @@ export function apply(ctx: Context, config: Config): void {
           description: 'A short (3-5 word) description of the delegated task, for display.',
         },
         prompt: {
-          type: 'string',
+          ...maxBatchSize > 1 ? {
+            oneOf: [
+              { type: 'string' as const },
+              { type: 'array' as const, items: { type: 'string' as const } },
+            ],
+          } : { type: 'string' as const },
           required: true,
-          description: wording.promptDescription,
+          description: wording.promptDescription + (maxBatchSize > 1
+            ? ' For independent tasks, pass an array of standalone prompts; each child receives only its own entry.'
+            : ''),
         },
         ...backgroundEnabled ? {
           run_in_background: {
@@ -361,20 +382,30 @@ export function apply(ctx: Context, config: Config): void {
                 output: { type: 'array', required: true, items: { type: 'json' } },
               },
             },
+            ...maxBatchSize > 1 ? [{
+              type: 'object' as const,
+              additionalProperties: false,
+              properties: {
+                kind: { type: 'string' as const, required: true as const, const: 'batch' as const },
+                results: { type: 'array' as const, required: true as const, items: { type: 'json' as const } },
+              },
+            }] : [],
           ],
         },
         render: (_args, value) => [{
           type: 'text',
-          text: value.kind === 'background'
-            ? `started background subagent job ${value.jobId}`
-            : value.kind === 'continuable'
-              ? `started subagent ${value.subagentId}`
-              : outputValueText(value.output),
+          text: value.kind === 'batch'
+            ? `Batch results in prompt order:\n${JSON.stringify(value.results)}`
+            : value.kind === 'background'
+              ? `started background subagent job ${value.jobId}`
+              : value.kind === 'continuable'
+                ? `started subagent ${value.subagentId}`
+                : outputValueText(value.output),
         }],
       },
-      // Children never mutate the parent session; the one parent-owned write
-      // (tasks.start) is a synchronous commutative insertion.
-      isConcurrencySafe: () => true,
+      // A grouped instance owns its overlap inside the call; the native scheduler
+      // serializes groups so sibling calls cannot multiply the per-parent limit.
+      isConcurrencySafe: () => maxBatchSize === 1,
       async execute(args, exec) {
         const parent = exec.agent
         if (!parent) {
@@ -383,17 +414,36 @@ export function apply(ctx: Context, config: Config): void {
         }
 
         const maxDepth = typeof config.maxDepth === 'number' ? config.maxDepth : undefined
-        const request = {
-          label: args.description,
-          prompt: [{ type: 'text', text: args.prompt }] as ContentBlock[],
+        const requestFor = (prompt: string, label = args.description) => ({
+          label,
+          prompt: [{ type: 'text', text: prompt }] as ContentBlock[],
           parent,
           ...config.agentOptions !== undefined ? { agentOptions: config.agentOptions } : {},
           ...config.persona !== undefined ? { persona: config.persona } : {},
           ...config.toolFilter !== undefined ? { toolFilter: config.toolFilter } : {},
           ...maxDepth !== undefined ? { maxDepth } : {},
-        }
+        })
 
         const runSpec = resolveDelegationRun(args, { backgroundEnabled, continuable })
+        if (Array.isArray(args.prompt)) {
+          if (args.prompt.length === 0 || args.prompt.length > maxBatchSize) {
+            throw new Error(`subagent prompt array must contain 1 to ${maxBatchSize} tasks`)
+          }
+          const results = await Promise.allSettled(args.prompt.map(async (prompt, index) => {
+            const run = await ctx.subagents.start(config.provider, {
+              ...requestFor(prompt, `${args.description} [${index + 1}]`),
+              signal: exec.signal,
+            })
+            return settleForegroundRun(run)
+          }))
+          return {
+            kind: 'batch' as const,
+            results: results.map(result => result.status === 'fulfilled'
+              ? result.value
+              : { kind: 'failed', error: String(result.reason) }),
+          }
+        }
+        const request = requestFor(args.prompt)
         if (runSpec.runInBackground) {
           if (continuable) {
             // Resolves at inbox acceptance: the child owns its own turns from

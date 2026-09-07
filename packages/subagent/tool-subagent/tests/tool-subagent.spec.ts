@@ -6,7 +6,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { TOOL_ABORTED_BEFORE_DISPATCH } from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { TOOL_ABORTED, TOOL_ABORTED_BEFORE_DISPATCH } from '@deepseek-ai/dsh-tools'
 import { assembleContextFor, type Agent } from '@deepseek-ai/dsh-agent'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
@@ -68,6 +68,110 @@ function text(result: { content: { type: string; text?: string }[] }): string {
 }
 
 describe('dsh-tool-subagent', () => {
+  it('starts a bounded prompt group together and keeps each outcome in input order', async () => {
+    const ready = Promise.withResolvers<undefined>()
+    const requests: SubagentStartRequest[] = []
+    const ctx = await setup({ provider: 'mock', enableRunInBackground: false, maxBatchSize: 3 }, {
+      onStart: async (request) => {
+        requests.push(request)
+        if (requests.length === 3) ready.resolve(undefined)
+        await ready.promise
+        if (request.label?.endsWith('[2]')) throw new Error('second task failed')
+      },
+    })
+    try {
+      expect(ctx.tools.executionMode({
+        callId: CallId('group-classification'), signal: testToolSignal,
+        name: 'subagent', arguments: { description: 'publish items', prompt: ['a', 'b'] }, agent: fakeAgent(),
+      })).toEqual({ kind: 'exclusive' })
+      const result = await callSubagent(ctx, { description: 'publish items', prompt: ['item A', 'item B', 'item C'] })
+      expect(requests.map(request => request.prompt)).toEqual([
+        [{ type: 'text', text: 'item A' }],
+        [{ type: 'text', text: 'item B' }],
+        [{ type: 'text', text: 'item C' }],
+      ])
+      expect(result.isError).toBe(false)
+      if (result.isError) throw new Error('expected batch outcomes')
+      expect(result.value).toMatchObject({
+        kind: 'batch',
+        results: [
+          { kind: 'foreground', output: [{ type: 'text', text: 'scripted subagent reply' }] },
+          { kind: 'failed', error: 'Error: second task failed' },
+          { kind: 'foreground', output: [{ type: 'text', text: 'scripted subagent reply' }] },
+        ],
+      })
+      expect(text(result)).toContain('Batch results in prompt order:')
+    } finally {
+      ready.resolve(undefined)
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('rejects invalid prompt groups before starting any child', async () => {
+    const started = vi.fn()
+    const ctx = await setup({ provider: 'mock', enableRunInBackground: false, maxBatchSize: 3 }, { onStart: started })
+    try {
+      for (const prompt of [[], ['a', 'b', 'c', 'd'], ['a', 7]]) {
+        const result = await callSubagent(ctx, { description: 'bad group', prompt })
+        expect(result.isError).toBe(true)
+      }
+      expect((await callSubagent(ctx, { description: 'bad group', prompt: ['a'], run_in_background: true })).isError).toBe(true)
+      expect(started).not.toHaveBeenCalled()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+    const single = await setup({ provider: 'mock' }, { onStart: started })
+    try {
+      expect((await callSubagent(single, { description: 'disabled group', prompt: ['a', 'b'] })).isError).toBe(true)
+      expect(started).not.toHaveBeenCalled()
+    } finally {
+      await single.fiber.dispose()
+    }
+  })
+
+  it('cancels every child in a group and waits for their settlement', async () => {
+    const ready = Promise.withResolvers<undefined>()
+    const finish = Promise.withResolvers<undefined>()
+    const requests: SubagentStartRequest[] = []
+    const ctx = await setup({ provider: 'mock', enableRunInBackground: false, maxBatchSize: 3 }, {
+      onStart: async (request) => {
+        requests.push(request)
+        if (requests.length === 2) ready.resolve(undefined)
+        await finish.promise
+      },
+    })
+    const controller = new AbortController()
+    try {
+      let settled = false
+      const pending = callSubagent(ctx, { description: 'cancel group', prompt: ['a', 'b'] }, { signal: controller.signal })
+        .then((result) => { settled = true; return result })
+      await ready.promise
+      controller.abort()
+      expect(requests.every(request => request.signal.aborted)).toBe(true)
+      expect(settled).toBe(false)
+      finish.resolve(undefined)
+      const result = await pending
+      expect(result).toMatchObject({ isError: true, error: { info: { code: TOOL_ABORTED } } })
+    } finally {
+      finish.resolve(undefined)
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it.each([
+    { maxBatchSize: 0 },
+    { maxBatchSize: 1.5 },
+    { maxBatchSize: 3 },
+    { maxBatchSize: 3, enableRunInBackground: false, backgroundMode: 'continuable' as const },
+  ])('rejects an invalid group configuration: %j', async (config) => {
+    const ctx = new Context()
+    try {
+      expect(() => { tool.apply(ctx, { provider: 'mock', ...config }) }).toThrow(/maxBatchSize/u)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('rejects continuable background policy when the provider cannot prepare continuable children', async () => {
     let failure: unknown
     try {
@@ -174,6 +278,7 @@ describe('dsh-tool-subagent', () => {
     { stopReason: 'aborted' as const, fragment: 'cancelled' },
     { stopReason: 'error' as const, fragment: 'failed' },
     { stopReason: 'max-tokens' as const, fragment: 'token limit' },
+    { stopReason: 'budget-exhausted' as const, fragment: 'work budget' },
     { stopReason: 'refusal' as const, fragment: 'declined' },
   ])('maps stop reason $stopReason to an isError result (not partial success)', async ({ stopReason, fragment }) => {
     const ctx = await setup({ provider: 'mock' }, { stopReason })

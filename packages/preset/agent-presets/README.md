@@ -88,6 +88,9 @@ Every read failure degrades to no metadata — absent, malformed, wrongly typed,
 | `default` | required | Preset id mounted when a caller names none |
 | `roots` | `[]` | Scanned directories in precedence order; each supplies `path` (a leading `~` expands) and `trust` (defaults to `user`) |
 | `includeUserRoot` | `true` | Append `<dshHome>/.agent-presets` as a `user` root, after every configured root |
+| `overrides` | none | Per-preset lists of existing entry `id`, optional replacement `config`, and optional `disabled` |
+
+Host overlay patches do not reach separately loaded presets. Use `overrides.standard` (or another preset id) to configure those entries before their standing mount. Overrides replace the whole supplied config, preserve omitted fields, and never rewrite preset files. New and resumed sessions join the same configured composition; children inherit it. Changing deployment overrides requires restarting the host.
 
 An absent root supplies no presets rather than failing: the user root does not exist until the first locally authored preset, and naming a default no root supplies already fails loud at resolution.
 

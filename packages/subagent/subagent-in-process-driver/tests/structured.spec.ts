@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, CallId, type ContentBlock, type GenerateOptions } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -15,7 +15,7 @@ import SubagentRuntime, {
 import type { Config as ToolConfig, ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import { defineContentToolFixture, RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
-import { startInProcessRun } from '../src/index.ts'
+import { startInProcessRun, resolveWorkBudget, type InProcessWorkBudget } from '../src/index.ts'
 import {
   STRUCTURED_OUTPUT_INSTRUCTION,
   STRUCTURED_OUTPUT_TOOL,
@@ -37,6 +37,7 @@ interface CodeRunRequestLike {
 }
 
 interface SetupOptions {
+  workBudget?: InProcessWorkBudget
   toolMode?: ToolConfig['mode']
   codeRun?: (request: CodeRunRequestLike) => Promise<{ logs: never[]; value?: unknown }>
 }
@@ -72,7 +73,9 @@ async function setup(script: Script, options: SetupOptions = {}) {
     name: 'spawn',
     capabilities: { outputSchema: true, depthLimit: true, toolFilter: false, persona: false },
     inheritsParentContext: false,
-    start: (request: ResolvedSubagentStartRequest) => startInProcessRun(request, {}),
+    start: (request: ResolvedSubagentStartRequest) => startInProcessRun(request, {
+      ...options.workBudget === undefined ? {} : { workBudget: options.workBudget },
+    }),
   })
   ctx.llm.registerAdapter(['mock'], adapter)
   const parent = ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'mock' })
@@ -96,6 +99,80 @@ function toolNames(request: GenerateOptions): string[] {
 }
 
 describe('in-process structured output', () => {
+  it.each([
+    [{ maxTokens: 15 }, 'reported tokens'],
+    [{ maxSteps: 1 }, 'model steps'],
+    [{ maxRepeatedToolFailures: 1 }, 'identical tool failures'],
+  ])('stops before another paid request when a run limit is reached: %j', async (limits, reason) => {
+    const workBudget = { maxTokens: 1000, maxSteps: 10, maxElapsedMs: 60_000, maxRepeatedToolFailures: 3, ...limits }
+    const { ctx, parent, adapter } = await setup([
+      toolCallResponse('budget-probe', 'probe', {}),
+      textResponse('must not run'),
+    ], { workBudget })
+    let attempts = 0
+    ctx.tools.register(defineContentToolFixture({
+      name: 'probe', description: 'Try the external operation', parameters: {},
+      async execute() { attempts++; throw new Error('external operation failed') },
+    }))
+    const run = await ctx.subagents.start('spawn', { parent, prompt: [{ type: 'text', text: 'try' }], signal: testToolSignal })
+    const result = await run.result
+    expect(result.stopReason).toBe('budget-exhausted')
+    expect(result.diagnostic).toContain(reason)
+    expect(adapter.requests).toHaveLength(1)
+    expect(attempts).toBe(1)
+    expect(run.localAgent?.session.events.findLast(event => event.type === 'turn/end')?.data.reason.kind).toBe('error')
+    await run.dispose()
+    await ctx.fiber.dispose()
+  })
+
+  it('lets an active tool settle before enforcing the elapsed budget', async () => {
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0)
+    try {
+      const { ctx, parent, adapter } = await setup([
+        toolCallResponse('budget-time', 'probe', {}), textResponse('must not run'),
+      ], { workBudget: { maxTokens: 1000, maxSteps: 10, maxElapsedMs: 100, maxRepeatedToolFailures: 3 } })
+      let finished = false
+      ctx.tools.register(defineContentToolFixture({
+        name: 'probe', description: 'Complete the external operation', parameters: {},
+        async execute() { clock.mockReturnValue(200); finished = true; return [{ type: 'text', text: 'saved' }] },
+      }))
+      const run = await ctx.subagents.start('spawn', { parent, prompt: [{ type: 'text', text: 'try' }], signal: testToolSignal })
+      expect((await run.result).diagnostic).toContain('elapsed time')
+      expect(finished).toBe(true)
+      expect(adapter.requests).toHaveLength(1)
+      await run.dispose()
+      await ctx.fiber.dispose()
+    } finally {
+      clock.mockRestore()
+    }
+  })
+
+  it('rejects invalid deployment budgets before starting a child', () => {
+    expect(() => resolveWorkBudget({ maxTokens: 0, maxSteps: 1, maxElapsedMs: 1, maxRepeatedToolFailures: 1 })).toThrow(/maxTokens/)
+  })
+
+  it('counts identical failures across intervening inspection calls', async () => {
+    const { ctx, parent, adapter } = await setup([
+      toolCallResponse('failed-1', 'probe', { first: 1, second: 2 }),
+      toolCallResponse('inspect', 'inspect', {}),
+      toolCallResponse('failed-2', 'probe', { second: 2, first: 1 }),
+      textResponse('must not run'),
+    ], { workBudget: { maxTokens: 1000, maxSteps: 10, maxElapsedMs: 60_000, maxRepeatedToolFailures: 2 } })
+    ctx.tools.register(defineContentToolFixture({
+      name: 'probe', description: 'Try the operation', parameters: { first: { type: 'number' }, second: { type: 'number' } },
+      async execute() { throw new Error('failed') },
+    }))
+    ctx.tools.register(defineContentToolFixture({
+      name: 'inspect', description: 'Inspect state', parameters: {},
+      async execute() { return [{ type: 'text', text: 'inspected' }] },
+    }))
+    const run = await ctx.subagents.start('spawn', { parent, prompt: [{ type: 'text', text: 'try' }], signal: testToolSignal })
+    expect((await run.result).diagnostic).toContain('identical tool failures >= 2')
+    expect(adapter.requests).toHaveLength(3)
+    await run.dispose()
+    await ctx.fiber.dispose()
+  })
+
   it('captures a valid structured_output call and surfaces result.structured', async () => {
     const { ctx, parent } = await setup([
       toolCallResponse('c1', STRUCTURED_OUTPUT_TOOL, { answer: 42, note: 'done' }),

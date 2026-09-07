@@ -85,6 +85,27 @@ beforeEach(async () => {
 })
 
 describe('composing an agent from a preset', () => {
+  it('applies deployment overrides only to the named preset without rewriting its file', async () => {
+    const path = join(FIXTURES, 'system', 'standard', COMPOSITION_FILE)
+    const before = await readFile(path, 'utf8')
+    const patched = await harness({
+      default: 'standard', roots: ROOTS, includeUserRoot: false,
+      overrides: { standard: [
+        { id: 'alpha', config: { tool: 'bounded' } },
+        { id: 'alpha-extra', disabled: false },
+      ] },
+    })
+    try {
+      const standard = await agentOn(patched, 'patched-standard')
+      const minimal = await agentOn(patched, 'unpatched-minimal', 'minimal')
+      expect(toolNames(patched, standard)).toEqual(['alpha-extra', 'bounded'])
+      expect(toolNames(patched, minimal)).toEqual(['beta'])
+    } finally {
+      await patched.fiber.dispose()
+    }
+    expect(await readFile(path, 'utf8')).toBe(before)
+  })
+
   it('hands an absolute plugin path to Node as a file URL', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-preset-absolute-plugin-'))
     const presetDir = join(root, 'absolute')

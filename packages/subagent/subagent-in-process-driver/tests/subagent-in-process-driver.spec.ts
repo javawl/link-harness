@@ -1,7 +1,7 @@
 import { CallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { type Agent, type AgentOptions } from '@deepseek-ai/dsh-agent'
+import { installModelSelection, type Agent, type AgentOptions } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
@@ -54,6 +54,50 @@ function text(blocks: readonly { type: string; text?: string }[]): string {
 }
 
 describe('startInProcessRun', () => {
+  it.each([false, true])('inherits the last requested model after a switch, with explicit overrides=%s', async (override) => {
+    const { ctx, parent } = await setup([], { maxTokens: 111 })
+    const adapter = new MockAdapter([textResponse('parent ready'), textResponse('child done')])
+    ctx.llm.registerAdapter(['selected'], adapter)
+    const disposeSelection = installModelSelection(parent.ctx, {
+      current: { provider: 'selected', model: 'selected-model' }, assembled: undefined,
+    })
+    try {
+      parent.followup(createUserMessage({ content: [{ type: 'text', text: 'Use the selected model.' }], source: { kind: 'user' } }))
+      await parent.whenIdle()
+      const run = await startInProcessRun({ ...request(parent),
+        agentOptions: { maxTokens: 128, ...override ? { model: 'child-override' } : {} },
+      }, {})
+      try {
+        await expect(run.result).resolves.toMatchObject({ stopReason: 'completed' })
+        expect(adapter.requests.map(({ provider, model, maxTokens }) => ({ provider, model, maxTokens }))).toEqual([
+          { provider: 'selected', model: 'selected-model', maxTokens: 111 },
+          { provider: 'selected', model: override ? 'child-override' : 'selected-model', maxTokens: 128 },
+        ])
+      } finally {
+        await run.dispose()
+      }
+    } finally {
+      disposeSelection()
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it.each([['QUOTA', 'QUOTA'], ['private provider payload', 'UNKNOWN']])('reports safe failure code %s without forwarding the provider payload', async (code, visibleCode) => {
+    const { ctx, parent } = await setup([[{ type: 'finish', reason: {
+      kind: 'error', failure: { code, message: 'private provider payload with a credential' },
+    } }]])
+    const run = await startInProcessRun(request(parent), {})
+    try {
+      const result = await run.result
+      expect(result.stopReason).toBe('error')
+      expect(result.diagnostic).toContain(visibleCode)
+      expect(JSON.stringify(result)).not.toContain('private provider payload')
+    } finally {
+      await run.dispose()
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('returns only after publication, drives a fresh child, and disposes it', async () => {
     const { ctx, parent } = await setup([textResponse('driver answer')])
     const run = await startInProcessRun(request(parent), {})

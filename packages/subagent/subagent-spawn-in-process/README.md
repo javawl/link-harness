@@ -19,6 +19,7 @@ Spawn advertises `{ outputSchema: true, depthLimit: true, toolFilter: true, pers
 | Key | Meaning |
 |---|---|
 | `providerName` | Registry name on `ctx.subagents` (default `spawn`). |
+| `workBudget` | Optional one-shot run limits; see [shared driver](../subagent-in-process-driver/README.md#work-budgets). Configured budgets reject continuable starts. |
 
 ## Model Experience
 

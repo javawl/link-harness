@@ -48,6 +48,16 @@ export interface PresetRoot {
   trust: PresetTrust
 }
 
+/** Deployment overrides for one existing row in a preset composition. */
+export interface PresetEntryOverride {
+  /** Loader entry id, including rows nested in groups. */
+  id: string
+  /** Whole replacement plugin config; omitted preserves the preset's config. */
+  config?: Record<string, unknown>
+  /** Whether the entry is disabled; omitted preserves the preset's value. */
+  disabled?: boolean
+}
+
 /** Plugin config: which preset is the default, and where presets live. */
 export interface Config {
   /** Preset id mounted when a caller names none. Missing at mount time fails loud. */
@@ -59,6 +69,8 @@ export interface Config {
    * configured root. False mounts a roster over `roots` alone.
    */
   includeUserRoot: boolean
+  /** Entry overrides by preset id, applied before the standing composition mounts. */
+  overrides?: Record<string, PresetEntryOverride[]>
 }
 
 /**
