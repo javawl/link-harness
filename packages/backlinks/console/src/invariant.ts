@@ -15,8 +15,8 @@ export const name = 'backlinks-console-invariant'
 export const inject = ['invariants']
 
 /**
- * No runtime invariant: the console is a stateless pass-through over the
- * backlinks seam, which owns its own provider registry checks.
+ * No runtime invariant: the console owns no mutable state; the backlinks
+ * seam owns provider registration and selection checks.
  */
 const install: InvariantInstaller = () => {}
 

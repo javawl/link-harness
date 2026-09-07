@@ -111,24 +111,38 @@ function toItem(value: unknown): BacklinkBatchItem {
   }
 }
 
-function toAnchor(value: unknown): BacklinkWebsiteAnchor {
+function toAnchor(value: unknown, siteUrl: string): BacklinkWebsiteAnchor {
   const row = asRecord(value)
+  const anchorText = str(row.anchorText).trim()
+  const targetUrl = str(row.targetUrl).trim()
+  if (anchorText === '' || targetUrl === '' || !URL.canParse(targetUrl, siteUrl)) {
+    throw new BacklinksError('Website anchors require nonempty anchorText and a valid targetUrl.', 'BACKLINKS_API_ERROR')
+  }
+  const target = new URL(targetUrl, siteUrl)
+  if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+    throw new BacklinksError('Website anchor targetUrl must resolve to an http(s) URL.', 'BACKLINKS_API_ERROR')
+  }
   return {
-    id: toNumber(row.id),
-    anchorText: String(row.anchorText),
-    targetUrl: String(row.targetUrl),
+    ...row.id === undefined ? {} : { id: toNumber(row.id) },
+    anchorText,
+    targetUrl: target.href,
   }
 }
 
 function toDetail(value: Record<string, unknown>): BacklinkBatchDetail {
   const website = asRecord(value.website)
+  const anchors = Array.isArray(value.anchors) ? value.anchors : []
+  const siteUrl = str(website.siteUrl).trim()
+  const defaults = str(website.name).trim() !== '' && URL.canParse(siteUrl)
+    && ['http:', 'https:'].includes(new URL(siteUrl).protocol)
+    ? [{ anchorText: website.name, targetUrl: siteUrl }] : []
   return {
     batch: toBatchSummary(value.batch),
     website: {
       id: toNumber(website.id),
-      name: String(website.name),
-      siteUrl: String(website.siteUrl),
-      siteHost: String(website.siteHost),
+      name: str(website.name),
+      siteUrl,
+      siteHost: str(website.siteHost),
       ...profileField(website, 'shortDescription'),
       ...profileField(website, 'longDescription'),
       ...profileField(website, 'logoUrl'),
@@ -136,7 +150,7 @@ function toDetail(value: Record<string, unknown>): BacklinkBatchDetail {
       ...profileField(website, 'keyFeatures'),
       ...profileField(website, 'pricingType'),
     },
-    anchors: Array.isArray(value.anchors) ? value.anchors.map(toAnchor) : [],
+    anchors: (anchors.length > 0 ? anchors : defaults).map(anchor => toAnchor(anchor, siteUrl)),
     items: Array.isArray(value.items) ? value.items.map(toItem) : [],
   }
 }

@@ -18,6 +18,8 @@ Batch execution and verification mail share no request schema, but they are deli
 
 Batch: `BacklinkBatchSummary` → `BacklinkBatchDetail` (website, `anchors[]`, `items[]` with `submitUrl`/category/tags/failure mode) → `BacklinkLeaseClaim` (`leaseId`, server-clock `leaseExpiresAt`, claimed items) → `BacklinkHeartbeat` → `BacklinkItemOutcome`. Mail: `createMailbox(localPart, domain)` → `pollMail(address, { subjectContains?, fromContains?, timeoutMs, intervalMs })` → `VerificationMail` (`code` from the backend extractor, first body `link`). Cancellation is a direct optional `AbortSignal` argument on every method. See `src/types.ts` for the full contracts and the `BacklinksError` code taxonomy (HTTP statuses map onto `BACKLINKS_UNAUTHORIZED`/`NOT_FOUND`/`CONFLICT` with `retryAfterSeconds` preserved).
 
+Website anchors contain approved text and an absolute http(s) URL. An explicit backend anchor has an id; the Supermanager provider omits it for a default derived from the saved website name and URL. The publisher checkpoints attempted item ids in log-only `backlinks/attempt` events before model work; cancellation and compaction do not clear that exclusion record.
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -136,4 +138,27 @@ async pollMail(address: MailboxAddress, options: MailPollOptions, signal?: Abort
 ```
 
 Source: [`packages/backlinks/backlinks/src/index.ts`](../../packages/backlinks/backlinks/src/index.ts)
+
+<a id="ctxbacklinksconsole--backlinksconsoleruntime"></a>
+
+### `ctx.backlinksConsole` — `BacklinksConsoleRuntime`
+
+The read-only Remote console over `ctx.backlinks`. Mounted as a Service plugin (`ctx.plugin(BacklinksConsoleRuntime)` via the composition row), it binds the `backlinksConsole` wire namespace for the gateway.
+
+```ts cordis-catalog
+/**
+ * Every batch in the workspace with per-status counts and the executing flag.
+ * @returns every batch summary in descending batch-id order.
+ */
+@Remote async batches(): Promise<readonly BacklinkBatchSummary[]>
+
+/**
+ * One batch's full detail: website, anchors, and items.
+ * @param batchId - the batch to read.
+ * @returns batch, website, anchors, and items.
+ */
+@Remote async batch(batchId: number): Promise<BacklinkBatchDetail>
+```
+
+Source: [`packages/backlinks/console/src/index.ts`](../../packages/backlinks/console/src/index.ts)
 <!-- END GENERATED cordis-surface -->

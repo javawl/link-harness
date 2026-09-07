@@ -18,6 +18,8 @@
 | `token` | `SUPERMANAGER_TOKEN` 环境变量 | 后端「Agent 接口」设置页生成的 Bearer 令牌 |
 | `requestTimeoutMs` | `15000` | 单请求超时 |
 
+批次详情将已配置的锚点目标按 `website.siteUrl` 解析为 HTTP(S) 绝对地址。独立锚点列表为空时，提供方使用已保存的网站 `name` 作为锚文本、`siteUrl` 作为目标，与 `/websites/<websiteId>/edit` 的资料一致。默认锚点没有后台锚点 id，也不修改网站记录。显式锚点优先；显式空字段、无效或非 HTTP(S) 目标以 `BACKLINKS_API_ERROR` 拒绝。既没有可用的网站名称与网址，也没有显式锚点时，列表保持为空，预检在认领前停止。已保存的描述、图片及其他提交资料包字段保持原样。
+
 ## 模型体验
 
 间接经由 `dsh-tool-backlinks`；本提供方不产出提示词或 schema。

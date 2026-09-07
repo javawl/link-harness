@@ -95,7 +95,10 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
     },
     async toggleDetail(batchId: number): Promise<void> {
       if (store.getSnapshot().details[batchId] !== undefined) {
-        store.update((state) => { delete state.details[batchId] })
+        store.update((state) => {
+          const { [batchId]: _removed, ...details } = state.details
+          state.details = details
+        })
         return
       }
       try {

@@ -1,0 +1,12 @@
+- id: browser
+  name: '@deepseek-ai/dsh-browser'
+- id: browser-playwright
+  name: '@deepseek-ai/dsh-browser-playwright'
+  config:
+    userDataDir: ./.browser-capacity-profile
+    headless: true
+    channel: chrome
+    defaultTimeoutMs: 5000
+    navigationTimeoutMs: 10000
+    navigationWaitUntil: domcontentloaded
+    maxOpenPages: !!js Number(process.env.DSH_CAPACITY_LIMIT ?? 2)

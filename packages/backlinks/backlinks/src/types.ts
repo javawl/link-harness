@@ -50,10 +50,13 @@ export interface BacklinkBatchItem {
   readonly plannedAt: string
 }
 
-/** An active anchor/target pair the promoted website offers for form filling. */
+/** A configured anchor or the promoted website's name and URL used by default. */
 export interface BacklinkWebsiteAnchor {
-  readonly id: number
+  /** Backend anchor id; absent when the pair comes from the website profile. */
+  readonly id?: number
+  /** Nonempty text approved for the destination. */
   readonly anchorText: string
+  /** Absolute http(s) destination; providers resolve any relative source value. */
   readonly targetUrl: string
 }
 

@@ -8,10 +8,22 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { GenericCallView, GenericResultView, JsonValue, ToolResult } from '@deepseek-ai/dsh-tools'
+import type { GenericCallView, GenericResultView, JsonValue, ToolExecution, ToolResult } from '@deepseek-ai/dsh-tools'
 import { assertNever } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type { BacklinkBadgeInput, BacklinkItemResult } from '@deepseek-ai/dsh-backlinks'
+import { batchView, pendingBatchItems, readItemIds } from './batch-view.ts'
+import type { ResolvedConfig } from './index.ts'
+import { LeaseRenewals } from './leases.ts'
+import { applyPublisher } from './publisher.ts'
+import type {} from '@deepseek-ai/dsh-session'
+
+declare module '@deepseek-ai/dsh-session/types' {
+  interface SessionEventMap {
+    /** Log-only record flushed before claimed work is handed to a model; survives cancellation and compaction. */
+    'backlinks/attempt': { batchId: number; itemIds: number[] }
+  }
+}
 
 /** Tool actions, one per seam operation. */
 const ACTIONS = [
@@ -25,6 +37,9 @@ type BacklinksAction = typeof ACTIONS[number]
 export interface BacklinksToolInput {
   readonly action: BacklinksAction
   readonly batchId?: number
+  readonly view?: 'summary' | 'items' | 'all'
+  readonly scope?: 'all' | 'pending' | 'retryable'
+  readonly afterItemId?: number
   readonly itemIds?: readonly number[]
   readonly leaseId?: number
   readonly itemId?: number
@@ -156,11 +171,12 @@ export function presentBacklinksCall(args: Record<string, unknown>): GenericCall
  * @returns the JSON payload persisted with the `tool/result` event.
  */
 export function backlinksMetaFromValue(value: unknown): JsonValue {
-  const record = (value as { action?: unknown; summary?: unknown } | undefined) ?? {}
+  const record = (value as { action?: unknown; summary?: unknown; data?: { itemIds?: JsonValue } } | undefined) ?? {}
   return {
     kind: 'backlinks',
     action: typeof record.action === 'string' ? record.action : 'unknown',
     summary: typeof record.summary === 'string' ? record.summary : '',
+    ...record.action === 'batch_claim' && Array.isArray(record.data?.itemIds) ? { claimedItemIds: record.data.itemIds } : {},
   }
 }
 
@@ -196,17 +212,50 @@ export function backlinksIsConcurrencySafe(): boolean {
 /**
  * Register the `backlinks` tool and its prompt section.
  * @param ctx - context carrying `tools`, `backlinks`, and `systemPrompt`.
- * @param timeoutMs - per-call timeout attached as `ToolDefinition.timeoutMs`.
+ * @param config - resolved tool timeout and batch output limits.
  */
-export function applyBacklinksTool(ctx: Context, timeoutMs: number): void {
+export function applyBacklinksTool(ctx: Context, config: ResolvedConfig): void {
+  const renewals = new LeaseRenewals(ctx, config.leaseHeartbeatMs, Math.min(config.timeoutMs, config.leaseHeartbeatMs))
+  const attemptedByOwner = new WeakMap<object, Set<number>>()
+  const attemptsFor = (agent: ToolExecution['agent']): Set<number> => {
+    const owner = agent ?? ctx
+    let attempted = attemptedByOwner.get(owner)
+    if (attempted !== undefined) return attempted
+    attempted = new Set()
+    for (const event of agent?.session.events ?? []) {
+      if (event.type !== 'tool/result' && event.type !== 'backlinks/attempt') continue
+      const meta = event.type === 'backlinks/attempt'
+        ? { kind: 'backlinks', action: 'backlink_publish', attemptedItemIds: event.data.itemIds }
+        : event.data.meta
+      if (typeof meta !== 'object' || meta === null || Array.isArray(meta) || meta.kind !== 'backlinks') continue
+      const ids = meta.action === 'batch_claim' ? meta.claimedItemIds
+        : meta.action === 'backlink_publish' ? meta.attemptedItemIds : undefined
+      if (ids === undefined) continue
+      if (!Array.isArray(ids) || ids.some(id => typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0)) {
+        throw new Error('backlinks persisted claim contains invalid item ids; inspect the session before resuming.')
+      }
+      for (const id of ids) attempted.add(id as number)
+    }
+    attemptedByOwner.set(owner, attempted)
+    return attempted
+  }
+  const recordAttempts = async (agent: ToolExecution['agent'], batchId: number, itemIds: number[]): Promise<void> => {
+    const attempted = attemptsFor(agent)
+    for (const id of itemIds) attempted.add(id)
+    if (agent !== undefined) {
+      agent.session.append('backlinks/attempt', { batchId, itemIds })
+      await agent.ctx.sessions.flush(agent.session)
+    }
+  }
   ctx.systemPrompt.section({
     name: 'tool:backlinks',
     order: 113,
     text: [
       'Use the backlinks tool to run the publish-batch workflow against the backlink management backend:',
-      'batch_list → batch_get (pick a batch) → batch_claim (grants a lease; heartbeat every ~30s while working)',
+      'batch_list → batch_get (counts by default; view=items returns only a small pending page) → batch_claim (grants a bounded lease)',
       '→ per item: browser publishes on the target site, then item_result reports live/submitted/failed/skipped',
-      '→ lease_release when done. mailbox_create + mail_wait receive site verification codes (returns code and first link).',
+      '→ lease_release when done. Keep lease renewal in the runtime; never use model calls to sleep or poll subagents.',
+      'mailbox_create + mail_wait receive site verification codes (returns code and first link).',
       'badge_add installs a reciprocal footer badge when a site requires exchange.',
       'source_tags attaches tags to the target site by name after a publish attempt (免徽章/要徽章/可复用/有盾…); idempotent add-only.',
       'Verify before publishing: an item whose publishStatus is submitted or live, or whose publishedUrl is set, is already published — never claim or re-submit it, and a source with such a record on any item of the batch is done too; an existing link to the promoted website found on the target site also means already published — report skipped with the reason.',
@@ -216,7 +265,7 @@ export function applyBacklinksTool(ctx: Context, timeoutMs: number): void {
 
   ctx.tools.register(defineTool({
     name: 'backlinks',
-    description: 'Run the publish-batch workflow: list/detail/claim batches, keep the lease alive, report per-item results, create verification mailboxes, wait for verification mail, and add reciprocal badges.',
+    description: 'Run the publish-batch workflow: list/detail/claim batches, report per-item results, create verification mailboxes, wait for verification mail, and add reciprocal badges. Claimed leases renew automatically; do not call lease_heartbeat while publishing.',
     parameters: {
       action: {
         type: 'string',
@@ -224,10 +273,13 @@ export function applyBacklinksTool(ctx: Context, timeoutMs: number): void {
         description: `One of ${ACTIONS.join(', ')}.`,
       },
       batchId: { type: 'number', description: 'Batch id for batch_get / batch_claim.' },
+      view: { type: 'string', enum: ['summary', 'items', 'all'], description: 'batch_get view: summary (default), a small items page, or explicitly requested full detail.' },
+      scope: { type: 'string', enum: ['all', 'pending', 'retryable'], description: 'batch_get / batch_claim work selection: all eligible work (default), only pending items, or only retryable failures. Keep the user-confirmed scope across pages.' },
+      afterItemId: { type: 'number', description: 'Continue a selected items page after this id; use nextAfterItemId from the previous view.' },
       itemIds: {
         type: 'array',
         items: { type: 'number' },
-        description: 'Optional explicit plan-item subset for batch_claim; omitted claims pending + retryable.',
+        description: `Optional explicit subset for batch_claim or batch_get view=items (at most ${config.maxBatchItems}); omitted selects a small page within scope.`,
       },
       leaseId: { type: 'number', description: 'Lease id for lease_heartbeat / lease_release.' },
       itemId: { type: 'number', description: 'Plan item id for item_result.' },
@@ -269,10 +321,11 @@ export function applyBacklinksTool(ctx: Context, timeoutMs: number): void {
       render: (_args, value) => [{ type: 'text', text: renderBacklinksValue(value) }],
       presentationMeta: (_args, value) => backlinksMetaFromValue(value),
     },
-    timeoutMs,
+    timeoutMs: config.timeoutMs,
     // The batch workflow is one sequential stateful process; overlaps would race leases and items.
     isConcurrencySafe: backlinksIsConcurrencySafe,
     async execute(args: Record<string, unknown>, exec) {
+      const attempted = attemptsFor(exec.agent)
       const action = readAction(args)
       let summary: string
       let data: JsonValue
@@ -286,16 +339,33 @@ export function applyBacklinksTool(ctx: Context, timeoutMs: number): void {
         case 'batch_get': {
           const detail = await ctx.backlinks.getBatch(readId(args, 'batchId'), exec.signal)
           summary = `${detail.batch.name}: ${detail.items.length} item(s)`
-          data = detail as unknown as JsonValue
+          data = batchView(detail, args, config.maxBatchItems, attempted) as JsonValue
+          if (args.view !== 'all'
+            && new TextEncoder().encode(renderBacklinksValue({ summary, data })).byteLength > config.maxBatchViewBytes) {
+            throw new Error(`backlinks batch view exceeds ${config.maxBatchViewBytes} bytes; request fewer itemIds or explicitly use view=all to inspect full detail.`)
+          }
           break
         }
         case 'batch_claim': {
-          const itemIds = Array.isArray(args.itemIds)
-            ? args.itemIds.map(Number).filter(id => Number.isSafeInteger(id) && id > 0)
-            : undefined
-          const claim = await ctx.backlinks.claim(readId(args, 'batchId'), itemIds, exec.signal)
+          const batchId = readId(args, 'batchId')
+          const detail = await ctx.backlinks.getBatch(batchId, exec.signal)
+          const selected = readItemIds(args.itemIds, config.maxBatchItems)
+          const eligible = pendingBatchItems(detail, attempted, args.scope, selected)
+          const itemIds = selected ?? eligible.slice(0, config.maxBatchItems).map(item => item.id)
+          if (itemIds.length === 0) throw new Error(`backlinks batch ${batchId} has no eligible pending items.`)
+          if (itemIds.some(id => !eligible.some(item => item.id === id))) {
+            throw new Error('backlinks claim contains an ineligible, duplicate-source, or already-attempted item; inspect its recorded result before retrying.')
+          }
+          const claim = await ctx.backlinks.claim(batchId, itemIds, exec.signal)
+          try {
+            await recordAttempts(exec.agent, batchId, claim.items.map(item => item.id))
+          } catch (error) {
+            await ctx.backlinks.release(claim.leaseId, AbortSignal.timeout(config.timeoutMs))
+            throw error
+          }
+          renewals.start(claim.leaseId, exec.agent)
           summary = `lease ${claim.leaseId} over ${claim.items.length} item(s)`
-          data = claim as unknown as JsonValue
+          data = { leaseId: claim.leaseId, leaseExpiresAt: claim.leaseExpiresAt, itemIds: claim.items.map(item => item.id) }
           break
         }
         case 'lease_heartbeat': {
@@ -306,6 +376,7 @@ export function applyBacklinksTool(ctx: Context, timeoutMs: number): void {
         }
         case 'lease_release': {
           const leaseId = readId(args, 'leaseId')
+          await renewals.stop(leaseId)
           await ctx.backlinks.release(leaseId, exec.signal)
           summary = `lease ${leaseId} released`
           data = { leaseId }
@@ -387,4 +458,7 @@ export function applyBacklinksTool(ctx: Context, timeoutMs: number): void {
     presentCall: presentBacklinksCall,
     presentResult: presentBacklinksResult,
   }))
+  if (config.publisher !== undefined) {
+    applyPublisher(ctx, config.publisher, renewals, config.timeoutMs, parseItemResult, attemptsFor, recordAttempts)
+  }
 }

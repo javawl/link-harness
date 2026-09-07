@@ -113,6 +113,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   web: 'web.md',
   browser: 'browser.md',
   backlinks: 'backlinks.md',
+  backlinksConsole: 'backlinks.md',
   workflowEngine: 'workflow.md',
   workspaceRegistry: 'workspace.md',
 }

@@ -71,13 +71,19 @@ export interface HangAfter {
  */
 export class MockAdapter extends LlmAdapter {
   requests: GenerateOptions[] = []
+  private script: (StreamChunk[] | ((options: GenerateOptions) => StreamChunk[]) | 'hang' | 'hang-slow' | HangAfter)[]
+  private readonly reasoning: LlmModelReasoningInfo | undefined
+  private readonly defaultMaxTokens: number | undefined
 
   constructor(
-    private script: (StreamChunk[] | ((options: GenerateOptions) => StreamChunk[]) | 'hang' | 'hang-slow' | HangAfter)[],
-    private readonly reasoning?: LlmModelReasoningInfo,
-    private readonly defaultMaxTokens?: number,
+    script: (StreamChunk[] | ((options: GenerateOptions) => StreamChunk[]) | 'hang' | 'hang-slow' | HangAfter)[],
+    reasoning?: LlmModelReasoningInfo,
+    defaultMaxTokens?: number,
   ) {
     super()
+    this.script = script
+    this.reasoning = reasoning
+    this.defaultMaxTokens = defaultMaxTokens
   }
 
   override resolveModel(

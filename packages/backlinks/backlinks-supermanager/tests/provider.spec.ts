@@ -108,6 +108,54 @@ describe('SupermanagerBatchSource', () => {
     expect(detail.items[0]).toMatchObject({ id: 1258, submitUrl: 'https://dir.test/submit', tags: ['免费'] })
   })
 
+  it.each([
+    ['/', 'https://site.test/'],
+    ['/levels', 'https://site.test/levels'],
+    ['guide', 'https://site.test/app/guide'],
+    ['https://other.test/page', 'https://other.test/page'],
+  ])('resolves the website anchor %s before exposing batch detail', async (targetUrl, expected) => {
+    fetchMock.mockResolvedValueOnce(ok({ batch: batchRow,
+      website: { id: 82, name: 'site', siteUrl: 'https://site.test/app/', siteHost: 'site.test' },
+      anchors: [{ id: 1, anchorText: 'Site', targetUrl }], items: [],
+    }))
+    const detail = await new SupermanagerBatchSource(resolved()).getBatch(176)
+    expect(detail.anchors).toEqual([{ id: 1, anchorText: 'Site', targetUrl: expected }])
+  })
+
+  it.each([undefined, []])('uses website details when publication anchors are %j', async (anchors) => {
+    fetchMock.mockResolvedValueOnce(ok({ batch: batchRow,
+      website: { id: 67, name: ' voloshow ', siteUrl: ' https://voloshow.com ', siteHost: 'voloshow.com',
+        shortDescription: 'Saved website description', logoUrl: 'https://voloshow.com/logo.png' },
+      anchors, items: [itemRow],
+    }))
+    const detail = await new SupermanagerBatchSource(resolved()).getBatch(176)
+    expect(detail.anchors).toEqual([{ anchorText: 'voloshow', targetUrl: 'https://voloshow.com/' }])
+    expect(detail.website).toMatchObject({ id: 67, shortDescription: 'Saved website description', logoUrl: 'https://voloshow.com/logo.png' })
+  })
+
+  it.each([
+    { name: '', siteUrl: 'https://site.test/' },
+    { name: 'Site', siteUrl: '/relative' },
+    { name: 'Site', siteUrl: 'javascript:alert(1)' },
+  ])('leaves unusable default website data unavailable: %j', async (website) => {
+    fetchMock.mockResolvedValueOnce(ok({ batch: batchRow, website: { id: 82, siteHost: '', ...website }, anchors: [], items: [] }))
+    expect((await new SupermanagerBatchSource(resolved()).getBatch(176)).anchors).toEqual([])
+  })
+
+  it.each([
+    { anchorText: ' ', targetUrl: '/' },
+    { anchorText: 'Site', targetUrl: '' },
+    { anchorText: 'Site', targetUrl: 'http://[' },
+    { anchorText: 'Site', targetUrl: 'javascript:alert(1)' },
+  ])('rejects unusable website anchor fields: %j', async (anchor) => {
+    fetchMock.mockResolvedValueOnce(ok({ batch: batchRow,
+      website: { id: 82, name: 'site', siteUrl: 'https://site.test/', siteHost: 'site.test' },
+      anchors: [{ id: 1, ...anchor }], items: [],
+    }))
+    await expect(new SupermanagerBatchSource(resolved()).getBatch(176))
+      .rejects.toMatchObject({ code: 'BACKLINKS_API_ERROR' })
+  })
+
   it('claims with the default rule or an explicit item list', async () => {
     fetchMock.mockResolvedValueOnce(ok({
       ok: true, leaseId: 900, leaseExpiresAt: '2026-08-25T10:57:18Z', items: [itemRow],

@@ -18,6 +18,8 @@
 
 批次：`BacklinkBatchSummary` → `BacklinkBatchDetail`（网站、`anchors[]`、含 `submitUrl`/分类/标签/失败模式的 `items[]`）→ `BacklinkLeaseClaim`（`leaseId`、服务器时钟的 `leaseExpiresAt`、被认领条目）→ `BacklinkHeartbeat` → `BacklinkItemOutcome`。邮件：`createMailbox(localPart, domain)` → `pollMail(address, { subjectContains?, fromContains?, timeoutMs, intervalMs })` → `VerificationMail`（后端提取的 `code`、正文首个 `link`）。取消是每个方法直接可选的 `AbortSignal` 参数。完整契约与 `BacklinksError` 错误分类见 `src/types.ts`（HTTP 状态映射到 `BACKLINKS_UNAUTHORIZED`/`NOT_FOUND`/`CONFLICT`，并保留 `retryAfterSeconds`）。
 
+网站锚点包含已批准的文本与 HTTP(S) 绝对 URL。后台显式锚点带有 id；Supermanager 从已保存的网站名称和网址提供默认值时省略 id。发布器在请求模型前将已尝试条目 id 写入仅日志可见的 `backlinks/attempt` 检查点；取消和压缩不清除这些排除记录。
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -136,4 +138,27 @@ async pollMail(address: MailboxAddress, options: MailPollOptions, signal?: Abort
 ```
 
 Source: [`packages/backlinks/backlinks/src/index.ts`](../../packages/backlinks/backlinks/src/index.ts)
+
+<a id="ctxbacklinksconsole--backlinksconsoleruntime"></a>
+
+### `ctx.backlinksConsole` — `BacklinksConsoleRuntime`
+
+The read-only Remote console over `ctx.backlinks`. Mounted as a Service plugin (`ctx.plugin(BacklinksConsoleRuntime)` via the composition row), it binds the `backlinksConsole` wire namespace for the gateway.
+
+```ts cordis-catalog
+/**
+ * Every batch in the workspace with per-status counts and the executing flag.
+ * @returns every batch summary in descending batch-id order.
+ */
+@Remote async batches(): Promise<readonly BacklinkBatchSummary[]>
+
+/**
+ * One batch's full detail: website, anchors, and items.
+ * @param batchId - the batch to read.
+ * @returns batch, website, anchors, and items.
+ */
+@Remote async batch(batchId: number): Promise<BacklinkBatchDetail>
+```
+
+Source: [`packages/backlinks/console/src/index.ts`](../../packages/backlinks/console/src/index.ts)
 <!-- END GENERATED cordis-surface -->

@@ -184,6 +184,9 @@ flowchart LR
   pkg_backlinks_supermanager["backlinks-supermanager"]
   pkg_backlinks_cloud_mail["backlinks-cloud-mail"]
   pkg_tool_backlinks["tool-backlinks"]
+  pkg_backlinks_console["backlinks-console"]
+  svc_backlinksConsole["ctx.backlinksConsole<br/>Backlink batch console Remote"]
+  pkg_client_ui_backlinks_console["client-ui-backlinks-console"]
   pkg_spill["spill"]
   svc_spillStore["ctx.spillStore<br/>Spill storage seam"]
   pkg_spill_local["spill-local"]
@@ -224,6 +227,7 @@ flowchart LR
   pkg_authorization --> svc_authorization
   pkg_backlinks --> svc_backlinks
   pkg_backlinks_cloud_mail --> svc_backlinks
+  pkg_backlinks_console --> svc_backlinksConsole
   pkg_backlinks_supermanager --> svc_backlinks
   pkg_bash_local --> svc_shell
   pkg_bash_sandbox --> svc_shell
@@ -333,7 +337,9 @@ flowchart LR
   svc_attachments --> pkg_host_runtime
   svc_attachments --> pkg_llm_pi_ai
   svc_authorization --> pkg_llm_pi_ai
+  svc_backlinks --> pkg_backlinks_console
   svc_backlinks --> pkg_tool_backlinks
+  svc_backlinksConsole --> pkg_client_ui_backlinks_console
   svc_browser --> pkg_tool_browser
   svc_clientModules --> pkg_hmr
   svc_codeRuntime --> pkg_tools
@@ -492,7 +498,8 @@ flowchart LR
 | `ctx.jobs` | `seam` | [`jobs`](../packages/jobs/jobs) | [`jobs-local`](../packages/jobs/jobs-local) | [`tool-bash`](../packages/shell/tool-bash), [`tool-terminal`](../packages/terminal/tool-terminal), [`tool-subagent`](../packages/subagent/tool-subagent), [`tool-jobs`](../packages/jobs/tool-jobs) | - | Producers (background bash, PTY sends, and subagent delegations) register running work; tool-jobs is the model-facing controller that reads, lists, and kills it; jobs-local is the process-local registry. |
 | `ctx.web` | `seam` | [`web`](../packages/web/web) | [`web-search-exa`](../packages/web/web-search-exa), [`web-search-perplexity`](../packages/web/web-search-perplexity), [`web-search-deepseek`](../packages/web/web-search-deepseek), [`web-fetch-http`](../packages/web/web-fetch-http) | [`tool-web`](../packages/web/tool-web) | - | Search and fetch providers register into one ctx.web seam; tool-web owns the stable model-facing names. |
 | `ctx.browser` | `seam` | [`browser`](../packages/browser/browser) | [`browser-playwright`](../packages/browser/browser-playwright) | [`tool-browser`](../packages/browser/tool-browser) | - | One shared persistent session dispatches closed-union commands; tool-browser owns the stable model-facing verb set. |
-| `ctx.backlinks` | `seam` | [`backlinks`](../packages/backlinks/backlinks) | [`backlinks-supermanager`](../packages/backlinks/backlinks-supermanager), [`backlinks-cloud-mail`](../packages/backlinks/backlinks-cloud-mail) | [`tool-backlinks`](../packages/backlinks/tool-backlinks) | - | Batch work sources and mailboxes register into one ctx.backlinks seam; tool-backlinks owns the stable model-facing workflow verbs. |
+| `ctx.backlinks` | `seam` | [`backlinks`](../packages/backlinks/backlinks) | [`backlinks-supermanager`](../packages/backlinks/backlinks-supermanager), [`backlinks-cloud-mail`](../packages/backlinks/backlinks-cloud-mail) | [`tool-backlinks`](../packages/backlinks/tool-backlinks), [`backlinks-console`](../packages/backlinks/console) | - | Batch work sources and mailboxes register into one ctx.backlinks seam; tool-backlinks owns the stable model-facing workflow verbs. |
+| `ctx.backlinksConsole` | `core` | [`backlinks-console`](../packages/backlinks/console) | - | [`client-ui-backlinks-console`](../packages/client/ui-backlinks-console) | - | The read-only Remote supplies batch summaries and website details from ctx.backlinks to the browser console. |
 | `ctx.spillStore` | `seam` | [`spill`](../packages/spill/spill) | [`spill-local`](../packages/spill/spill-local) | [`spill-policy`](../packages/spill/spill-policy) | - | The backend saves oversized tool text and returns a model-facing locator plus retrieval hint; spill-policy is the tools/post-execute consumer that decides when to spill. |
 | `ctx.directoryPicker` | `seam` | `directory-picker` | `directory-picker-native`, `directory-picker-browse` | `apiproxy` | - | Discriminated interaction capability: the native backend opens one OS chooser on the host display, the browse backend serves listing/creation primitives for the in-app browser; dual-face backends fill ui-workspace directory-flow slots from their browser halves (no wire advertisement). |
 | `ctx.webServer` | `core` | `webserver` | - | `connection`, `modules`, `hmr` | - | Plain node:http carrier: named-route registry, index transform taps, and the static dist fallback; web-transport plugins register their own routes. |

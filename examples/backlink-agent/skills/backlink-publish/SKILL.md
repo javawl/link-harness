@@ -17,64 +17,35 @@ user-invocable: true
 收到"发外链"（或输入 `/backlink-publish [批次号]`）后：消息里已带具体批次号时跳过第 1 步直接认领执行。
 
 1. `backlinks batch_list` → **必须调用 `ask_user_question` 工具**把批次渲染成可点击选项卡让用户选，不要只在对话里贴列表让用户打字：每个选项 `label` = "批次 <id> · <待发布数>条"，`description` = 站点类型 + 日期概要；最近 4 个批次作为选项，其余引导用户用自定义输入填批次号。**用户点选后才继续；若问题卡被取消、跳过或未获回答，立即停止本流程，绝不认领任何批次（包括推荐项），向用户说明并等待明确指示。**
-2. `backlinks batch_get <id>` → 展示条目并先做**已发布分区**：条目 `publishStatus` 为 `submitted`/`live`（已提交/已上线）或 `publishedUrl` 非空 = 已发布；同批次内同 `sourceId` 的其余条目同样视为已发布。已发布条目本次**不认领、不执行**（认领会被后端拒绝），汇总时单列"已发布跳过"；两张卡的候选项只覆盖其余条目。再用 ask-user 依次确认两张卡：
+2. `backlinks batch_get <id>` 默认只返回计数和最多 3 个 `nextItemIds`；用 `view: items, itemIds: [...]` 读取这一小页资料，禁止反复读取 `view: all`。工具在代码中排除已发布来源并去重，每个来源每个会话只认领一次。核对**已发布分区**：条目 `publishStatus` 为 `submitted`/`live`（已提交/已上线）或 `publishedUrl` 非空 = 已发布；同批次内同 `sourceId` 的其余条目同样视为已发布。已发布条目本次**不认领、不执行**（认领会被后端拒绝），汇总时单列"已发布跳过"；两张卡的候选项只覆盖其余条目。仅对尚未确定的选择用 ask-user 确认：
    a. **范围**：全部 / 仅待发布 / 手选；
    b. **执行模式**（本次运行生效）：
       - `智能匹配（推荐）`：只发布类型可识别的外链站——勘察后能匹配六类剧本之一才发；类型不识别的条目回写 `skipped`（failureReason 注明"类型不识别，智能匹配模式下跳过"）。
       - `全部尝试`：不做类型筛选，所有条目都尝试发布——已知类型仍用对应剧本提速，未知类型走通用主循环（勘察→注册→提交→核验→回写）；绝不因类型跳过，结局交给诚实回写。
-   未回答模式卡时默认 `智能匹配`；无人值守（headless）任务里以任务描述声明的模式为准。
-3. `backlinks batch_claim <id> [itemIds]` 获得租约，记下 `leaseId`。
-4. **选择执行拓扑**：
-   - **条目 ≥3 且分布在不同域名** → 用并发拓扑（默认并发 3）：
-     a. 按 `sourceHost` 把条目分组——**同域名的条目必须进同一组串行**（防频控）；
-     b. 一次回复里并发调用 `subagent` 工具派出至多 3 个子任务（或逐个以 run_in_background 派发再轮询）。每个子任务的提示词必须包含：该组全部条目的完整信息（id/sourceId/sourceUrl/submitUrl/category/anchors/tags/notes/publishStatus/publishedUrl）、`leaseId`、以及这段话（子任务不会加载技能文件，四段硬纪律全靠这段话送达）："你是并行发布子任务。执行模式：{智能匹配|全部尝试}。先用 browser navigate 并带 page:"组名" 打开专属标签页，此后每一条 browser 命令都必须带同一个 page 参数。四条硬纪律：(1) 勘察——判'无评论区/无入口'前必须依次 waitFor 常见锚点（#comments/#respond/[id*='comment']/iframe）或等 3-5 秒、press End 滚到页底、见'Load comments'类按钮先点击、快照里的 iframe 用 frame() 前缀进入、兜底 navigate 到 URL#comments；全走完仍无才 skipped，措辞固定'评论区延迟加载探测后仍不存在'，禁止凭一次首屏快照判'静态页面'。(2) 带链——表单有 Website 字段优先填字段；contenteditable 富文本框/带工具栏禁止把 <a> 当文本输入（会被原样转义），必须先输观点句、选中锚文本、点工具栏链接按钮填 targetUrl；真纯文本框才直写 <a href="targetUrl">anchorText</a>；BBCode 框用 [url=targetUrl]anchorText[/url]；一段只嵌 1 个链接，锚文本融进观点句。(3) 核验与查重——aria 快照 role:link 且名称含锚文本才算链接嵌上，目标 URL 裸字符串（含被转义的 <a> 文本）不算；'目标站已存在本站链接'同口径，自己被转义的旧评论不算已发布；转义回写 failed + manual_required 绝不重发。(4) 注册——评论区/发帖要求登录时先自助注册：进 Sign Up/Register 走邮箱注册表单，backlinks mailbox_create 必须带两个参数（localPart=随机前缀、domain=screwdom.org，缺 domain 会直接报错）拿邮箱 → 填表注册 → backlinks mail_wait（默认等 120 秒）拿验证码/链接 → 完成验证后回来登录发布。'要求登录'本身不是人工事件——Wix 'Log in to publish as a member' 这类能一次性邮箱注册的登录墙是正常流程；仅 reCAPTCHA/人机验证、仅 Google OAuth 且会话未初始化、或注册被拒才回写 failed + manual_required。已发布的条目回写 skipped 绝不重复提交；每条完成立即用 backlinks item_result（带 leaseId）诚实回写；人机验证墙回写 manual_required 并 bringToFront 保留标签页；不要认领批次、不要 lease_release、不要问用户问题。"
-     c. 等待子任务期间，主任务每约 60 秒调一次 `lease_heartbeat` 保活租约；
-     d. 全部子任务返回后核对各条目回写状态，`lease_release`，输出汇总表（含每条的 live/submitted/failed/skipped，另单列本次"已发布跳过"的条目）。
-   - **条目 <3 或集中在同一域名** → 串行拓扑：自己逐条执行单条目循环，每 1-2 个条目 `lease_heartbeat`，结束后 `lease_release` 输出汇总。
+   用户已经声明或本会话已经确认的范围和模式直接沿用，只询问缺失项。未回答模式卡时默认 `智能匹配`；无人值守（headless）任务里以任务描述声明的模式为准。
+3. 先建立下文的整批执行 Goal，然后调用 `backlink_publish`，传 `batchId`、已确认的 `scope`（`pending` / `retryable` / `all`）和 `mode`（智能匹配=`smart`，全部尝试=`all`）；手选时附上完整的已确认 `itemIds`。**不要先 batch_claim，不复制子任务提示词，不另开 subagent，也不手动续租或轮询。** `backlink_publish` 是前台调用，运行时保留一个租约，最多同时执行 3 个条目，同域名串行，完成一个就补一个。
+4. 返回值中的 `attempted` 是本次实际派发条目数，`remaining` 是该次选择中未派发的数量，`counts` 分列回写状态。`live` 与 `submitted` 分开报告，待审核不等于公开上线。只有 `remaining=0`、`stoppedReason=null` 且没有未决回写或清理错误时，该范围的一次执行才结束。`eligibleCount=0` 可能只是本会话排除了已尝试项；已尝试但后台仍 pending 的条目须核对，不得据此完成 Goal。已记录的失败如实列出，不为消除失败数自动重试。
+5. `stoppedReason` 非空时说明调用因子任务异常、取消、资源不足或回写待核对而提前停止。模型额度、鉴权、租约和检查点错误会停止新派发，等待在途任务结束；单项 token、步数或时间预算耗尽后，运行时安全收尾并继续其他条目；未启动条目保持待处理。先核对诊断、后台已保存结果和保留页面，不把未派发条目标为失败，也不立即重复调用。用户已授权继续的范围可以在问题解决后沿用原 scope 再调用；未知提交和 manual_required 不自动重派，手选范围不扩大到整批。
 
-## 单条目循环
+## 整批执行目标
 
-对每个 item（顺序执行，同域连续操作之间自然停顿）：
+范围与模式确认后、首次发布前，调用 `get_goal`；没有本任务 Goal 时，用 `create_goal` 记录批次 id、scope、执行模式，以及“对所选范围的每个可执行来源尝试一次，逐条核验并回写，结清在途任务和租约”。已有同任务 Goal 时沿用，不覆盖无关 Goal，不自行增加轮数。
 
-1. **发布前验证（防重复发布）**：动手前先核对发布记录和状态——
-   - 条目 `publishStatus` 为 `submitted`/`live` 或 `publishedUrl` 非空，或同批次同 `sourceId` 条目已发布 → 已发布，**不要打开目标站提交**：已认领的回写 `skipped`（skipReason："发布记录已存在：<publishStatus 或 publishedUrl>，跳过重复发布"），继续下一条；
-   - 勘察目标站时检索本站域名/目标 URL（站内搜索、列表页查找）：能找到本站链接 → 同样回写 `skipped`（"目标站已存在本站链接，跳过重复发布"）。已提交待审的来源优先复核公开页，确认已上线可直接回写 `live`（用已有 publishedUrl 作 publicUrl），仍未见则维持跳过，**绝不再提交一次**。
-2. **选择 playbook**：先 `snapshot format=aria` 勘察实貌，按特征匹配剧本（导航=提交流表单、博客=评论区、论坛=版块发帖、内容=长文投稿、游戏=截图/平台字段、工具=定价/截图字段）；条目 `category` 仅作提示，与实貌冲突时以实貌为准并在 evidence 注明。
-   - **智能匹配模式**：勘察后六类都不匹配 → 该条回写 `skipped`（"类型不识别，智能匹配模式下跳过"），继续下一条；
-   - **全部尝试模式**：不匹配 → 直接走通用主循环发（本技能 5-8 步），绝不因类型跳过。
- `submitUrl` 优先于 `sourceUrl`。
-3. **勘察优先**：先 `browser navigate` + `snapshot format=aria` 只读了解页面结构（aria 快照带 role 和名称），再动手填写。异步挂载的区块（评论区、Disqus 类 iframe、折叠面板）常缺席于首屏快照——判"无评论区/无入口"前必须依次：`waitFor` 常见锚点（`#comments`/`#respond`/`[id*='comment']`/`iframe`）或等 3-5 秒再 snapshot → `press` End 滚到页底再 snapshot → 见「Load comments」类按钮先点击再 snapshot → 快照里的 iframe 用 `frame()` 前缀进入 → 兜底 `navigate` 到 `URL#comments`。全走完仍无才回写 `skipped`（措辞固定："评论区延迟加载探测后仍不存在"），禁止凭一次首屏快照下"静态页面无入口"的结论。
-4. **语义寻址**：定位元素优先用 aria 快照里看到的语义选择器——`role:button|Create Account`、`label:Email`、`placeholder:you@example.com`、`text:Sign in`；CSS 只作兜底；表单在 iframe 里时加 `frame(<iframe css>)>>` 前缀；截图后可 `xy:<x>,<y>` 坐标点击。禁止不看清 aria 快照就猜 CSS。
-5. **需要注册/登录？** → 先 `snapshot format=aria` 看登录/注册页，按决策树走（细节见 [references/google-session.md](references/google-session.md)）：
-   - 页面有 "Continue with Google"（或同类 Google OAuth 按钮）→ 先 `browser navigate` 到 `https://accounts.google.com` 确认谷歌会话（检查完 navigate 回站点登录页）：
-     - 已登录（显示账号头像/邮箱）→ 回到站点点 Google 按钮 → 账号选择器点账号（若只有一个账号多数站直接跳过）→ 授权页点 Allow/Continue → 跳回站点继续发布流程。授权弹窗若是新开窗口，操作会自动切到最后打开的页。
-     - 未登录 → 回写 `failed + manual_required`，原因写"谷歌会话未初始化或已过期，请对智能体说『初始化谷歌会话』"。
-     - Google 弹"确认是你本人"/二次验证 → 同样回写 manual_required 等人工处理一次。
-   - 有邮箱注册表单 → 先 `backlinks mailbox_create`（`localPart`=随机前缀、`domain`=screwdom.org，**两个参数都要给，缺 domain 直接报错**）→ 注册 → `backlinks mail_wait`（默认等 120 秒）拿 `code`/`link` → 完成验证 → 登录。**"要求登录"本身不是人工事件**——Wix "Log in to publish as a member" 这类能一次性邮箱注册的登录墙走本路径，不要回写 manual_required。
-   - 只有 CAPTCHA/其他墙 → 先 `browser bringToFront` 把窗口召回前台，再按现有人工兜底规则挂起（浏览器在屏幕外静默运行，人工时必须召回）。
-6. **填写与提交**：锚文本和目标 URL 从 batch 详情的 `anchors` 里选（优先第一个 active 项）。评论/正文框的带链方式按框型选：表单有 Website 字段 → 填字段、正文不带链；**contenteditable 富文本框/带工具栏（Wix 博客评论框即此类）禁止把 `<a>` 当文本输入——会被原样转义（pullcommunityoutreach 实证），必须先输完整观点句、选中锚文本片段、点工具栏链接按钮填 targetUrl**；真纯文本框才直写 `<a href="targetUrl">anchorText</a>`；BBCode 框用 `[url=targetUrl]anchorText[/url]`。一段只嵌 1 个链接，锚文本融进观点句读得通。**提交资料优先用批次详情 website 里的"提交资料包"**（shortDescription/longDescription/logoUrl/screenshotUrl/keyFeatures/pricingType 有值就直接用，描述按目标站字数裁剪，图片下载后按需裁剪尺寸，evidence 注明"使用后台资料包"）；资料包缺失的项才自行获取（抓网站 og:image / apple-touch-icon、现写该段文案，evidence 注明"该项自获取"）。核心事实（名称/URL/特性）以后台资料为准，措辞可微调贴目标站调性。提交前 snapshot 复查关键字段。
-7. **核验**：提交后 `browser navigate` 到公开列表页（非预览）+ `snapshot`，确认目标链接以**可点击链接**出现（aria 快照 `role:link`，名称含锚文本或指向 targetUrl）。目标 URL 以裸字符串出现——包括被转义显示的 `<a href=…>` 文本——不算链接嵌上；嵌链被转义 → 回写 `failed + manual_required`，绝不重发。**查重（"目标站已存在本站链接"）同口径：只认可点链接，裸文本 URL 不算**——自己被转义的旧评论不是已发布，不能挡住重发。
-8. **回写**（`item_result`）后**立即自动打标**（`source_tags`，参数 `sourceId` 取条目的 sourceId，`tags` 按本次观察多选，幂等只加不删）：
-   - 站点未要求徽章即可提交（打了 `付费` 的站点不加）→ 加 `免徽章`
-   - 站点要求挂徽章/徽标验证 → 加 `要徽章`
-   - 本条发布成功（live 或 submitted）→ 加 `可复用`
-   - 遇到 Cloudflare 盾（Turnstile/质询页，无论过没过）→ 加 `有盾`
-   - 只有付费才能提交（付款墙是唯一提交途径；有免费途径的不加，即使同时提供付费加速）→ 加 `付费`
-   把所打标签记进 evidence。回写内容：
-   - 核验通过 → `live` + publicUrl + anchorText + targetUrl + evidence（一句话证据）
-   - 明确"已提交待审核" → `submitted`
-   - CAPTCHA/登录墙/需人工 → `failed` + `manual_required` + 原因（保留浏览器标签页不关）
-   - 瞬时错误（超时/网络）→ `failed` + `retryable`
-   - 付费/停服/资格不符 → `skipped` + 原因
-9. 对方要求先挂互换徽标时（"reciprocal/featured badge"），按此流程**在提交前完成**：
-   a. 从对方站点的徽标区拿到徽标 HTML（通常有 Light/Dark/Auto 三种，选一种）→ `backlinks badge_add`（`websiteId` 用批次里的网站 id，`name` 用对方站名）。
-   b. **必须让徽标真正上线**：badge_add 返回 `callbackTriggered`；无论真假，都用 bash `curl -s "https://<我方站点host>/footer/refresh"`（supermanager 里该网站配置的回调地址）触发一次站点刷新。
-   c. **必须实测确认**：`curl -s "https://<我方站点host>/"` 并 grep 对方域名，徽标 HTML 出现在页面里才算生效；没出现等 5 秒重试，最多 3 次。仍不出现 → 回写 `manual_required`（原因写"徽标已入库但站点未刷新"）。
-   d. 线上确认后，才回到对方站点做 Verify Backlink/提交。若徽标此前已挂过（curl 已能 grep 到），直接跳到 d，不要重复 badge_add。
+进度汇报和单条预算耗尽不代表整批结束。运行时返回未派发数量；范围处理完且没有未决回写或清理错误才标记 complete。需要人工或资源不足时保留真实状态，遵守 Goal 的 blocked 条件。后台待审、失败和已发布跳过分别列出。
 
-## 人工兜底（持久会话）
+## 子任务与页面
 
-浏览器 profile 是持久的。遇到 CAPTCHA/首次登录：保留标签页，回写 `manual_required`，继续下一条。用户在弹出的浏览器窗口里人工过一次验证后，重跑该批次即可自动复用会话。
+固定的勘察、注册、带链和核验纪律由[发布配置](../../cordis.yml)的 publisher persona 注入一次；父任务只选择范围，不复制纪律或批次资料。每个子任务只获得本条资料、website、anchors、租约和专属页面。每条保留累计 600K token、40 步、10 分钟和相同参数失败 3 次的预算，运行时在模型请求之间检查。
+
+运行时在认领或启动付费子任务前预留页面，并在工具执行器中把子任务绑定到该页和条目；省略 page 使用专属页，显式传其他页会拒绝。click/press 必须声明 `submission=false`（导航或账户操作）或 `submission=true`（最终发布）；最终发布只允许派发一次，之后仅作只读核验及导航；终态回写后禁止继续输入或导航。尝试记录在首次请求模型前刷写到父会话日志，取消或恢复后仍有效。该标记记录智能体声明的用途，不能识别任意网站脚本的隐式提交。
+
+局部 snapshot 的 text、aria、form、links 使用相同的语义选择器和 frame 前缀。`form` 返回字段属性与当前值（不返回密码值）；`links` 返回可见锚文本和真实 href。已知字段用一次 `fill fields:[{selector,value}]` 顺序填写；后续字段失败不撤销前面的填写，提交必须另行操作。
+
+`live` 与 `submitted` 都要求已声明最终提交，预先存在的外链记为 skipped。`live` 的 publicUrl 须属于本条来源或提交地址的主机，且与推广站和目标地址主机不同，并在页面找到真实目标 href；裸字符串和转义 HTML 不算链接。`submitted` 必须提供当前页面可读的确认原文 `receipt`，只是待审。长页面使用 `verificationSelector` 缩小核验范围。回写响应丢失时运行时先读取后台，避免覆盖已保存发布。
+
+未声明最终提交、没有不确定输入的中断可记为 retryable。已派发最终提交但缺回执或 `BROWSER_ACTION_UNCERTAIN` 保留为 manual_required，页面也保留，不自动重试。验证码或人工登录须记录 manual_required；若没有最终提交或不确定输入，终态失败回写后由运行时回收本条页面。成功、已提交和跳过的本条页面也由运行时清理，其他页面保持原状。
+
+部署设置 `maxOpenPages: 0`，保留页面不设总数上限；执行中的条目仍最多三个，同一目标主机串行。不要关闭未知归属或未知提交页面。独立锚点未配置时，默认使用对应网站详情（`/websites/<websiteId>/edit`）已保存的名称作为锚文本、网址作为目标 URL，显式锚点优先。描述、图片、功能等继续使用该网站的提交资料包。仅当名称或 HTTP(S) 网址也不可用时，运行时在开页、认领或请求模型前停止；不要编造资料，也不要把同一个网站资料缺失逐条记为发布失败。
 
 ## 初始化谷歌会话
 

@@ -1,9 +1,8 @@
 /**
  * Console face for the backlinks seam: a read-only Typert Remote service the
- * Web client's publish console renders from. It adds no behavior of its own —
- * every method is a pass-through over `ctx.backlinks`, so the console sees
- * exactly the data the model-facing tool sees, under the same provider
- * selection and error taxonomy.
+ * Web client's publish console renders from. Batch rows use descending ids
+ * so newly created batches stay visible even when their planned date is older.
+ * Reads use the backlinks provider selection and error taxonomy.
  *
  * @module @deepseek-ai/dsh-backlinks-console
  */
@@ -37,11 +36,11 @@ export class BacklinksConsoleRuntime extends TypertRemoteService {
 
   /**
    * Every batch in the workspace with per-status counts and the executing flag.
-   * @returns the provider's batch summaries, newest-planned first.
+   * @returns every batch summary in descending batch-id order.
    */
   @Remote
   async batches(): Promise<readonly BacklinkBatchSummary[]> {
-    return await this.ctx.backlinks.listBatches()
+    return [...await this.ctx.backlinks.listBatches()].sort((left, right) => right.id - left.id)
   }
 
   /**

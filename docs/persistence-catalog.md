@@ -239,6 +239,19 @@ Types: [TokenUsage](subsystems/llm-streaming.md)
 
 Source: [`packages/core/session/src/types.ts:277`](../packages/core/session/src/types.ts)
 
+### `backlinks/*`
+
+<a id="backlinksattempt--log-only"></a>
+
+#### `backlinks/attempt` — log-only
+
+```ts persistence-catalog
+/** Log-only record flushed before claimed work is handed to a model; survives cancellation and compaction. */
+'backlinks/attempt': { batchId: number; itemIds: number[] }
+```
+
+Source: [`packages/backlinks/tool-backlinks/src/backlinks.ts:24`](../packages/backlinks/tool-backlinks/src/backlinks.ts)
+
 ### `command/*`
 
 <a id="commanddone--log-only"></a>

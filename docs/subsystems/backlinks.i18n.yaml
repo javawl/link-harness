@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/backlinks.md
-backlinks.md: 684f677f5dc4072f90706a2533f5bb64db83f6bc
-backlinks.zh.md: e613ba06a6c57c873293423b4f17396e24ae154d
+backlinks.md: 1c300f24e6a6163bfd059c7aa6b0940f9d9a87a9
+backlinks.zh.md: 5d7eb3da842165905d93c4c46e480e3c251b600e

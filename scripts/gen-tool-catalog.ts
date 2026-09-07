@@ -631,18 +631,27 @@ const TOOL_PACKAGES: ToolPackage[] = [
   {
     pkg: '@deepseek-ai/dsh-tool-backlinks',
     dir: 'tool-backlinks',
-    source: 'packages/backlinks/tool-backlinks/src/index.ts',
-    requires: ['ctx.tools', 'ctx.backlinks', 'ctx.systemPrompt'],
+    source: {
+      backlinks: 'packages/backlinks/tool-backlinks/src/backlinks.ts',
+      backlink_publish: 'packages/backlinks/tool-backlinks/src/publisher.ts',
+    },
+    requires: ['ctx.tools', 'ctx.backlinks', 'ctx.systemPrompt', 'ctx.browser (publisher)', 'ctx.agents (publisher)', 'ctx.subagents (publisher)'],
     writes: ['tool/call', 'tool/result'],
     async mount(ctx) {
       // Mount the seam and one provider so the tool registers. Its schema does
       // not depend on the backend being reachable or configured.
       await ctx.plugin(BacklinksRuntime)
       await ctx.plugin(BacklinksSupermanager, { baseUrl: 'http://127.0.0.1:9', token: 'catalog' })
-      await ctx.plugin(ToolBacklinks)
+      await ctx.plugin(AgentRegistry)
+      await ctx.plugin(BrowserRuntime)
+      await ctx.plugin(SubagentRuntime)
+      registerCatalogSubagentProvider(ctx, 'mock')
+      await ctx.plugin(ToolBacklinks, { publisher: {
+        provider: 'mock', concurrency: 3, persona: 'Publish the assigned item.', maxTokens: 2048,
+      } })
     },
     note:
-      'backlinks keeps batch-source and mailbox selection behind ctx.backlinks so model-visible schemas stay stable across backend swaps.',
+      'The catalog enables the optional publisher with concurrency 3 and a non-executing provider to include backlink_publish. Omitting publisher exposes only the low-level backlinks tool. The backlink example supplies fixed child discipline and request budgets; runtime scheduling binds each item to its page and reconciles results before lease release.',
   },
 ]
 

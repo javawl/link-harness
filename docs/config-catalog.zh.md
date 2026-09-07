@@ -184,6 +184,8 @@ export interface Config {
    * configured root. False mounts a roster over `roots` alone.
    */
   includeUserRoot: boolean
+  /** Entry overrides by preset id, applied before the standing composition mounts. */
+  overrides?: Record<string, PresetEntryOverride[]>
 }
 
 /** One directory scanned for preset subdirectories. */
@@ -194,6 +196,16 @@ export interface PresetRoot {
   trust: PresetTrust
 }
 
+/** Deployment overrides for one existing row in a preset composition. */
+export interface PresetEntryOverride {
+  /** Loader entry id, including rows nested in groups. */
+  id: string
+  /** Whole replacement plugin config; omitted preserves the preset's config. */
+  config?: Record<string, unknown>
+  /** Whether the entry is disabled; omitted preserves the preset's value. */
+  disabled?: boolean
+}
+
 /**
  * Where a preset's composition came from. A `system` preset ships with the
  * deployment; a `user` preset was authored locally, by a person or by an
@@ -202,7 +214,7 @@ export interface PresetRoot {
 export type PresetTrust = 'system' | 'user'
 ```
 
-来源：[`packages/preset/agent-presets/src/preset.ts:52`](../packages/preset/agent-presets/src/preset.ts)
+来源：[`packages/preset/agent-presets/src/preset.ts:62`](../packages/preset/agent-presets/src/preset.ts)
 
 <a id="deepseek-aidsh-agent-spine-demo"></a>
 
@@ -368,7 +380,7 @@ export interface BacklinksRuntimeConfig {
 }
 ```
 
-Source: [`packages/backlinks/backlinks/src/index.ts:56`](../packages/backlinks/backlinks/src/index.ts)
+Source: [`packages/backlinks/backlinks/src/index.ts:61`](../packages/backlinks/backlinks/src/index.ts)
 
 <a id="deepseek-aidsh-backlinks-cloud-mail"></a>
 
@@ -473,7 +485,7 @@ export interface BrowserRuntimeConfig {
 }
 ```
 
-Source: [`packages/browser/browser/src/index.ts:55`](../packages/browser/browser/src/index.ts)
+Source: [`packages/browser/browser/src/index.ts:57`](../packages/browser/browser/src/index.ts)
 
 <a id="deepseek-aidsh-browser-playwright"></a>
 
@@ -492,6 +504,12 @@ export interface Config {
   readonly channel?: string
   /** Default per-operation timeout in milliseconds. */
   readonly defaultTimeoutMs?: number
+  /** Timeout for navigation, independent of locator and snapshot waits. */
+  readonly navigationTimeoutMs?: number
+  /** Readiness required by navigations that do not specify waitUntil. */
+  readonly navigationWaitUntil?: 'load' | 'domcontentloaded' | 'networkidle'
+  /** Live-page ceiling for tool-requested page creation; zero disables it. Existing pages remain usable. */
+  readonly maxOpenPages?: number
   /** Extra Chromium launch arguments (proxy, window size, …). */
   readonly launchArgs?: string[]
   /**
@@ -1820,7 +1838,7 @@ export interface JsonRpcConfig {
 
 依赖：`Readable`（`node:stream`）· `Writable`（`node:stream`）
 
-来源：[`packages/sdk/server/src/index.ts:29`](../packages/sdk/server/src/index.ts)
+来源：[`packages/sdk/server/src/index.ts:25`](../packages/sdk/server/src/index.ts)
 
 <a id="deepseek-aidsh-session-persistence-jsonl"></a>
 
@@ -2462,8 +2480,12 @@ export interface Config {
 export interface Config {
   /** Provider name on `ctx.subagents` (default `fork`). */
   providerName: string
+  /** Per-run limits; configured budgets require one-shot delegation. */
+  workBudget?: InProcessWorkBudget
 }
 ```
+
+依赖：[`InProcessWorkBudget`](../packages/subagent/subagent-in-process-driver/src/index.ts)
 
 来源：[`packages/subagent/subagent-fork-in-process/src/index.ts:31`](../packages/subagent/subagent-fork-in-process/src/index.ts)
 
@@ -2478,8 +2500,12 @@ export interface Config {
 export interface Config {
   /** Provider name on `ctx.subagents` (default `spawn`). */
   providerName: string
+  /** Per-run limits; configured budgets require one-shot delegation. */
+  workBudget?: InProcessWorkBudget
 }
 ```
+
+依赖：[`InProcessWorkBudget`](../packages/subagent/subagent-in-process-driver/src/index.ts)
 
 来源：[`packages/subagent/subagent-spawn-in-process/src/index.ts:25`](../packages/subagent/subagent-spawn-in-process/src/index.ts)
 
@@ -2632,10 +2658,30 @@ Requires: `tools` · `backlinks` · `systemPrompt`
 export interface Config {
   /** Per-call timeout in milliseconds attached to the tool definition. */
   readonly timeoutMs?: number
+  /** Maximum items in one batch view or claim (default 6). */
+  readonly maxBatchItems?: number
+  /** Maximum UTF-8 bytes in a summary or items view (default 16384). */
+  readonly maxBatchViewBytes?: number
+  /** Runtime lease heartbeat interval in milliseconds (default 60000). */
+  readonly leaseHeartbeatMs?: number
+  /** Enable the foreground batch publisher with explicit child policy; omitted keeps low-level tools only. */
+  readonly publisher?: PublisherConfig
+}
+
+/** Opt-in publication policy. Child request budgets remain owned by the configured subagent provider. */
+export interface PublisherConfig {
+  /** One-shot in-process provider with persona, tool-filter, and depth-limit support. */
+  readonly provider: string
+  /** Maximum concurrently running items; each target hostname runs serially. */
+  readonly concurrency: number
+  /** Fixed instructions installed once as each child's persona. */
+  readonly persona: string
+  /** Maximum output tokens per child request. */
+  readonly maxTokens: number
 }
 ```
 
-Source: [`packages/backlinks/tool-backlinks/src/index.ts:19`](../packages/backlinks/tool-backlinks/src/index.ts)
+Source: [`packages/backlinks/tool-backlinks/src/index.ts:21`](../packages/backlinks/tool-backlinks/src/index.ts)
 
 <a id="deepseek-aidsh-tool-bash"></a>
 
@@ -2953,6 +2999,8 @@ export interface Config {
    * parameter and reject forced background calls.
    */
   enableRunInBackground?: boolean
+  /** Maximum prompts in one foreground call (default `1`). Values above one require foreground-only one-shot mode. */
+  maxBatchSize?: number
   /**
    * Background execution policy (default `one-shot`). `one-shot` defaults calls
    * to foreground; `continuable` defaults them to background, requires a provider
@@ -3376,11 +3424,13 @@ export interface Config {
 - `@deepseek-ai/dsh-api-gateway` — 需要 `typert`（[`packages/api/gateway/src/index.ts`](../packages/api/gateway/src/index.ts)）
 - `@deepseek-ai/dsh-api-remotes`（[`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts)）
 - `@deepseek-ai/dsh-authorization` — 需要 `credentials`（[`packages/credentials/authorization/src/index.ts`](../packages/credentials/authorization/src/index.ts)）
+- `@deepseek-ai/dsh-backlinks-console` — 需要 `backlinks`（[`packages/backlinks/console/src/index.ts`](../packages/backlinks/console/src/index.ts)）
 - `@deepseek-ai/dsh-client-locale`（[`packages/client/locale/src/index.ts`](../packages/client/locale/src/index.ts)）
 - `@deepseek-ai/dsh-client-modules` — 需要 `webServer` · `loader`（[`packages/client/modules/src/index.ts`](../packages/client/modules/src/index.ts)）
 - `@deepseek-ai/dsh-client-runtime`（[`packages/client/runtime/src/index.ts`](../packages/client/runtime/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-agent-preset`（[`packages/client/ui-agent-preset/src/index.ts`](../packages/client/ui-agent-preset/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-attachment`（[`packages/client/ui-attachment/src/index.ts`](../packages/client/ui-attachment/src/index.ts)）
+- `@deepseek-ai/dsh-client-ui-backlinks-console`（[`packages/client/ui-backlinks-console/src/index.ts`](../packages/client/ui-backlinks-console/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-brand-official`（[`packages/client/ui-brand-official/src/index.ts`](../packages/client/ui-brand-official/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-commands`（[`packages/client/ui-commands/src/index.ts`](../packages/client/ui-commands/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-conversation`（[`packages/client/ui-conversation/src/index.ts`](../packages/client/ui-conversation/src/index.ts)）

@@ -1,0 +1,17 @@
+{
+  "finalResponse": "Two public fixture listings verified.",
+  "attempts": [
+    {
+      "batchId": 176,
+      "itemIds": [
+        1
+      ]
+    },
+    {
+      "batchId": 176,
+      "itemIds": [
+        2
+      ]
+    }
+  ]
+}

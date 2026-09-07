@@ -528,8 +528,16 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Backlinks work-source and mailbox registries',
     mode: 'seam',
     implementations: ['backlinks-supermanager', 'backlinks-cloud-mail'],
-    consumers: ['tool-backlinks'],
+    consumers: ['tool-backlinks', 'backlinks-console'],
     note: 'Batch work sources and mailboxes register into one ctx.backlinks seam; tool-backlinks owns the stable model-facing workflow verbs.',
+  },
+  {
+    key: 'backlinksConsole',
+    pkg: 'backlinks-console',
+    title: 'Backlink batch console Remote',
+    mode: 'core',
+    consumers: ['client-ui-backlinks-console'],
+    note: 'The read-only Remote supplies batch summaries and website details from ctx.backlinks to the browser console.',
   },
   {
     key: 'spillStore',

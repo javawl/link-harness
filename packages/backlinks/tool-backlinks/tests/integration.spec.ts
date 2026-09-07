@@ -3,13 +3,14 @@
  * exercised through `ctx.tools.execute()` — nothing bypasses the tool registry.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import BacklinksRuntime from '@deepseek-ai/dsh-backlinks'
 import type {
+  BacklinkBatchDetail,
   BacklinkItemResult,
   MailPollOptions,
   VerificationMail,
@@ -27,11 +28,17 @@ const mail: VerificationMail = {
   receivedAt: 't',
 }
 
+let transformDetail: (detail: BacklinkBatchDetail) => BacklinkBatchDetail
+let heartbeatCount = 0
+let heartbeatEffect: () => Promise<void>
 let ctx: Context
 let receivedResults: Array<{ itemId: number; result: BacklinkItemResult }> = []
 let disposeMailbox: () => void
 
 beforeEach(async () => {
+  transformDetail = detail => detail
+  heartbeatCount = 0
+  heartbeatEffect = async () => {}
   receivedResults = []
   ctx = new Context()
   await ctx.plugin(SystemPrompt)
@@ -44,7 +51,7 @@ beforeEach(async () => {
       id: 176, name: 'PB-1', websiteId: 82, websiteName: 'site', websiteHost: 'site.test',
       plannedAt: 't', counts: { pending: 2, executed: 0, skipped: 0, failed: 0, total: 2 }, executing: false,
     }],
-    getBatch: async id => ({
+    getBatch: async id => transformDetail({
       batch: {
         id, name: 'PB-1', websiteId: 82, websiteName: 'site', websiteHost: 'site.test',
         plannedAt: 't', counts: { pending: 2, executed: 0, skipped: 0, failed: 0, total: 2 }, executing: false,
@@ -63,7 +70,7 @@ beforeEach(async () => {
         category: null, tags: [], paymentType: 'free', linkType: 'dofollow', status: 'pending',
         failureMode: null, failureReason: null, publishedUrl: null, publishStatus: null, plannedAt: 't' }],
     }),
-    heartbeat: async leaseId => ({ leaseId, leaseExpiresAt: 't2' }),
+    heartbeat: async (leaseId) => { await heartbeatEffect(); heartbeatCount++; return { leaseId, leaseExpiresAt: 't2' } },
     release: async () => {},
     reportItemResult: async (itemId, result) => {
       receivedResults.push({ itemId, result })
@@ -85,6 +92,11 @@ beforeEach(async () => {
   await ctx.plugin(ToolBacklinks, { timeoutMs: 5_000 })
 })
 
+afterEach(async () => {
+  await ctx.fiber.dispose()
+  vi.useRealTimers()
+})
+
 let counter = 0
 function call(args: unknown): Promise<ToolExecutionResult> {
   return ctx.tools.execute({
@@ -96,6 +108,95 @@ function call(args: unknown): Promise<ToolExecutionResult> {
 }
 
 describe('backlinks tool integration over the real seam', () => {
+  it('claims an explicitly selected item before deduplicating its source', async () => {
+    transformDetail = detail => ({ ...detail, items: [detail.items[0]!, { ...detail.items[0]!, id: 1259 }] })
+    expect((await call({ action: 'batch_claim', batchId: 176, itemIds: [1259] })).value)
+      .toMatchObject({ data: { itemIds: [1259] } })
+  })
+
+  it('keeps pending-only pages and claims inside the confirmed scope', async () => {
+    transformDetail = detail => ({ ...detail, items: [
+      { ...detail.items[0]!, id: 1, sourceId: 1, status: 'failed', failureMode: 'retryable' },
+      { ...detail.items[0]!, id: 2, sourceId: 1 },
+      { ...detail.items[0]!, id: 3, sourceId: 3 },
+      { ...detail.items[0]!, id: 4, sourceId: 4, status: 'failed', failureMode: 'manual_required' },
+      { ...detail.items[0]!, id: 5, sourceId: 5, publishStatus: 'live' },
+    ] })
+    expect((await call({ action: 'batch_get', batchId: 176 })).value)
+      .toMatchObject({ data: { scope: 'all', nextItemIds: [1, 3] } })
+    expect((await call({ action: 'batch_get', batchId: 176, scope: 'pending' })).value)
+      .toMatchObject({ data: { scope: 'pending', eligibleCount: 2, nextItemIds: [2, 3] } })
+    expect((await call({ action: 'batch_get', batchId: 176, scope: 'retryable' })).value)
+      .toMatchObject({ data: { eligibleCount: 1, nextItemIds: [1] } })
+    expect((await call({ action: 'batch_get', batchId: 176, scope: 'pending', view: 'items', afterItemId: 2 })).value)
+      .toMatchObject({ data: { items: [{ id: 3 }], nextAfterItemId: null } })
+    expect((await call({ action: 'batch_claim', batchId: 176, scope: 'pending', itemIds: [1] })).isError).toBe(true)
+    expect((await call({ action: 'batch_claim', batchId: 176, scope: 'pending', itemIds: [2] })).value)
+      .toMatchObject({ data: { itemIds: [2] } })
+    expect((await call({ action: 'batch_get', batchId: 176, scope: 'retryable' })).value)
+      .toMatchObject({ data: { eligibleCount: 0, nextItemIds: [] } })
+    expect((await call({ action: 'batch_get', batchId: 176, scope: 'pending', view: 'items', itemIds: [5] })).isError).toBe(false)
+    for (const action of ['batch_get', 'batch_claim']) {
+      expect((await call({ action, batchId: 176, scope: 'unknown' })).isError).toBe(true)
+    }
+  })
+
+  it('pages a 725-item batch, excludes published sources, and claims each source once', async () => {
+    transformDetail = detail => ({ ...detail, items: Array.from({ length: 725 }, (_, index) => ({
+      ...detail.items[0]!, id: index + 1, sourceId: index + 1,
+      ...index === 0 ? { publishStatus: 'submitted' as const } : {},
+      ...index === 1 ? { sourceId: 1 } : {},
+    })) })
+    const summary = await call({ action: 'batch_get', batchId: 176 })
+    expect(summary.value).toMatchObject({ data: { eligibleCount: 723, nextItemIds: [3, 4, 5, 6, 7, 8] } })
+    expect(JSON.stringify(summary.value).length).toBeLessThan(1000)
+    const page = await call({ action: 'batch_get', batchId: 176, view: 'items', afterItemId: 8 })
+    expect(page.value).toMatchObject({
+      data: { items: [{ id: 9 }, { id: 10 }, { id: 11 }, { id: 12 }, { id: 13 }, { id: 14 }], nextAfterItemId: 14 },
+    })
+    expect((await call({ action: 'batch_claim', batchId: 176, itemIds: [2] })).isError).toBe(true)
+    expect((await call({ action: 'batch_claim', batchId: 176, itemIds: [3] })).value)
+      .toMatchObject({ data: { itemIds: [3] } })
+    expect((await call({ action: 'batch_claim', batchId: 176, itemIds: [3] })).isError).toBe(true)
+    expect((await call({ action: 'batch_get', batchId: 176, itemIds: [3], view: 'items' })).isError).toBe(false)
+    for (const itemIds of [[], [0], ['3'], [1, 2, 3, 4, 5, 6, 7]]) {
+      expect((await call({ action: 'batch_claim', batchId: 176, itemIds })).isError).toBe(true)
+    }
+  })
+
+  it('rejects oversized UTF-8 views without dropping item fields', async () => {
+    transformDetail = detail => ({ ...detail, items: [{ ...detail.items[0]!, sourceNotes: '证'.repeat(6000) }] })
+    expect((await call({ action: 'batch_get', batchId: 176 })).isError).toBe(false)
+    expect((await call({ action: 'batch_get', batchId: 176, view: 'items' })).isError).toBe(true)
+    expect((await call({ action: 'batch_get', batchId: 176, view: 'all' })).isError).toBe(false)
+  })
+
+  it('renews with a runtime timer and quiesces before release or disposal', async () => {
+    vi.useFakeTimers()
+    await call({ action: 'batch_claim', batchId: 176, itemIds: [1258] })
+    await vi.advanceTimersByTimeAsync(60_001)
+    expect(heartbeatCount).toBe(1)
+    await call({ action: 'lease_release', leaseId: 900 })
+    await vi.advanceTimersByTimeAsync(180_000)
+    expect(heartbeatCount).toBe(1)
+  })
+
+  it('waits for an in-flight heartbeat before releasing the lease', async () => {
+    vi.useFakeTimers()
+    const heartbeat = Promise.withResolvers<undefined>()
+    heartbeatEffect = () => heartbeat.promise
+    await call({ action: 'batch_claim', batchId: 176, itemIds: [1258] })
+    await vi.advanceTimersByTimeAsync(60_001)
+    let released = false
+    const release = call({ action: 'lease_release', leaseId: 900 }).then((result) => { released = true; return result })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(released).toBe(false)
+    heartbeat.resolve(undefined)
+    expect((await release).isError).toBe(false)
+    await vi.advanceTimersByTimeAsync(180_000)
+    expect(heartbeatCount).toBe(1)
+  })
+
   it('pins the duplicate-publish guard in its prompt section', async () => {
     const assembly = await ctx.systemPrompt.assemble()
     const section = assembly.sections.find(s => s.name === 'tool:backlinks')

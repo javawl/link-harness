@@ -11,7 +11,8 @@
     "sandbox-exec",
     "tar",
     "taskkill",
-    "where.exe"
+    "where.exe",
+    "uv"
   ],
   "ignoreWorkspaces": [
     "vendor/*",
@@ -39,6 +40,11 @@
     },
     "examples": {
       "entry": [
+        "backlink-agent/tests/fixtures/batch-provider.ts",
+        "backlink-agent/tests/fixtures/browser-capacity-driver.ts",
+        "backlink-agent/tests/fixtures/parallel-barrier.ts",
+        "backlink-agent/tests/fixtures/publisher-fixture.ts",
+        "backlink-agent/tests/fixtures/selection-driver.ts",
         "headless-agent/tests/fixtures/cli-mock-llm.ts",
         "headless-agent/tests/fixtures/semantic-checkpoint-agent.ts",
         "headless-agent/tests/fixtures/subagent-diagnostic-agent.ts",
@@ -663,6 +669,18 @@
     "packages/bundle/web-app": {
       "ignoreDependencies": [
         "@deepseek-ai/.+"
+      ]
+    },
+    "packages/backlinks/console": {
+      "ignoreDependencies": [
+        "zod"
+      ]
+    },
+    "packages/client/ui-backlinks-console": {
+      "entry": [],
+      "project": [
+        "src/**/*.ts",
+        "src/**/*.tsx"
       ]
     }
   }

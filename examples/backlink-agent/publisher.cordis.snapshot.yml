@@ -1,0 +1,57 @@
+- id: persistence
+  name: '@deepseek-ai/dsh-session-persistence-jsonl'
+  config:
+    root: ./.sessions
+    compression: none
+- id: agent
+  name: '@deepseek-ai/dsh-agent-spine-demo'
+  config:
+    agents:
+      - id: main
+        provider: mock
+        model: mock
+    workspaceContext: false
+    skills:
+      filesystem:
+        includeDefaultRoots: false
+    toolBash: false
+    toolJobs: false
+    goals: false
+- id: subagent
+  name: '@deepseek-ai/dsh-subagent'
+- id: spawn
+  name: '@deepseek-ai/dsh-subagent-spawn-in-process'
+  config:
+    providerName: spawn
+    workBudget:
+      maxTokens: 600000
+      maxSteps: !!js 'process.env.DSH_PUBLISHER_SCENARIO === "budget" ? 1 : 40'
+      maxElapsedMs: 600000
+      maxRepeatedToolFailures: 3
+- id: browser
+  name: '@deepseek-ai/dsh-browser'
+- id: browser-playwright
+  name: '@deepseek-ai/dsh-browser-playwright'
+  config:
+    userDataDir: ./.publisher-browser-profile
+    headless: true
+    channel: chrome
+    defaultTimeoutMs: 5000
+    navigationTimeoutMs: 10000
+    maxOpenPages: 3
+- id: tool-browser
+  name: '@deepseek-ai/dsh-tool-browser'
+  config:
+    maxOutputChars: 5000
+- id: backlinks
+  name: '@deepseek-ai/dsh-backlinks'
+- id: publisher-fixture
+  name: './tests/fixtures/publisher-fixture.ts'
+- id: tool-backlinks
+  name: '@deepseek-ai/dsh-tool-backlinks'
+  config:
+    publisher:
+      provider: spawn
+      concurrency: 3
+      maxTokens: 2048
+      persona: 'Publish only the assigned fixture item; the runtime binds its page and verifies its result.'

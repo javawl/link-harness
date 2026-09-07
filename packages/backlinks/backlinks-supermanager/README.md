@@ -18,6 +18,8 @@ Service Provider for the backlinks batch work-source seam: a Bearer-token HTTP c
 | `token` | `SUPERMANAGER_TOKEN` env | Bearer agent token from the backend's Agent 接口 settings page |
 | `requestTimeoutMs` | `15000` | Per-request timeout |
 
+Batch detail resolves configured anchor destinations against `website.siteUrl` and returns absolute http(s) URLs. When the configured anchor list is empty, the provider uses the saved website `name` as anchor text and `siteUrl` as the target, matching `/websites/<websiteId>/edit`. The default has no backend anchor id and does not change website records. Explicit anchors take precedence; empty explicit fields or invalid/non-http(s) targets reject with `BACKLINKS_API_ERROR`. Without a usable website name and URL or an explicit anchor, the list stays empty for preflight to stop before claiming work. Saved descriptions, images and other submission-pack fields pass through unchanged.
+
 ## Model Experience
 
 Indirectly, through `dsh-tool-backlinks`; this provider contributes no prompt or schema of its own.

@@ -18,7 +18,7 @@ One rule — an already-published source is skipped, never re-submitted — carr
 
 ## Alternatives considered
 
-- **Filter claimed items in the provider or the tool's `batch_claim` path** — claimable items are exactly `pending`/`failed`, and the backend clears the executed-record link on both paths back to executability, so the claim payload carries no already-published signal to filter on; executed items are already rejected by the backend claim.
+- **Filter only the claim response** — claimable items are exactly `pending`/`failed`, and the backend clears the executed-record link on both paths back to executability, so the claim payload carries no already-published signal to filter on; executed items are already rejected by the backend claim.
 - **Query supermanager publish records per item before publishing** — needs a new `/api/agent/*` endpoint in the backend, outside this repo; the batch detail already exposes every item's record, and the on-site link check covers records the agent API cannot see.
 - **Rely on the on-site check alone** — record checks stop a duplicate before the browser opens the site (cheaper, no site contact); the on-site check catches backend-invisible duplicates. Both are kept; they are complementary.
 
@@ -26,4 +26,4 @@ One rule — an already-published source is skipped, never re-submitted — carr
 
 - Re-runs are idempotent per source and website: an already-published source costs one `batch_get` inspection, not a second site submission, and the skip reason lands in the batch page.
 - A `submitted` record whose site never lists the link is not auto-resubmitted. The operator marks the record `recorded`/`failed` in supermanager — which reopens the linked item — and the next run publishes again. Honesty over volume; the human owns the retry decision the agent cannot verify.
-- The guard is prompt-and-skill guidance, not a runtime gate: the prompt sentences are pinned by `packages/backlinks/tool-backlinks/tests/integration.spec.ts`, so silent removal fails a test, but a model ignoring guidance can still submit; the backend lease and claim rules remain the hard bounds.
+- On-site detection remains prompt-and-skill guidance. The [request budget decision](../../implemented/bug-fix/2026-09-05-backlinks-request-budgets.md) adds tool-level filtering from fresh batch detail and excludes previously claimed sources. These checks cannot detect links absent from backend records; browser verification remains necessary.

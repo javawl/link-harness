@@ -45,6 +45,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/attachment/attachment': { kind: 'indirect', reason: 'The storage seam delegates model request rendering to provider adapters.' },
   'packages/browser/browser': { kind: 'indirect', reason: 'The browser seam exposes no prompt or schema; dsh-tool-browser owns every model-facing registration.' },
   'packages/backlinks/backlinks': { kind: 'indirect', reason: 'The backlinks seam exposes no prompt or schema; dsh-tool-backlinks owns every model-facing registration.' },
+  'packages/backlinks/console': { kind: 'none', reason: 'The read-only console supplies UI batch data and registers no model context.' },
   'packages/backlinks/backlinks-supermanager': { kind: 'indirect', reason: 'The HTTP backend implements the seam; dsh-tool-backlinks owns every model-facing registration.' },
   'packages/backlinks/backlinks-cloud-mail': { kind: 'indirect', reason: 'The mailbox backend implements the seam; dsh-tool-backlinks owns every model-facing registration.' },
   'packages/browser/browser-playwright': { kind: 'indirect', reason: 'The Playwright backend implements the seam; dsh-tool-browser owns every model-facing registration.' },

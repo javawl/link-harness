@@ -1,0 +1,6 @@
+- id: publisher-composition
+  name: '@deepseek-ai/cordis-plugin-include'
+  config:
+    path: ./publisher.cordis.snapshot.yml
+- id: sdk-jsonrpc-server
+  name: '@deepseek-ai/dsh-sdk-jsonrpc-server'

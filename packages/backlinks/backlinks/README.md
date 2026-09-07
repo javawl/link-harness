@@ -22,6 +22,8 @@ Service Definition for the backlinks capability seam (`ctx.backlinks`): two prov
 | `addBadge` | Reciprocal footer badge |
 | `createMailbox` / `pollMail` | Verification address creation and bounded mail wait |
 
+`BacklinkWebsiteAnchor` carries anchor text and an absolute http(s) destination. Its optional `id` identifies an explicitly configured backend anchor; a provider-derived website default omits it.
+
 ## Selection
 
 Configured id must be registered and `available()`; otherwise exactly one usable provider per registry. `$DSH_BACKLINKS_BATCH_SOURCE` / `$DSH_BACKLINKS_MAILBOX` equal the config fields.

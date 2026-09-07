@@ -22,6 +22,8 @@
 | `addBadge` | 互惠 footer 徽标 |
 | `createMailbox` / `pollMail` | 验证邮箱创建与有界邮件等待 |
 
+`BacklinkWebsiteAnchor` 提供锚文本与 HTTP(S) 绝对目标地址。可选的 `id` 标识后台显式配置的锚点；由网站资料提供的默认锚点不含该字段。
+
 ## 选择
 
 配置的 id 必须已注册且 `available()`；未配置时每个注册表要求恰好一个可用提供方。`$DSH_BACKLINKS_BATCH_SOURCE` / `$DSH_BACKLINKS_MAILBOX` 等价于配置字段。

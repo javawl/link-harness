@@ -1,4 +1,4 @@
-# Agent Note: backlinks discipline delivery — the subagent prompt is the only channel executors read
+# Agent Note: Publishing discipline must reach each executor
 
 Status: implemented
 
@@ -10,12 +10,9 @@ Batch 310 exposed a delivery failure, not a guidance failure. The main session l
 
 ## Decision
 
-Discipline rides the channel executors actually receive ([`SKILL.md`](../../../../examples/backlink-agent/skills/backlink-publish/SKILL.md)):
+Required publishing discipline is installed as the child persona from the [deployment configuration](../../../../examples/backlink-agent/cordis.yml). The parent [skill](../../../../examples/backlink-agent/skills/backlink-publish/SKILL.md) coordinates batch selection; it does not copy rules into per-item prompts. Children receive the probe sequence, link-format rules, href verification and mailbox registration instructions before their first model request. Playbooks remain extended references, never the sole delivery path for a required rule.
 
-1. The step-4b subagent prompt template carries the four hard rules inline — the probe sequence with the fixed skip wording, link-carrying by box type (Website field / contenteditable editor's link button / plain-text `<a>` direct-write / BBCode), verification plus duplicate detection by `role:link`, and self-registration through `mailbox_create` (both `localPart` and `domain`=screwdom.org) before any login requirement is called manual. A login wall with an email sign-up form is a normal flow, not a manual event; only human-verification walls (reCAPTCHA), unavailable social OAuth, or rejected registrations park as `manual_required`. The template states the reason: children do not load skill files.
-2. The per-item loop itself inlines the same condensed rules (recon step 3, fill step 6, verify step 7); playbooks remain extended reference and never the only home of a load-bearing rule.
-3. Link-carrying by box type replaces "direct-write HTML by default": a contenteditable editor or a toolbar means typed `<a>` markup renders as literal text — the anchor must go in through the toolbar link button. True plain-text boxes take `<a>` direct-write. The Wix precedent table splits by surface (discussion-post composer accepts `<a>`; the blog comment box requires the link button), with pullcommunityoutreach as the counter-evidence and v7cztusuh's rendered link on the same site as the positive one.
-4. Verification and duplicate detection count only a clickable link (`role:link` with the anchor text or pointing at the target URL); a bare URL string — including escaped `<a>` text — proves nothing. An executor's own escaped comment therefore does not freeze the item as published. evidence.md carries the same standard.
+A login wall offering email signup is a registration flow. Only human-verification walls, unavailable social OAuth or rejected registration require manual handling. Rich text requires the editor's link control; escaped anchor markup and bare URL text do not prove publication. The publisher verifies actual hrefs and quoted receipts through the [execution and budget mechanism](2026-09-05-backlinks-request-budgets.md).
 
 ## Alternatives considered
 
@@ -25,7 +22,4 @@ Discipline rides the channel executors actually receive ([`SKILL.md`](../../../.
 
 ## Consequences
 
-- Every executor now receives the probe, link-carrying, and verification rules verbatim, whatever it chooses to read afterwards; the fixed skip wording makes lazy-load-class skips aggregatable.
-- The template grew by the four-rule block — the one prompt cost of guaranteed delivery.
-- An escaped comment no longer masquerades as success or as an existing backlink; it writes back `failed + manual_required` and leaves the item recoverable.
-- Delivery is still prompt-borne: a model ignoring the inline rules can misbehave, and the playbook corpus stays unpinned by tests. Resetting batch 310's mis-skipped items and re-running is the live check.
+Every executor receives fixed discipline independently of voluntary file reads. The parent carries batch selection only, while child data follows a stable persona and tool schema prefix. Escaped comments do not establish a verified backlink. Purpose declarations and prose still depend on model judgment; href and receipt presence checks do not prove the site's approval semantics. The [real-browser scenario](../../../../examples/backlink-agent/tests/publisher.snapshot.ts) checks instruction delivery and the executable verification path without claiming live-site success.

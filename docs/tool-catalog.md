@@ -42,7 +42,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
 | `@deepseek-ai/dsh-tool-browser` | `browser` | `ctx.tools`, `ctx.browser`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | browser keeps provider selection and the shared persistent session behind ctx.browser so model-visible schemas stay stable across backend swaps. |
-| `@deepseek-ai/dsh-tool-backlinks` | `backlinks` | `ctx.tools`, `ctx.backlinks`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | backlinks keeps batch-source and mailbox selection behind ctx.backlinks so model-visible schemas stay stable across backend swaps. |
+| `@deepseek-ai/dsh-tool-backlinks` | `backlink_publish`, `backlinks` | `ctx.tools`, `ctx.backlinks`, `ctx.systemPrompt`, `ctx.browser (publisher)`, `ctx.agents (publisher)`, `ctx.subagents (publisher)` | `tool/call`, `tool/result` | - | The catalog enables the optional publisher with concurrency 3 and a non-executing provider to include backlink_publish. Omitting publisher exposes only the low-level backlinks tool. The backlink example supplies fixed child discipline and request budgets; runtime scheduling binds each item to its page and reconciles results before lease release. |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -2236,7 +2236,7 @@ Drive one shared persistent real-browser session: navigate, read page text, clic
   "properties": {
     "action": {
       "type": "string",
-      "description": "One of navigate, snapshot, click, fill, select, press, upload, screenshot, waitFor, closePage, bringToFront."
+      "description": "One of navigate, snapshot, click, fill, select, press, upload, screenshot, waitFor, closePage, bringToFront, newPage."
     },
     "page": {
       "type": "string",
@@ -2252,11 +2252,37 @@ Drive one shared persistent real-browser session: navigate, read page text, clic
     },
     "format": {
       "type": "string",
-      "description": "snapshot capture shape: text (visible text) or aria (accessibility tree with roles and names)."
+      "description": "snapshot: visible text, accessibility tree, form fields (passwords omitted), or visible links with resolved hrefs. All accept the same selector grammar.",
+      "enum": [
+        "text",
+        "aria",
+        "form",
+        "links"
+      ]
     },
     "value": {
       "type": "string",
       "description": "Value for fill; option value for select."
+    },
+    "fields": {
+      "type": "array",
+      "description": "fill only: ordered text fields, instead of selector/value. Values are verbatim; an empty string clears a field. No submission is performed; earlier fills remain if a later one fails.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "selector": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector",
+          "value"
+        ]
+      }
     },
     "key": {
       "type": "string",
@@ -2292,9 +2318,56 @@ browser keeps provider selection and the shared persistent session behind ctx.br
 
 ## `@deepseek-ai/dsh-tool-backlinks`
 
+### `backlink_publish`
+
+Publish the user-confirmed batch scope using up to 3 rolling item workers, one per target host. The runtime claims and renews one lease, binds pages, verifies results, and releases the lease. This foreground call waits for completion; do not claim first or start separate subagents. Model, checkpoint or lease failures halt new starts; per-item budget stops reconcile the item and continue the queue. Resolve stoppedReason and attempted items still pending in the backend before continuing or completing the goal. No live or pending-review result is automatically resubmitted.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "batchId": {
+      "type": "number",
+      "description": "User-selected publish batch."
+    },
+    "scope": {
+      "type": "string",
+      "description": "The confirmed work selection.",
+      "enum": [
+        "all",
+        "pending",
+        "retryable"
+      ]
+    },
+    "mode": {
+      "type": "string",
+      "description": "smart matches known playbooks; all attempts unknown site types too.",
+      "enum": [
+        "smart",
+        "all"
+      ]
+    },
+    "itemIds": {
+      "type": "array",
+      "description": "The exact user-selected subset, when scope is manually selected.",
+      "items": {
+        "type": "number"
+      }
+    }
+  },
+  "required": [
+    "batchId",
+    "scope",
+    "mode"
+  ]
+}
+```
+
+Source: [`packages/backlinks/tool-backlinks/src/publisher.ts`](../packages/backlinks/tool-backlinks/src/publisher.ts)
+
 ### `backlinks`
 
-Run the publish-batch workflow: list/detail/claim batches, keep the lease alive, report per-item results, create verification mailboxes, wait for verification mail, and add reciprocal badges.
+Run the publish-batch workflow: list/detail/claim batches, report per-item results, create verification mailboxes, wait for verification mail, and add reciprocal badges. Claimed leases renew automatically; do not call lease_heartbeat while publishing.
 
 ```json
 {
@@ -2308,9 +2381,31 @@ Run the publish-batch workflow: list/detail/claim batches, keep the lease alive,
       "type": "number",
       "description": "Batch id for batch_get / batch_claim."
     },
+    "view": {
+      "type": "string",
+      "description": "batch_get view: summary (default), a small items page, or explicitly requested full detail.",
+      "enum": [
+        "summary",
+        "items",
+        "all"
+      ]
+    },
+    "scope": {
+      "type": "string",
+      "description": "batch_get / batch_claim work selection: all eligible work (default), only pending items, or only retryable failures. Keep the user-confirmed scope across pages.",
+      "enum": [
+        "all",
+        "pending",
+        "retryable"
+      ]
+    },
+    "afterItemId": {
+      "type": "number",
+      "description": "Continue a selected items page after this id; use nextAfterItemId from the previous view."
+    },
     "itemIds": {
       "type": "array",
-      "description": "Optional explicit plan-item subset for batch_claim; omitted claims pending + retryable.",
+      "description": "Optional explicit subset for batch_claim or batch_get view=items (at most 6); omitted selects a small page within scope.",
       "items": {
         "type": "number"
       }
@@ -2413,6 +2508,6 @@ Run the publish-batch workflow: list/detail/claim batches, keep the lease alive,
 }
 ```
 
-Source: [`packages/backlinks/tool-backlinks/src/index.ts`](../packages/backlinks/tool-backlinks/src/index.ts)
+Source: [`packages/backlinks/tool-backlinks/src/backlinks.ts`](../packages/backlinks/tool-backlinks/src/backlinks.ts)
 
-backlinks keeps batch-source and mailbox selection behind ctx.backlinks so model-visible schemas stay stable across backend swaps.
+The catalog enables the optional publisher with concurrency 3 and a non-executing provider to include backlink_publish. Omitting publisher exposes only the low-level backlinks tool. The backlink example supplies fixed child discipline and request budgets; runtime scheduling binds each item to its page and reconciles results before lease release.

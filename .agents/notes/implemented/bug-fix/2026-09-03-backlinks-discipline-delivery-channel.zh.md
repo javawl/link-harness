@@ -1,4 +1,4 @@
-# Agent Note: backlinks discipline delivery — the subagent prompt is the only channel executors read
+# Agent Note: 发布纪律必须传递给每个执行者
 
 Status: implemented
 
@@ -10,12 +10,9 @@ Status: implemented
 
 ## Decision
 
-纪律必须骑在执行者真正收到的通道上（[`SKILL.md`](../../../../examples/backlink-agent/skills/backlink-publish/SKILL.md)）：
+必需的发布纪律由[部署配置](../../../../examples/backlink-agent/cordis.yml)作为子任务 persona 安装。父任务[技能](../../../../examples/backlink-agent/skills/backlink-publish/SKILL.md)负责选择批次，不把规则复制进逐条提示词。子任务在首次模型请求前收到探测顺序、链接格式、href 核验及邮箱注册指令。剧本保留为扩展参考，不是必需规则的唯一传递途径。
 
-1. 第 4b 步子任务提示词模板内联四段硬纪律——探测序列与固定跳过措辞、按框型的带链方式（Website 字段 / contenteditable 编辑器的链接按钮 / 纯文本框 `<a>` 直写 / BBCode）、以 `role:link` 核验与查重、以及"先把登录要求当注册流程处理"的自助注册（`mailbox_create` 必须带 `localPart` 与 `domain`=screwdom.org 两个参数）。带邮箱注册表单的登录墙是正常流程而不是人工事件；只有人机验证墙（reCAPTCHA）、不可用的社交 OAuth 或注册被拒才挂起 `manual_required`。模板里写明原因：子任务不加载技能文件。
-2. 单条目循环本体同步内联浓缩版（勘察第 3 步、填写第 6 步、核验第 7 步）；playbook 降级为扩展参考，任何承重规则不得只住在 playbook 里。
-3. "按框型选输入方式"取代"默认直写 HTML"：contenteditable 编辑器或带工具栏的框，敲进去的 `<a>` 标记会按字面渲染——锚文本必须经工具栏链接按钮进入。真纯文本框才 `<a>` 直写。Wix 先例表按面拆开（群组讨论帖 composer 接受 `<a>`；博客评论框必须用链接按钮），pullcommunityoutreach 是反证，同站 v7cztusuh 的可点链接是正证。
-4. 核验与查重只认可点链接（`role:link` 且名称含锚文本或指向 targetUrl）；裸 URL 字符串——包括被转义的 `<a>` 文本——证明不了任何事。执行者自己被转义的评论因此不会把条目冻结成"已发布"。evidence.md 同口径。
+提供邮箱注册的登录墙属于注册流程。只有人机验证、无法使用的社交 OAuth 或注册被拒才需要人工处理。富文本必须使用编辑器的链接控件；转义锚标签和裸 URL 文本都不能证明发布。publisher 通过[执行与预算机制](2026-09-05-backlinks-request-budgets.zh.md)核验真实 href 和回执原文。
 
 ## Alternatives considered
 
@@ -25,7 +22,4 @@ Status: implemented
 
 ## Consequences
 
-- 每个执行者现在逐字收到探测、带链、核验三段规则，无论它之后选择读什么；固定跳过措辞让懒加载类跳过可聚合统计。
-- 模板长出四段规则块——这是保证送达的唯一提示词代价。
-- 被转义的评论不再冒充成功或既有外链；它回写 `failed + manual_required`，条目保持可补救。
-- 投递仍由提示词承载：无视内联规则的模型仍可能出错，playbook 语料也仍无测试固定。重置批次 310 误跳条目后重跑是实测检验。
+每个执行者都收到固定纪律，不依赖自愿读取文件。父任务只携带批次选择，子任务资料位于稳定的 persona 与工具 schema 前缀之后。转义评论不能建立已核验外链。用途声明和文字规则仍依赖模型判断；href 与回执存在性检查不证明站点的审核语义。[真实浏览器场景](../../../../examples/backlink-agent/tests/publisher.snapshot.ts)检查指令传递及可执行核验路径，不声称真实站点发布成功。

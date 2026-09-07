@@ -44,9 +44,12 @@ afterEach(async () => {
 })
 
 describe('BacklinksConsoleRuntime', () => {
-  it('passes batch listing straight through the seam', async () => {
+  it('shows newer batch ids first even when their planned date is older', async () => {
     const { runtime, listBatches } = mountConsole()
-    await expect(runtime.batches()).resolves.toEqual([summary])
+    const batches = [summary, { ...summary, id: 400, plannedAt: '2026-08-01' }, { ...summary, id: 395 }]
+    listBatches.mockResolvedValueOnce(batches)
+    expect((await runtime.batches()).map(batch => batch.id)).toEqual([400, 395, 176])
+    expect(batches.map(batch => batch.id)).toEqual([176, 400, 395])
     expect(listBatches).toHaveBeenCalledTimes(1)
   })
 

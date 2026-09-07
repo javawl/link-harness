@@ -580,6 +580,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'backlinksConsole',
+    summary: 'The read-only Remote console over `ctx.backlinks`.',
+    description: 'The read-only Remote console over `ctx.backlinks`. Mounted as a Service plugin (`ctx.plugin(BacklinksConsoleRuntime)` via the composition row), it binds the `backlinksConsole` wire namespace for the gateway.',
+    methods: [
+      {
+        signature: '@Remote async batches(): Promise<readonly BacklinkBatchSummary[]>',
+        description: 'Every batch in the workspace with per-status counts and the executing flag.',
+        parameters: [],
+        returns: 'every batch summary in descending batch-id order.',
+      },
+      {
+        signature: '@Remote async batch(batchId: number): Promise<BacklinkBatchDetail>',
+        description: 'One batch\'s full detail: website, anchors, and items.',
+        parameters: [{ name: 'batchId', description: 'the batch to read.' }],
+        returns: 'batch, website, anchors, and items.',
+      },
+    ],
+  },
+  {
     key: 'browser',
     summary: 'The browser automation service.',
     description: 'The browser automation service. Registered as `ctx.browser` (one instance per context).\n\nSelection semantics (resolved at execution time, never order-dependent):\n\n- A configured id that is registered and `available()` → that provider.\n- A configured id not registered → `BROWSER_PROVIDER_CONFIGURED_MISSING`.\n- A configured id registered but unavailable → `BROWSER_PROVIDER_CONFIGURED_UNAVAILABLE`.\n- No id configured, exactly one registered usable provider → that provider.\n- No id configured, multiple usable providers → `BROWSER_PROVIDER_AMBIGUOUS`.\n- No id configured, no usable provider → `BROWSER_PROVIDER_UNAVAILABLE`.',
@@ -3114,7 +3133,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BacklinkBatchDetail',
-    declaration: 'export interface BacklinkBatchDetail {\n    readonly batch: BacklinkBatchSummary;\n    readonly website: {\n        readonly id: number;\n        readonly name: string;\n        readonly siteUrl: string;\n        readonly siteHost: string;\n    };\n    readonly anchors: readonly BacklinkWebsiteAnchor[];\n    readonly items: readonly BacklinkBatchItem[];\n}',
+    declaration: 'export interface BacklinkBatchDetail {\n    readonly batch: BacklinkBatchSummary;\n    readonly website: {\n        readonly id: number;\n        readonly name: string;\n        readonly siteUrl: string;\n        readonly siteHost: string;\n        readonly shortDescription?: string;\n        readonly longDescription?: string;\n        readonly logoUrl?: string;\n        readonly screenshotUrl?: string;\n        readonly keyFeatures?: string;\n        readonly pricingType?: string;\n    };\n    readonly anchors: readonly BacklinkWebsiteAnchor[];\n    readonly items: readonly BacklinkBatchItem[];\n}',
   },
   {
     name: 'BacklinkBatchItem',
@@ -3126,7 +3145,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BacklinkBatchSummary',
-    declaration: 'export interface BacklinkBatchSummary {\n    readonly id: number;\n    readonly name: string;\n    readonly websiteId: number;\n    readonly websiteName: string;\n    readonly websiteHost: string;\n    readonly plannedAt: string;\n    readonly counts: {\n        readonly pending: number;\n        readonly executed: number;\n        readonly skipped: number;\n        readonly failed: number;\n        readonly total: number;\n    };\n}',
+    declaration: 'export interface BacklinkBatchSummary {\n    readonly id: number;\n    readonly name: string;\n    readonly websiteId: number;\n    readonly websiteName: string;\n    readonly websiteHost: string;\n    readonly plannedAt: string;\n    readonly counts: {\n        readonly pending: number;\n        readonly executed: number;\n        readonly skipped: number;\n        readonly failed: number;\n        readonly total: number;\n    };\n    readonly executing: boolean;\n}',
   },
   {
     name: 'BacklinkHeartbeat',
@@ -3150,7 +3169,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BacklinkWebsiteAnchor',
-    declaration: 'export interface BacklinkWebsiteAnchor {\n    readonly id: number;\n    readonly anchorText: string;\n    readonly targetUrl: string;\n}',
+    declaration: 'export interface BacklinkWebsiteAnchor {\n    readonly id?: number;\n    readonly anchorText: string;\n    readonly targetUrl: string;\n}',
   },
   {
     name: 'BashEnvContributor',
@@ -3190,15 +3209,23 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserCommand',
-    declaration: 'export type BrowserCommand = BrowserNavigateCommand | BrowserSnapshotCommand | BrowserBringToFrontCommand | BrowserClickCommand | BrowserFillCommand | BrowserSelectCommand | BrowserPressCommand | BrowserUploadCommand | BrowserScreenshotCommand | BrowserWaitForCommand | BrowserClosePageCommand;',
+    declaration: 'export type BrowserCommand = BrowserNavigateCommand | BrowserNewPageCommand | BrowserSnapshotCommand | BrowserBringToFrontCommand | BrowserClickCommand | BrowserFillCommand | BrowserSelectCommand | BrowserPressCommand | BrowserUploadCommand | BrowserScreenshotCommand | BrowserWaitForCommand | BrowserClosePageCommand;',
   },
   {
     name: 'BrowserFillCommand',
-    declaration: 'export interface BrowserFillCommand extends BrowserPageAddress {\n    readonly kind: \'fill\';\n    readonly selector: string;\n    readonly value: string;\n}',
+    declaration: 'export type BrowserFillCommand = BrowserPageAddress & {\n    readonly kind: \'fill\';\n} & ((BrowserFillField & {\n    readonly fields?: never;\n}) | {\n    readonly fields: readonly BrowserFillField[];\n    readonly selector?: never;\n    readonly value?: never;\n});',
+  },
+  {
+    name: 'BrowserFillField',
+    declaration: 'export interface BrowserFillField {\n    readonly selector: string;\n    readonly value: string;\n}',
   },
   {
     name: 'BrowserNavigateCommand',
     declaration: 'export interface BrowserNavigateCommand extends BrowserPageAddress {\n    readonly kind: \'navigate\';\n    readonly url: string;\n    readonly waitUntil?: \'load\' | \'domcontentloaded\' | \'networkidle\';\n    readonly maxChars?: number;\n}',
+  },
+  {
+    name: 'BrowserNewPageCommand',
+    declaration: 'export interface BrowserNewPageCommand {\n    readonly kind: \'newPage\';\n    readonly page: string;\n}',
   },
   {
     name: 'BrowserPageAddress',
@@ -3234,7 +3261,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserSnapshotCommand',
-    declaration: 'export interface BrowserSnapshotCommand extends BrowserPageAddress {\n    readonly kind: \'snapshot\';\n    readonly selector?: string;\n    readonly format?: \'text\' | \'aria\';\n    readonly maxChars?: number;\n}',
+    declaration: 'export interface BrowserSnapshotCommand extends BrowserPageAddress {\n    readonly kind: \'snapshot\';\n    readonly selector?: string;\n    readonly format?: \'text\' | \'aria\' | \'form\' | \'links\';\n    readonly maxChars?: number;\n}',
   },
   {
     name: 'BrowserUploadCommand',
@@ -4186,7 +4213,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResolvedNormalRetryPolicy',
-    declaration: 'export interface ResolvedNormalRetryPolicy extends ResolvedRetryBackoff {\n    readonly mode: \'normal\';\n    readonly maxRetries: number;\n    readonly retryableCodes: readonly string[];\n}',
+    declaration: 'export interface ResolvedNormalRetryPolicy extends ResolvedRetryBackoff {\n    readonly mode: \'normal\';\n    readonly maxRetries: number;\n    readonly maxEmptyResponseRetries: number;\n    readonly retryableCodes: readonly string[];\n}',
   },
   {
     name: 'ResolvedRetryBackoff',
@@ -4766,7 +4793,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SubagentStopReasonMap',
-    declaration: 'export interface SubagentStopReasonMap {\n    completed: \'completed\';\n    aborted: \'aborted\';\n    error: \'error\';\n    \'max-tokens\': \'max-tokens\';\n    refusal: \'refusal\';\n}',
+    declaration: 'export interface SubagentStopReasonMap {\n    completed: \'completed\';\n    aborted: \'aborted\';\n    error: \'error\';\n    \'max-tokens\': \'max-tokens\';\n    \'budget-exhausted\': \'budget-exhausted\';\n    refusal: \'refusal\';\n}',
   },
   {
     name: 'SubprocessCollect',

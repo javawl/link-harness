@@ -72,7 +72,7 @@ function BatchRow(props: SidebarConsolePanelProps & { batch: BacklinkBatchSummar
       {detail !== undefined
         ? (
           <div className={css.items}>
-            {detail.items.map((item) => (
+            {detail.items.map(item => (
               <div key={item.id} className={css.itemRow}>
                 <span className={css.itemHost}>{item.sourceHost}</span>
                 <span className={item.status === 'failed' ? css.itemFailed : css.itemStatus}>{item.status}</span>
@@ -120,7 +120,7 @@ export function SidebarConsolePanel(props: SidebarConsolePanelProps) {
     : state.batches.filter(batch =>
       batch.websiteHost.toLowerCase().includes(needle)
       || String(batch.id).includes(needle)
-      || (batch.websiteName ?? '').toLowerCase().includes(needle))
+      || batch.websiteName.toLowerCase().includes(needle))
 
   return (
     <div className={css.panel}>
@@ -145,7 +145,7 @@ export function SidebarConsolePanel(props: SidebarConsolePanelProps) {
         ? <p className={css.note}>{t('empty')}</p>
         : null}
       <div className={css.list}>
-        {batches.map((batch) => <BatchRow key={batch.id} {...props} batch={batch} />)}
+        {batches.map(batch => <BatchRow key={batch.id} {...props} batch={batch} />)}
       </div>
     </div>
   )

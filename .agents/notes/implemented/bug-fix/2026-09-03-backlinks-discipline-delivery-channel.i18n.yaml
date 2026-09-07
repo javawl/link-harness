@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-03-backlinks-discipline-delivery-channel.md
-2026-09-03-backlinks-discipline-delivery-channel.md: cec78e18d28c2c09925c17e22c552cc52ace9dfe
-2026-09-03-backlinks-discipline-delivery-channel.zh.md: a2293b45054ca117a5b9d28631a416411b29d729
+2026-09-03-backlinks-discipline-delivery-channel.md: 3764ceb1183ddbb38b3c4017819e26df3497a56b
+2026-09-03-backlinks-discipline-delivery-channel.zh.md: 063a6e097e6988a49a90e96cbab5944e5f0a5556

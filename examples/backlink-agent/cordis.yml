@@ -37,6 +37,69 @@
           - id: gpt-5.6-terra
           - id: gpt-5.6-luna
 
+# The publisher owns native child scheduling; parent tools cannot start competing groups.
+- &backlink-disable-fork
+  id: tool-subagent-fork
+  disabled: true
+
+- &backlink-disable-spawn
+  id: tool-subagent
+  disabled: true
+
+- id: subagent-spawn-in-process
+  config:
+    providerName: spawn
+    workBudget:
+      maxTokens: 600000
+      maxSteps: 40
+      maxElapsedMs: 600000
+      maxRepeatedToolFailures: 3
+
+- &backlink-compaction
+  id: compaction-basic
+  config:
+    thresholdRatio: 0.2
+    retainTokens: 6000
+    maxTokens: 2048
+
+# Web sessions mount their preset after the host overlay has loaded.
+- id: agent-presets
+  config:
+    default: standard
+    overrides:
+      standard: &backlink-preset-overrides
+        - *backlink-disable-fork
+        - *backlink-disable-spawn
+        - *backlink-compaction
+        - id: persona
+          config:
+            text: &backlink-parent-persona |
+              You are backlink-agent, a backlink publishing operator powered by the {{model}} model.
+              Use backlink-publish for batch requests. Confirm the batch, scope and mode, establish the Goal,
+              then call backlink_publish once. The runtime owns claims, rolling workers, page cleanup and leases.
+              Use recorded backend results for summaries; submitted means pending review, not publicly live.
+              Resolve a stoppedReason or an attempted item without a saved outcome before continuing or completing the Goal.
+        - id: agent-instructions
+          disabled: true
+        - id: skill-filesystem
+          disabled: true
+        - id: tool-fs
+          disabled: true
+        - id: tool-fs-search
+          disabled: true
+        - id: tool-jobs
+          disabled: true
+        - id: tool-subagent-control
+          disabled: true
+        - id: tool-subagent-list-agents
+          disabled: true
+        - id: tool-workflow
+          disabled: true
+        - id: tool-ralph
+          disabled: true
+      code: *backlink-preset-overrides
+      cordis: *backlink-preset-overrides
+
 # ── new plugin rows ─────────────────────────────────────────────────────────
 
 - insert:
@@ -53,11 +116,7 @@
             model: grok-4.6
             cwd: !!js process.cwd()
         workspaceContext: false
-        persona: |
-          You are backlink-agent, an autonomous backlink publishing operator powered by the {{model}} model.
-          You run publish batches from the backlink management backend: pick a batch, drive the target
-          sites in the shared browser, verify by reading back public pages, and report every item honestly.
-          Any 发外链/发布批次/批次 request goes through the backlink-publish skill; follow it exactly.
+        persona: *backlink-parent-persona
         skills:
           filesystem:
             providerName: backlink-operator
@@ -75,9 +134,11 @@
         userDataDir: ./.backlink-browser-profile
         headless: false
         channel: chrome
-        # Fail fast on wrong-selector guesses; the agent retries with the
-        # next candidate instead of burning the full 20s per miss.
+        # Element and snapshot waits are shorter than navigation waits.
         defaultTimeoutMs: 8000
+        navigationTimeoutMs: 20000
+        navigationWaitUntil: domcontentloaded
+        maxOpenPages: 0
         # Silent run: render the headed window offscreen so publishing never
         # covers the operator's desktop. The agent calls bringToFront when a
         # human must step in (CAPTCHA, login).
@@ -89,11 +150,12 @@
           - --enable-automation
         launchArgs:
           - --disable-blink-features=AutomationControlled
+          - --restore-last-session
     - id: tool-browser
       name: '@deepseek-ai/dsh-tool-browser'
       config:
         timeoutMs: 180000
-        maxOutputChars: 60000
+        maxOutputChars: 12000
 
     # Read-only Remote face the Web publish console renders from.
     - id: backlinks-console
@@ -116,3 +178,54 @@
       name: '@deepseek-ai/dsh-tool-backlinks'
       config:
         timeoutMs: 300000
+        maxBatchItems: 3
+        maxBatchViewBytes: 16384
+        leaseHeartbeatMs: 60000
+        publisher:
+          provider: spawn
+          concurrency: 3
+          maxTokens: 2048
+          persona: |
+            Publish exactly the one assigned backlink item. The prompt supplies item, website, anchors,
+            mode, leaseId and page. The runtime owns claims, lease renewal, scheduling and final cleanup.
+            Use browser and backlinks; Bash is only for target-site HTTP checks and submission assets.
+            Never inspect Harness source, search the repository, create subagents, or load skill files.
+            Every browser command is bound to your reserved page. Omit page or use the assigned ref;
+            never open another page. On every click/press set submission=false for navigation/account work,
+            or submission=true for the one final publication. After that final action, verify without
+            further input. Never repeat a publication, including after a timeout or unknown result.
+            BROWSER_ACTION_UNCERTAIN requires failed + manual_required; preserve the page for a human.
+            Inspect published status before acting: submitted/live or an existing publishedUrl means done.
+            A visible anchor with the target href already on the site means skipped, never another submission.
+            Prefer submitUrl to sourceUrl. Inspect aria first, then a scoped snapshot format=form for
+            input attributes. Fill known fields together with fields:[{selector,value}]; inspect before submitting.
+            The website submission pack owns names, URLs and features; absent explicit anchors use its saved name and URL. Reuse descriptions and images when
+            supplied, fetch only missing assets. Choose an assigned active anchor; do not invent destinations.
+            In smart mode use directory, blog-comment, forum, article, game or tool-site playbooks; skip an
+            unrecognized type. In all mode try the generic registration/submission flow for unknown types too.
+            Before claiming no comment area, waitFor selector=":is(#comments,#respond,[id*='comment' i],iframe):visible >> nth=0"
+            with timeoutMs=3000. If absent, press End, inspect, open Load comments controls, enter shown
+            iframes with frame() selectors, and try URL#comments. Stop probing once an entry is found.
+            Only after those probes fail may you skip with 评论区延迟加载探测后仍不存在.
+            Prefer a Website field for the link. Rich text/contenteditable requires a toolbar-created link;
+            literal HTML there is escaped. Only plain-text HTML comment fields accept an anchor tag;
+            BBCode uses [url=targetUrl]anchorText[/url]. Use one link naturally within the comment.
+            Verify with snapshot format=links: a visible anchor must have the real target href. Bare URLs,
+            escaped HTML and matching link names alone do not establish a backlink. Escaped submissions
+            are failed + manual_required, never submitted again.
+            A login wall with email signup is a normal registration flow: mailbox_create needs localPart
+            and domain=screwdom.org, then mail_wait gets a verification code/link. Return to publish after
+            registration. CAPTCHA, rejected registration, or Google-only login without a seeded session
+            requires manual_required and bringToFront; never request credentials or bypass verification.
+            If a reciprocal badge is mandatory, badge_add uses the assigned websiteId. Trigger the configured
+            site refresh callback and confirm the badge in the public homepage before submitting.
+            Report item_result immediately with the assigned itemId and leaseId. live requires a declared final submission and publicUrl on the assigned source or submission host, excluding the promoted host, plus
+            anchorText, targetUrl, one-line evidence, and the assigned page at that public URL with a visible
+            matching href. submitted requires an exact visible acknowledgement in receipt plus anchorText,
+            targetUrl and evidence; it means pending review. Use verificationSelector to narrow a long page.
+            Unknown submission results require failed + manual_required. retryable applies only before a
+            final publication and without uncertain input. Paid-only, closed or ineligible sites are skipped.
+            After a saved result, do not enter input or navigate again. source_tags uses the assigned sourceId and observed string tags: 免徽章,
+            要徽章, 可复用, 有盾, 付费. A tag failure never undoes the saved result or justifies resubmission.
+            Preserve manual/unknown pages; the runtime closes conclusive pages after you stop.
+            Return only itemId, status, public URL if any, and one sentence of evidence.

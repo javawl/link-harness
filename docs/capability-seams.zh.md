@@ -186,6 +186,9 @@ flowchart LR
   pkg_backlinks_supermanager["backlinks-supermanager"]
   pkg_backlinks_cloud_mail["backlinks-cloud-mail"]
   pkg_tool_backlinks["tool-backlinks"]
+  pkg_backlinks_console["backlinks-console"]
+  svc_backlinksConsole["ctx.backlinksConsole<br/>Backlink batch console Remote"]
+  pkg_client_ui_backlinks_console["client-ui-backlinks-console"]
   pkg_spill["spill"]
   svc_spillStore["ctx.spillStore<br/>Spill storage seam"]
   pkg_spill_local["spill-local"]
@@ -226,6 +229,7 @@ flowchart LR
   pkg_authorization --> svc_authorization
   pkg_backlinks --> svc_backlinks
   pkg_backlinks_cloud_mail --> svc_backlinks
+  pkg_backlinks_console --> svc_backlinksConsole
   pkg_backlinks_supermanager --> svc_backlinks
   pkg_bash_local --> svc_shell
   pkg_bash_sandbox --> svc_shell
@@ -335,7 +339,9 @@ flowchart LR
   svc_attachments --> pkg_host_runtime
   svc_attachments --> pkg_llm_pi_ai
   svc_authorization --> pkg_llm_pi_ai
+  svc_backlinks --> pkg_backlinks_console
   svc_backlinks --> pkg_tool_backlinks
+  svc_backlinksConsole --> pkg_client_ui_backlinks_console
   svc_browser --> pkg_tool_browser
   svc_clientModules --> pkg_hmr
   svc_codeRuntime --> pkg_tools
@@ -494,7 +500,8 @@ flowchart LR
 | `ctx.jobs` | `seam` | [`jobs`](../packages/jobs/jobs) | [`jobs-local`](../packages/jobs/jobs-local) | [`tool-bash`](../packages/shell/tool-bash), [`tool-terminal`](../packages/terminal/tool-terminal), [`tool-subagent`](../packages/subagent/tool-subagent), [`tool-jobs`](../packages/jobs/tool-jobs) | - | 生产方（后台 bash、PTY 发送和 subagent 委派）登记正在运行的工作；tool-jobs 是面向模型的控制器，用于读取、列出和终止这些工作；jobs-local 是进程本地注册表。 |
 | `ctx.web` | `seam` | [`web`](../packages/web/web) | [`web-search-exa`](../packages/web/web-search-exa), [`web-search-perplexity`](../packages/web/web-search-perplexity), [`web-search-deepseek`](../packages/web/web-search-deepseek), [`web-fetch-http`](../packages/web/web-fetch-http) | [`tool-web`](../packages/web/tool-web) | - | 搜索和抓取提供方注册到同一个 ctx.web seam；tool-web 负责稳定的面向模型名称。 |
 | `ctx.browser` | `seam` | [`browser`](../packages/browser/browser) | [`browser-playwright`](../packages/browser/browser-playwright) | [`tool-browser`](../packages/browser/tool-browser) | - | 一个共享持久会话分发闭合联合命令；tool-browser 负责稳定的面向模型动词集。 |
-| `ctx.backlinks` | `seam` | [`backlinks`](../packages/backlinks/backlinks) | [`backlinks-supermanager`](../packages/backlinks/backlinks-supermanager), [`backlinks-cloud-mail`](../packages/backlinks/backlinks-cloud-mail) | [`tool-backlinks`](../packages/backlinks/tool-backlinks) | - | 批次工作源与邮箱注册到同一个 ctx.backlinks seam；tool-backlinks 负责稳定的模型工作流动词。 |
+| `ctx.backlinks` | `seam` | [`backlinks`](../packages/backlinks/backlinks) | [`backlinks-supermanager`](../packages/backlinks/backlinks-supermanager), [`backlinks-cloud-mail`](../packages/backlinks/backlinks-cloud-mail) | [`tool-backlinks`](../packages/backlinks/tool-backlinks), [`backlinks-console`](../packages/backlinks/console) | - | 批次工作源与邮箱注册到同一个 ctx.backlinks seam；tool-backlinks 负责稳定的模型工作流动词。 |
+| `ctx.backlinksConsole` | `core` | [`backlinks-console`](../packages/backlinks/console) | - | [`client-ui-backlinks-console`](../packages/client/ui-backlinks-console) | - | 只读 Remote 从 ctx.backlinks 向浏览器控制台提供批次摘要和网站详情。 |
 | `ctx.spillStore` | `seam` | [`spill`](../packages/spill/spill) | [`spill-local`](../packages/spill/spill-local) | [`spill-policy`](../packages/spill/spill-policy) | - | 后端保存过大的工具文本，并返回面向模型的定位信息和取回提示；spill-policy 是 tools/post-execute 消费方，负责决定何时 spill。 |
 | `ctx.directoryPicker` | `seam` | `directory-picker` | `directory-picker-native`, `directory-picker-browse` | `apiproxy` | - | 带判别标记的交互能力：原生后端在 Host 显示设备上打开一个操作系统选择器，浏览后端为应用内浏览器提供列表与创建原语；双端后端通过其浏览器侧填充 ui-workspace 目录流程的 slot（不通过协议发布）。 |
 | `ctx.webServer` | `core` | `webserver` | - | `connection`, `modules`, `hmr` | - | 普通的 node:http 载体：具名路由注册表、索引转换 tap，以及静态 dist 回退；Web 传输插件注册自己的路由。 |

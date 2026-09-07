@@ -7,7 +7,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { boot, healProfilesModuleFallback, loadOverlayPatches, loadProfile } from '@deepseek-ai/dsh-app-boot'
 import { provideCmdline } from '@deepseek-ai/dsh-cmdline'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import { assembleContextFor, type Agent } from '@deepseek-ai/dsh-agent'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
@@ -453,6 +453,51 @@ describe('the shipped Web composition', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
 
     expect(await readFile(path, 'utf8')).toBe(before)
+  })
+})
+
+describe('backlink deployment presets', () => {
+  it.each(['standard', 'code', 'cordis'])('creates and resumes %s sessions with publication-only context', async (presetId) => {
+    const home = await mkdtemp(join(tmpdir(), 'dsh-backlink-web-'))
+    const settingsFile = join(home, 'settings.yaml')
+    await writeFile(settingsFile, '{}\n')
+    const overlay = loadOverlayPatches('dsh-test', join(REPO_ROOT, 'examples/backlink-agent/cordis.yml'))
+    // Use the deployment's host delegation and preset settings with the shipped
+    // Web composition; this test does not connect to publishing sites.
+    const ids = new Set(['tool-subagent', 'tool-subagent-fork', 'subagent-spawn-in-process', 'compaction-basic', 'agent-presets'])
+    const patches = overlay.filter(patch => patch.id !== undefined && ids.has(patch.id)).map(patch => patch.id === 'agent-presets'
+      ? { ...patch, config: { ...patch.config as Record<string, unknown>, roots: [{ path: join(CONFIG_DIR, 'agent-presets'), trust: 'system' }], includeUserRoot: false } }
+      : patch)
+    const bounded = await bootWeb(settingsFile, [...patches, {
+      id: 'session-persistence-jsonl', config: { root: join(home, 'sessions') },
+    }])
+    try {
+      const sessionId = SessionId(`backlink-${presetId}`)
+      const created = await bounded.agents.create({
+        sessionId,
+        meta: { agentPreset: presetId },
+        setup: agentCtx => bounded.agentPresets.mount(agentCtx, presetId).then(() => undefined),
+      })
+      expect(toolNames(bounded, created.agent)).not.toContain('subagent')
+      expect(toolNames(bounded, created.agent)).not.toContain('subagent_fork')
+      expect(toolNames(bounded, created.agent)).not.toContain('read')
+      const prompt = await bounded.systemPrompt.assemble(assembleContextFor(created.agent))
+      expect(JSON.stringify(prompt)).toContain('backlink publishing operator')
+      expect(JSON.stringify(prompt)).not.toContain('You are a coding agent')
+      created.agent.session.append('agent-preset/selected', { agentPreset: presetId })
+      await created.dispose()
+
+      const resumed = await bounded.agents.resume({
+        resumeSessionId: sessionId,
+        setup: agentCtx => bounded.agentPresets.mount(agentCtx, presetId).then(() => undefined),
+      })
+      expect(resolveSessionPreset(resumed.agent.session)).toBe(presetId)
+      expect(toolNames(bounded, resumed.agent)).not.toContain('subagent')
+      expect(toolNames(bounded, resumed.agent)).not.toContain('read')
+      await resumed.dispose()
+    } finally {
+      await bounded.fiber.dispose()
+    }
   })
 })
 

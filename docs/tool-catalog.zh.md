@@ -46,7 +46,7 @@
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
 | `@deepseek-ai/dsh-tool-browser` | `browser` | `ctx.tools`、`ctx.browser`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使模型可见 schema 在更换后端时保持稳定。 |
-| `@deepseek-ai/dsh-tool-backlinks` | `backlinks` | `ctx.tools`、`ctx.backlinks`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | backlinks 将批次源与邮箱选择置于 ctx.backlinks 之后，使模型可见 schema 在更换后端时保持稳定。 |
+| `@deepseek-ai/dsh-tool-backlinks` | `backlink_publish`, `backlinks` | `ctx.tools`, `ctx.backlinks`, `ctx.systemPrompt`, `ctx.browser (publisher)`, `ctx.agents (publisher)`, `ctx.subagents (publisher)` | `tool/call`, `tool/result` | - | 目录以并发数 3 和不执行任务的提供方启用可选 publisher，以纳入 backlink_publish。省略 publisher 时仅提供低层 backlinks 工具。外链示例提供固定子任务纪律与请求预算；运行时调度将条目绑定到专属页面，并在释放租约前核对结果。 |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -2244,7 +2244,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
   "properties": {
     "action": {
       "type": "string",
-      "description": "One of navigate, snapshot, click, fill, select, press, upload, screenshot, waitFor, closePage, bringToFront."
+      "description": "One of navigate, snapshot, click, fill, select, press, upload, screenshot, waitFor, closePage, bringToFront, newPage."
     },
     "page": {
       "type": "string",
@@ -2260,11 +2260,37 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     },
     "format": {
       "type": "string",
-      "description": "snapshot capture shape: text (visible text) or aria (accessibility tree with roles and names)."
+      "description": "snapshot: visible text, accessibility tree, form fields (passwords omitted), or visible links with resolved hrefs. All accept the same selector grammar.",
+      "enum": [
+        "text",
+        "aria",
+        "form",
+        "links"
+      ]
     },
     "value": {
       "type": "string",
       "description": "Value for fill; option value for select."
+    },
+    "fields": {
+      "type": "array",
+      "description": "fill only: ordered text fields, instead of selector/value. Values are verbatim; an empty string clears a field. No submission is performed; earlier fills remain if a later one fails.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "selector": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector",
+          "value"
+        ]
+      }
     },
     "key": {
       "type": "string",
@@ -2300,9 +2326,56 @@ browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使�
 
 ## `@deepseek-ai/dsh-tool-backlinks`
 
+### `backlink_publish`
+
+按用户确认的批次范围发布，最多三个条目任务滚动执行，同一目标主机串行。运行时认领并续期一个租约、绑定页面、核验结果并释放租约。该前台调用等待完成；不要提前认领或另开子任务。子任务异常终止会停止新派发。继续执行或完成目标前，须解决 stoppedReason，并核对已尝试但后台仍待处理的条目。已上线或待审核结果不会自动重新提交。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "batchId": {
+      "type": "number",
+      "description": "User-selected publish batch."
+    },
+    "scope": {
+      "type": "string",
+      "description": "The confirmed work selection.",
+      "enum": [
+        "all",
+        "pending",
+        "retryable"
+      ]
+    },
+    "mode": {
+      "type": "string",
+      "description": "smart matches known playbooks; all attempts unknown site types too.",
+      "enum": [
+        "smart",
+        "all"
+      ]
+    },
+    "itemIds": {
+      "type": "array",
+      "description": "The exact user-selected subset, when scope is manually selected.",
+      "items": {
+        "type": "number"
+      }
+    }
+  },
+  "required": [
+    "batchId",
+    "scope",
+    "mode"
+  ]
+}
+```
+
+来源： [`packages/backlinks/tool-backlinks/src/publisher.ts`](../packages/backlinks/tool-backlinks/src/publisher.ts)
+
 ### `backlinks`
 
-运行批次发布工作流：列出/查看/认领批次、维持租约心跳、逐条回写结果、创建验证邮箱、等待验证邮件、添加互惠徽标。
+运行批次发布工作流：列出/查看/认领批次、逐条回写结果、创建验证邮箱、等待验证邮件、添加互惠徽标。已认领租约自动续期；发布时不要调用 lease_heartbeat。
 
 ```json
 {
@@ -2316,9 +2389,31 @@ browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使�
       "type": "number",
       "description": "Batch id for batch_get / batch_claim."
     },
+    "view": {
+      "type": "string",
+      "description": "batch_get view: summary (default), a small items page, or explicitly requested full detail.",
+      "enum": [
+        "summary",
+        "items",
+        "all"
+      ]
+    },
+    "scope": {
+      "type": "string",
+      "description": "batch_get / batch_claim work selection: all eligible work (default), only pending items, or only retryable failures. Keep the user-confirmed scope across pages.",
+      "enum": [
+        "all",
+        "pending",
+        "retryable"
+      ]
+    },
+    "afterItemId": {
+      "type": "number",
+      "description": "Continue a selected items page after this id; use nextAfterItemId from the previous view."
+    },
     "itemIds": {
       "type": "array",
-      "description": "Optional explicit plan-item subset for batch_claim; omitted claims pending + retryable.",
+      "description": "Optional explicit subset for batch_claim or batch_get view=items (at most 6); omitted selects a small page within scope.",
       "items": {
         "type": "number"
       }
@@ -2421,6 +2516,6 @@ browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使�
 }
 ```
 
-Source: [`packages/backlinks/tool-backlinks/src/index.ts`](../packages/backlinks/tool-backlinks/src/index.ts)
+来源： [`packages/backlinks/tool-backlinks/src/backlinks.ts`](../packages/backlinks/tool-backlinks/src/backlinks.ts)
 
-backlinks 将批次源与邮箱选择置于 ctx.backlinks 之后，使模型可见 schema 在更换后端时保持稳定。
+目录以并发数 3 和不执行任务的提供方启用可选 publisher，以纳入 backlink_publish。省略 publisher 时仅提供低层 backlinks 工具。外链示例提供固定子任务纪律与请求预算；运行时调度将条目绑定到专属页面，并在释放租约前核对结果。

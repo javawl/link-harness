@@ -31,6 +31,18 @@
     },
     {
       "path": "../../runtime-diagnostics/invariants"
+    },
+    {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../browser/browser"
+    },
+    {
+      "path": "../../subagent/subagent"
     }
   ]
 }
