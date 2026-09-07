@@ -57,6 +57,7 @@ const tokenUsageStateSchema = z.object({
     turn: z.number().int().nonnegative(),
     step: z.number().int().nonnegative(),
     buckets: projectionSchema,
+    finished: z.boolean(),
   }).nullable(),
 }).strict()
 
@@ -110,18 +111,23 @@ type ContextPressureState = z.infer<typeof contextPressureStateSchema>
  * Token-meter's session projection unit.
  *
  * Usage chunks provide an early sample that survives a later request failure;
- * an assistant message provides the final sample for the same turn/step. A
- * repeated sample replaces that step's earlier value instead of double
- * counting it. The single `last` slot relies on the session-log invariant
- * that usage reports for one turn/step are adjacent: once a later step begins,
- * a legal log never reports usage for an earlier step again.
+ * an assistant message provides the final sample for that request. A finish
+ * chunk closes the attempt; the next stream counts separately even when a
+ * retry shares the same turn/step. Repeated samples within one attempt replace
+ * its earlier value. Provider response ids are not used for deduplication.
  */
 export const tokenUsageProjectionDefinition = {
   key: 'tokenUsage',
-  stateVersion: 1,
+  stateVersion: 2,
   stateSchema: tokenUsageStateSchema,
   init: () => ({ totals: zeroBuckets(), last: null }),
   apply: (state, event) => {
+    if (event.type === 'assistant/chunk') {
+      if (state.last?.finished) state = { ...state, last: null }
+      if (event.data.chunk.type === 'finish' && state.last !== null) {
+        return { ...state, last: { ...state.last, finished: true } }
+      }
+    }
     let turn: number
     let step: number
     let usage: TokenUsage
@@ -140,11 +146,12 @@ export const tokenUsageProjectionDefinition = {
       && state.last.step === step
       ? state.last.buckets
       : undefined
-    if (previous !== undefined && bucketsEqual(previous, buckets)) return state
+    const finished = state.last?.finished ?? false
+    if (previous !== undefined && bucketsEqual(previous, buckets) && state.last?.finished === finished) return state
 
     return {
-      totals: addReplacing(state.totals, previous, buckets),
-      last: { turn, step, buckets },
+      totals: previous !== undefined && bucketsEqual(previous, buckets) ? state.totals : addReplacing(state.totals, previous, buckets),
+      last: { turn, step, buckets, finished },
     }
   },
   wire: { viewSchema: projectionSchema, view: state => state.totals },

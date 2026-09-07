@@ -13,6 +13,7 @@ describe('provider retry policy', () => {
     expect(policy).toEqual({
       mode: 'normal',
       maxRetries: 5,
+      maxEmptyResponseRetries: 1,
       retryableCodes: ['EMPTY_RESPONSE', 'RATE_LIMIT', 'SERVER', 'TIMEOUT', 'TRANSPORT'],
       initialDelayMs: 500,
       maxDelayMs: 10_000,
@@ -42,6 +43,7 @@ describe('provider retry policy', () => {
     expect(policy).toEqual({
       mode: 'normal',
       maxRetries: 4,
+      maxEmptyResponseRetries: 1,
       retryableCodes: ['BUSY'],
       initialDelayMs: 25,
       maxDelayMs: 100,
@@ -63,6 +65,7 @@ describe('provider retry policy', () => {
     const layered = {
       mode: 'always',
       maxRetries: 5,
+      maxEmptyResponseRetries: 1,
       retryableCodes: ['SERVER'],
     } as unknown as RetryPolicyConfig
 
@@ -75,6 +78,8 @@ describe('provider retry policy', () => {
   })
 
   it.each([
+    [{ mode: 'normal', maxEmptyResponseRetries: -1 }, /maxEmptyResponseRetries/],
+    [{ mode: 'normal', maxEmptyResponseRetries: 0.5 }, /maxEmptyResponseRetries/],
     [{ mode: 'normal', maxRetries: -1 }, /maxRetries/],
     [{ mode: 'normal', maxRetries: 1.5 }, /maxRetries/],
     [{ mode: 'normal', maxRetries: Number.MAX_SAFE_INTEGER + 1 }, /maxRetries/],

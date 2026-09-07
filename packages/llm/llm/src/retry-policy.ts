@@ -39,6 +39,8 @@ export interface NormalRetryPolicyConfig {
   mode: 'normal'
   /** Maximum eligible retries after the first request (default 5). */
   maxRetries?: number
+  /** Maximum EMPTY_RESPONSE retries within a step, also subject to maxRetries (default 1). */
+  maxEmptyResponseRetries?: number
   /** Stable failure codes eligible for this policy. */
   retryableCodes?: string[]
   /** Local exponential-backoff and jitter configuration. */
@@ -67,6 +69,7 @@ export interface ResolvedRetryBackoff {
 export interface ResolvedNormalRetryPolicy extends ResolvedRetryBackoff {
   readonly mode: 'normal'
   readonly maxRetries: number
+  readonly maxEmptyResponseRetries: number
   readonly retryableCodes: readonly string[]
 }
 
@@ -87,6 +90,7 @@ const backoffSchema: z<BackoffConfig> = z.object({
 const normalPolicySchema: z<NormalRetryPolicyConfig> = z.object({
   mode: z.const('normal').required(),
   maxRetries: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER).default(DEFAULT_MAX_RETRIES),
+  maxEmptyResponseRetries: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER).default(1),
   retryableCodes: z.array(z.string()).default([...DEFAULT_RETRYABLE_CODES]),
   backoff: backoffSchema,
 })
@@ -103,12 +107,12 @@ export const RetryPolicySchema: z<RetryPolicyConfig> = z.union([
 ])
 
 const NORMAL_POLICY_KEYS: ReadonlySet<string> = new Set([
-  'mode', 'maxRetries', 'retryableCodes', 'backoff',
+  'mode', 'maxRetries', 'maxEmptyResponseRetries', 'retryableCodes', 'backoff',
 ])
 // Layered configuration can retain normal-only fields after switching modes;
 // always mode ignores those inactive values while still rejecting unknown keys.
 const ALWAYS_POLICY_KEYS: ReadonlySet<string> = new Set([
-  'mode', 'maxRetries', 'retryableCodes', 'backoff',
+  'mode', 'maxRetries', 'maxEmptyResponseRetries', 'retryableCodes', 'backoff',
 ])
 const BACKOFF_KEYS: ReadonlySet<string> = new Set(['initialDelayMs', 'maxDelayMs', 'jitterRatio'])
 
@@ -154,6 +158,7 @@ export function resolveRetryPolicy(
     return Object.freeze({
       mode: 'normal',
       maxRetries: DEFAULT_MAX_RETRIES,
+      maxEmptyResponseRetries: 1,
       retryableCodes: DEFAULT_RETRYABLE_CODES,
       ...resolveBackoff(undefined, `${path}.backoff`),
     })
@@ -163,6 +168,10 @@ export function resolveRetryPolicy(
     case 'normal': {
       validateKeys(config, NORMAL_POLICY_KEYS, path)
       const maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES
+      const maxEmptyResponseRetries = config.maxEmptyResponseRetries ?? 1
+      if (!Number.isSafeInteger(maxEmptyResponseRetries) || maxEmptyResponseRetries < 0) {
+        throw new Error(`${path}.maxEmptyResponseRetries must be a non-negative safe integer`)
+      }
       const retryableCodes = config.retryableCodes ?? [...DEFAULT_RETRYABLE_CODES]
       if (!Number.isSafeInteger(maxRetries) || maxRetries < 0) {
         throw new Error(`${path}.maxRetries must be a non-negative safe integer`)
@@ -179,6 +188,7 @@ export function resolveRetryPolicy(
       return Object.freeze({
         mode: 'normal',
         maxRetries,
+        maxEmptyResponseRetries,
         retryableCodes: Object.freeze([...retryableCodes]),
         ...resolveBackoff(config.backoff, `${path}.backoff`),
       })

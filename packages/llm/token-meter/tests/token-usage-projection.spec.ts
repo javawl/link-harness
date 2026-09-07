@@ -94,6 +94,24 @@ function appendSummaryMeter(ctx: Context, session: Session, start: number, end: 
 }
 
 describe('tokenUsage session projection', () => {
+  it('retains failed-attempt usage when a same-step retry succeeds', async () => {
+    const { ctx, session } = await harness()
+    startStep(session, 1, 1)
+    const failed = { inputTokens: 10, outputTokens: 7, cacheReadTokens: 7 }
+    usageChunk(session, failed, 1, 1)
+    session.append('assistant/chunk', {
+      turn: 1, step: 1,
+      chunk: { type: 'finish', reason: { kind: 'error', failure: { code: 'EMPTY_RESPONSE', message: 'empty' } } },
+    })
+    const usage = { inputTokens: 20, outputTokens: 4, cacheReadTokens: 30 }
+    const source = usageChunk(session, usage, 1, 1)
+    session.append('assistant/chunk', { turn: 1, step: 1, chunk: { type: 'finish', reason: { kind: 'stop' } } })
+    finalUsage(session, usage, 1, 1, [source])
+    expect(projected(ctx, session)).toEqual({
+      uncachedInputTokens: 30, outputTokens: 11, cacheReadTokens: 37, cacheWriteTokens: 0,
+    })
+  })
+
   it('serves zero buckets for an empty log', async () => {
     const { ctx, session } = await harness()
     expect(projected(ctx, session)).toEqual(ZERO)

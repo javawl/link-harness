@@ -198,7 +198,7 @@ describe('provider-routed retry policy', () => {
       step: 1,
       provider: 'mock',
       mode: 'normal',
-      policyKey: '["normal",2,["RATE_LIMIT","SERVER"],500,10000,0]',
+      policyKey: '["normal",2,1,["RATE_LIMIT","SERVER"],500,10000,0]',
       retry: 1,
       maxRetries: 2,
       delayMs: 500,
@@ -221,6 +221,21 @@ describe('provider-routed retry policy', () => {
       content: [{ type: 'text', text: 'done' }],
       source: { kind: 'model', provider: 'mock', model: 'mock' },
     })
+  })
+
+  it('stops after one empty-response retry even when the general retry limit is larger', async () => {
+    vi.useFakeTimers()
+    const adapter = new ScriptedAdapter([emptyCompletion(), emptyCompletion(), textResponse('must not run')])
+    ;({ ctx: context } = await harness(adapter, { mock: normalConfig({ maxRetries: 5 }) }))
+    const agent = context.agentLoop.create(SessionId('bounded-empty-response'), { provider: 'mock', model: 'mock' })
+    const scheduled = waitForRetry(context, agent, 1)
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await scheduled
+    const idle = agent.whenIdle()
+    await vi.advanceTimersByTimeAsync(500)
+    await idle
+    expect(adapter.requests).toHaveLength(2)
+    expect(agent.session.events.findLast(event => event.type === 'turn/end')?.data.reason.kind).toBe('error')
   })
 
   it('retries an EMPTY_RESPONSE error finish under the default retryable codes', async () => {

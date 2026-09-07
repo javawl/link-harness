@@ -68,6 +68,7 @@ function retryPolicyKey(policy: ResolvedRetryPolicy): string {
     : JSON.stringify([
       policy.mode,
       policy.maxRetries,
+      policy.maxEmptyResponseRetries,
       [...policy.retryableCodes].sort(),
       policy.initialDelayMs,
       policy.maxDelayMs,
@@ -188,6 +189,13 @@ export function apply(ctx: Context, config: Config = {}, internals: RetryInterna
     )
     const previousRetry = priorPolicyRetry?.data.retry ?? 0
     if (policy.mode === 'normal' && previousRetry >= policy.maxRetries) return next()
+    if (policy.mode === 'normal' && failure.code === 'EMPTY_RESPONSE') {
+      const emptyRetries = agent.session.events.filter(event => event.type === 'llm/retry'
+        && event.data.turn === turn && event.data.step === step
+        && event.data.provider === provider && event.data.policyKey === policyKey
+        && event.data.failure.code === 'EMPTY_RESPONSE').length
+      if (emptyRetries >= policy.maxEmptyResponseRetries) return next()
+    }
     const retry = previousRetry + 1
     const retryId = priorPolicyRetry?.data.retryId ?? RetryId(randomUUID())
     let delayMs: number
