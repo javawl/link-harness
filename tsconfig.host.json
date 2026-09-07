@@ -10,6 +10,7 @@
   "include": [
     "packages/backlinks/console/tests/console.spec.ts",
     "apps/web/tests/scaffold.ts",
+    "apps/web/tests/backlinks-console.e2e.ts",
     "apps/web/tests/default-model.e2e.ts",
     "apps/web/tests/declared-reasoning.e2e.ts",
     "apps/web/tests/support.ts",

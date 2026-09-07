@@ -2,8 +2,8 @@
  * Publish-batch console, browser half: mounts a sidebar panel tab
  * (`sidebar.panel.tab` + `sidebar.panel.body`) beside the Sessions tab. The
  * console reads batches over the backlinksConsole Remote and publishes by
- * starting a fresh session and sending `/backlink-publish <id>` through the
- * conversation face.
+ * connecting a blank session and sending `/backlink-publish <ids>` through
+ * the conversation face. Selected ids are submitted together in descending order.
  */
 
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'

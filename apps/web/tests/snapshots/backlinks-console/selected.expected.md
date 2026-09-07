@@ -1,0 +1,16 @@
+- region "外链发布控制台":
+  - textbox "搜索批次号或网站域名"
+  - button "刷新"
+  - checkbox "全选当前列表" [checked=mixed]
+  - text: 全选当前列表
+  - button "批量发布 (2)"
+  - 'checkbox "选择批次 #389 389.example" [checked]'
+  - button "#389 389.example 待 1 成 1 败 1" [expanded]
+  - text: executed.example executed failed.example failed skipped.example skipped
+  - button "发布"
+  - 'checkbox "选择批次 #100 100.example"'
+  - button "#100 100.example 待 1 成 1 败 1"
+  - button "发布"
+  - 'checkbox "选择批次 #99 99.example" [checked]'
+  - button "#99 99.example 待 1 成 1 败 1"
+  - button "发布"

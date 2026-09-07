@@ -1,28 +1,33 @@
-# @deepseek-ai/dsh-client-ui-backlinks-console
+# Publish batch console
 
 English | [中文](README.zh.md)
 
-The Web sidebar's publishing panel lists batches, expands item details, and starts a publishing session. Reads use the [backlinks console Remote](../../backlinks/console/README.md); the [backlink agent](../../../examples/backlink-agent/README.md) owns publication, verification and result reporting.
+The Web sidebar's Publish Batches tab reads batch summaries and details through the [backlinks console Remote](../../backlinks/console/README.md). The browser plugin requires slots, locale, sessions, workspaces and `remote.backlinksConsole`, backed by a configured batch provider; its host entry registers no behavior. The [backlink agent](../../../examples/backlink-agent/README.md) owns publication, verification and result reporting.
 
-The browser plugin requires the slots, locale, sessions, workspaces and `remote.backlinksConsole` services. Its host entry registers no behavior. Refresh updates batch counts; expanding a batch loads its details. Publish creates a fresh session and sends the publishing command after the conversation connects.
+## Selection and submission
+
+Batches sort by numeric id descending on every refresh. Each top-level row has a checkbox independent of its detail disclosure. Select visible applies to the current search results; hidden selections remain selected. Refresh removes selections whose batches disappeared. Expanded items display `executed` in green, `failed` in red, and other statuses in muted text.
+
+Publish selected sends one request containing the selected ids in descending order into the current session's workspace, falling back to the recent workspace. Submission awaits `connectWorkspace()` and sends to that returned blank session. All publish and selection controls are disabled until submission settles. Success opens the receiving session and clears the submitted selection; a failure retains the selection and displays the error. Single-row Publish uses the same submission path.
 
 ## Model Experience
 
-### Publication command
+### User-request submission
 
 #### What the model sees
 
-Clicking Publish sends `/backlink-publish <batchId>` as one user message in a fresh session. The selected skill and deployment own all subsequent instructions and tools.
+A single batch sends `/backlink-publish <id>`. Multiple batches send `/backlink-publish <ids>`, with unique space-separated ids in descending order, followed by a newline and `请按以上批次号顺序依次发布，仅处理这些批次。`. The conversation service submits this as one ordinary user message.
 
 #### Token effect
 
-Listing or expanding batches makes no model request. Publish starts one ordinary conversation; its execution cost belongs to the selected agent.
+The request adds the command, selected ids, and conditional multi-batch sentence to the receiving session. Listing, filtering, selection, and refresh make no model requests.
 
 #### KV Cache effect
 
-The panel adds no system prompt or tool schema. Publication starts with the new session's configured request prefix.
+Submission appends a user message to the receiving blank session without replacing an existing conversation's messages. Different ids change that message's tokens; provider cache availability remains provider-owned.
 
 ## Known Limitations and Deferred Work
 
+- Submission acknowledgment means Harness accepted the request, not that external publication completed. The publishing skill owns execution, confirmations, and result reporting. Selection is local to the current browser plugin instance.
 - Publishing starts a new session; it does not resume a blocked publishing session.
 - Batch refresh reads backend state rather than subscribing to item progress events.

@@ -1,7 +1,7 @@
 /**
  * The publish console as a sidebar panel: compact batch rows with status
- * chips, inline item details, search, auto-refresh, and one-click publish
- * into a fresh session. Pure component: state arrives through the console
+ * chips, inline item details, search, auto-refresh, and batch selection for
+ * submission into a blank session. State arrives through the console
  * store share and the locale seat.
  */
 
@@ -50,32 +50,42 @@ function BatchRow(props: SidebarConsolePanelProps & { batch: BacklinkBatchSummar
     () => store.store.getSnapshot(),
   )
   const detail = state.details[batch.id]
-  const publishing = state.publishing === batch.id
+  const publishing = state.publishing?.includes(batch.id) === true
   return (
-    <div className={css.row}>
-      <button
-        type="button"
-        className={css.rowHead}
-        onClick={() => { void store.toggleDetail(batch.id) }}
-        aria-expanded={detail !== undefined}
-      >
-        <span className={css.rowTitle}>
-          #{String(batch.id)} {batch.websiteHost}
-        </span>
-        <span className={css.rowChips}>
-          {batch.counts.pending > 0 ? <span className={css.pending}>待 {String(batch.counts.pending)}</span> : null}
-          {batch.counts.executed > 0 ? <span className={css.done}>成 {String(batch.counts.executed)}</span> : null}
-          {batch.counts.failed > 0 ? <span className={css.failed}>败 {String(batch.counts.failed)}</span> : null}
-          {batch.executing ? <span className={css.pulseDot} aria-label={t('executing')} /> : null}
-        </span>
-      </button>
+    <div className={css.row} data-selected={state.selectedBatchIds.includes(batch.id)}>
+      <div className={css.rowHeader}>
+        <input
+          type="checkbox"
+          className={css.checkbox}
+          aria-label={`${t('selection.batch')} #${String(batch.id)} ${batch.websiteHost}`}
+          checked={state.selectedBatchIds.includes(batch.id)}
+          disabled={state.publishing !== null}
+          onChange={(event) => { store.selectBatches([batch.id], event.target.checked) }}
+        />
+        <button
+          type="button"
+          className={css.rowHead}
+          onClick={() => { void store.toggleDetail(batch.id) }}
+          aria-expanded={detail !== undefined}
+        >
+          <span className={css.rowTitle}>
+            #{String(batch.id)} {batch.websiteHost}
+          </span>
+          <span className={css.rowChips}>
+            {batch.counts.pending > 0 ? <span className={css.pending}>待 {String(batch.counts.pending)}</span> : null}
+            {batch.counts.executed > 0 ? <span className={css.done}>成 {String(batch.counts.executed)}</span> : null}
+            {batch.counts.failed > 0 ? <span className={css.failed}>败 {String(batch.counts.failed)}</span> : null}
+            {batch.executing ? <span className={css.pulseDot} aria-label={t('executing')} /> : null}
+          </span>
+        </button>
+      </div>
       {detail !== undefined
         ? (
           <div className={css.items}>
             {detail.items.map(item => (
               <div key={item.id} className={css.itemRow}>
                 <span className={css.itemHost}>{item.sourceHost}</span>
-                <span className={item.status === 'failed' ? css.itemFailed : css.itemStatus}>{item.status}</span>
+                <span className={css.itemStatus} data-status={item.status}>{item.status}</span>
               </div>
             ))}
           </div>
@@ -85,7 +95,7 @@ function BatchRow(props: SidebarConsolePanelProps & { batch: BacklinkBatchSummar
         <button
           type="button"
           className={css.publishButton}
-          disabled={publishing}
+          disabled={state.publishing !== null}
           onClick={() => { void store.publish(batch.id) }}
         >
           {publishing ? t('publishing') : t('publish')}
@@ -121,9 +131,10 @@ export function SidebarConsolePanel(props: SidebarConsolePanelProps) {
       batch.websiteHost.toLowerCase().includes(needle)
       || String(batch.id).includes(needle)
       || batch.websiteName.toLowerCase().includes(needle))
+  const selectedVisible = batches.filter(batch => state.selectedBatchIds.includes(batch.id)).length
 
   return (
-    <div className={css.panel}>
+    <div className={css.panel} role="region" aria-label={t('title')}>
       <div className={css.toolbar}>
         <input
           className={css.search}
@@ -135,11 +146,32 @@ export function SidebarConsolePanel(props: SidebarConsolePanelProps) {
           {t('refresh')}
         </button>
       </div>
+      <div className={css.selectionBar}>
+        <label className={css.selectAll}>
+          <input
+            type="checkbox"
+            className={css.checkbox}
+            checked={batches.length > 0 && selectedVisible === batches.length}
+            ref={(input) => { if (input !== null) input.indeterminate = selectedVisible > 0 && selectedVisible < batches.length }}
+            disabled={batches.length === 0 || state.publishing !== null}
+            onChange={(event) => { store.selectBatches(batches.map(batch => batch.id), event.target.checked) }}
+          />
+          {t('selection.allVisible')}
+        </label>
+        <button
+          type="button"
+          className={css.publishButton}
+          disabled={state.selectedBatchIds.length === 0 || state.publishing !== null}
+          onClick={() => { void store.publishSelected() }}
+        >
+          {state.publishing !== null ? t('publishing') : `${t('publish.selected')} (${String(state.selectedBatchIds.length)})`}
+        </button>
+      </div>
       {state.status === 'loading' && state.batches.length === 0
         ? <p className={css.note}>{t('loading')}</p>
         : null}
       {state.error !== null
-        ? <p className={css.error}>{t('error')}：{state.error}</p>
+        ? <p className={css.error} role="alert">{t('error')}：{state.error}</p>
         : null}
       {state.status === 'ready' && batches.length === 0
         ? <p className={css.note}>{t('empty')}</p>

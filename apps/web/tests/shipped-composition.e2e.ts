@@ -82,6 +82,7 @@ it('assembles the shipped Web catalog, file-reference guidance, retry policy, an
       "initialDelayMs": 500,
       "jitterRatio": 0.1,
       "maxDelayMs": 10000,
+      "maxEmptyResponseRetries": 1,
       "maxRetries": 5,
       "mode": "normal",
       "retryableCodes": [
@@ -115,6 +116,7 @@ it('assembles the shipped Web catalog, file-reference guidance, retry policy, an
       "initialDelayMs": 500,
       "jitterRatio": 0.1,
       "maxDelayMs": 10000,
+      "maxEmptyResponseRetries": 1,
       "maxRetries": 5,
       "mode": "normal",
       "retryableCodes": [
