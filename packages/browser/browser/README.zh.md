@@ -18,7 +18,7 @@
 | `act(command, signal?)` | 在共享会话（惰性打开）上分发一条闭合联合命令；同页命令保序，不同页可并行 |
 | `closeSession()` | 关闭共享浏览器；下一次 `act()` 打开新会话 |
 
-`BrowserCommand`（`navigate`/`snapshot`/`click`/`fill`/`select`/`press`/`upload`/`screenshot`/`waitFor`/`closePage`）与 `BrowserResult`（`page`/`acked`/`screenshot`）是本包持有的闭合联合。Provider 泄漏的裸失败会丢弃会话（`BROWSER_ACTION_FAILED`），下一条命令重新启动浏览器而不是复用未知状态。
+`BrowserCommand`（`navigate`/`newPage`/`snapshot`/`click`/`fill`/`select`/`press`/`upload`/`screenshot`/`waitFor`/`closePage`/`bringToFront`）与 `BrowserResult`（`page`/`acked`/`screenshot`）是本包持有的闭合联合。Provider 泄漏的裸失败会丢弃会话（`BROWSER_ACTION_FAILED`），下一条命令重新启动浏览器而不是复用未知状态。
 
 ## 选择
 
@@ -33,6 +33,14 @@
 
 `$DSH_BROWSER_PROVIDER` 等价于 `provider` 配置字段。
 
+`BROWSER_ACTION_UNCERTAIN` 表示等待中断后输入仍可能完成。它保留会话并要求人工核验；绝不能视为已回滚或自动重新提交。[Playwright 提供方](../browser-playwright/README.zh.md)会锁定受影响页面并保留在途输入。
+
+Provider 可用 `BROWSER_PAGE_LIMIT` 拒绝创建新页。该资源错误保留共享会话与已有页面；调用方可以关闭已完成页面后重试，无需重新启动浏览器。
+
+`newPage` 通过 `BrowserNewPageCommand` 预留命名空白页。`BrowserSnapshotCommand.format` 支持 text、aria、form 和 links，均接受同一套定位器。`BrowserFillCommand` 接受单个 selector/value 或有序 `BrowserFillField[]`；空字符串用于清空，值原样保留，后续失败不回滚先前字段。
+
+提供方仅在浏览器上下文确已关闭时报告 `BROWSER_SESSION_CLOSED`，服务在下次调用时重新启动。页面关闭引起的 `BROWSER_ACTION_FAILED` 会保留其他标签页；错误消息文字不决定是否释放整个会话。
+
 ## 模型体验
 
 间接经由 `dsh-tool-browser`：由它返回有界页面捕获、确认与截图结果，以及精确的 Provider 选择失败；本注册表自身不产出提示词或 schema。
@@ -45,4 +53,4 @@
 
 - **单会话多可寻址标签页** — 每条命令可带 `page` 引用；navigate 以调用者命名的引用绑定标签页，后续命令按引用寻址，并行调用方各驭其页（cookie 共享）。不带引用的命令保持『最近标签页』旧契约；第二个并行会话仍不在范围内。
 - **无观察面** — 没有页面生命周期事件，也没有会话状态查询；调用方按命令观察结果。
-- **信号检查是协作式的** — `AbortSignal` 在分发前检查；进行中的 Playwright 操作按自身超时完成。
+- **取消不保证回滚** — 提供方在分发前检查 `AbortSignal`；在途操作可能完成，也可能报告结果未知。调用方须遵循提供方的恢复指引。

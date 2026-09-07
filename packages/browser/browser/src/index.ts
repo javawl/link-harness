@@ -28,7 +28,9 @@ export type {
   BrowserCommand,
   BrowserErrorCode,
   BrowserFillCommand,
+  BrowserFillField,
   BrowserNavigateCommand,
+  BrowserNewPageCommand,
   BrowserPageResult,
   BrowserPressCommand,
   BrowserResult,
@@ -126,14 +128,14 @@ export class BrowserRuntime extends Service {
         return await session.act(command, signal)
       } catch (error) {
         if (error instanceof BrowserError) {
-          if (error.message.includes('has been closed') || error.message.includes('session is closed')) {
+          if (error.code === 'BROWSER_SESSION_CLOSED' && this.session === session) {
             await this.discardSession()
           }
           throw error
         }
         // A provider that leaks a raw failure loses the session: its browser
         // state is unknown and the next command must relaunch, not reuse it.
-        await this.discardSession()
+        if (this.session === session) await this.discardSession()
         throw new BrowserError(
           `browser command "${command.kind}" failed: ${String(error instanceof Error ? error.message : error)}`,
           'BROWSER_ACTION_FAILED',

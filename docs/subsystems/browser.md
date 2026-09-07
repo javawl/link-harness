@@ -8,7 +8,7 @@ Source: [`packages/browser/browser/src/types.ts`](../../packages/browser/browser
 
 ## Why one command dispatch instead of one method per operation
 
-The browser is one stateful surface: every command lands on the same session's active page, and each dispatch must observe the previous one's settled state. `BrowserCommand` is therefore a CLOSED discriminated union (`navigate`/`snapshot`/`click`/`fill`/`select`/`press`/`upload`/`screenshot`/`waitFor`/`closePage`) dispatched through a single `act()`, and providers `switch` to exhaustiveness so adding a kind breaks their compilation. The consumer mirrors the same set as one tool's `action` field — ten page-driving verbs on one shared browser instead of ten tools.
+The shared browser session orders commands by addressed tab: one tab serializes while distinct tabs may overlap. `BrowserCommand` is a closed discriminated union dispatched through `act()`; providers handle every kind and the model tool exposes the same operations. `newPage` reserves a named blank tab, `fill` accepts one field or an ordered field list, and snapshot formats share semantic and frame addressing. The [command types](../../packages/browser/browser/src/types.ts) own the complete operation set.
 
 ## Session lifecycle and selection
 

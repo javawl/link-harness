@@ -8,7 +8,7 @@
 
 ## 为什么是一条命令分发而不是每个操作一个方法
 
-浏览器是一个有状态表面：每条命令都落在同一会话的活动页上，每次分发必须观察到前一次的稳定状态。因此 `BrowserCommand` 是一个闭合判别联合（`navigate`/`snapshot`/`click`/`fill`/`select`/`press`/`upload`/`screenshot`/`waitFor`/`closePage`），经由唯一的 `act()` 分发；提供方 `switch` 到穷尽，新增一个 kind 会破坏其编译。消费方把同一集合镜像为单个工具的 `action` 字段——一个共享浏览器上的十个页面驱动动词，而不是十个工具。
+共享浏览器会话按目标标签页排列命令：同一页串行，不同页可以并行。`BrowserCommand` 是经 `act()` 分发的闭合判别联合；提供方处理所有种类，模型工具暴露同一套操作。`newPage` 预留命名空白页，`fill` 接受单个字段或有序字段列表，快照格式共用语义及 frame 寻址。[命令类型](../../packages/browser/browser/src/types.ts)定义完整操作集合。
 
 ## 会话生命周期与选择
 

@@ -31,6 +31,12 @@ export interface ResolvedPlaywrightConfig {
   readonly channel: string
   /** Default per-operation timeout in milliseconds. */
   readonly defaultTimeoutMs: number
+  /** Timeout for explicit navigation commands. */
+  readonly navigationTimeoutMs: number
+  /** Default readiness condition for navigation commands. */
+  readonly navigationWaitUntil: 'load' | 'domcontentloaded' | 'networkidle'
+  /** Live-page ceiling checked before creating another page; zero disables it. */
+  readonly maxOpenPages: number
   /** Extra Chromium launch arguments (proxy, window size, …). */
   readonly launchArgs: readonly string[]
   /**
@@ -80,7 +86,7 @@ function parseSelector(raw: string): Addressing {
   let rest = raw
   const frames: string[] = []
   while (true) {
-    const frame = /^frame\((.+)\)>>/u.exec(rest)
+    const frame = /^frame\((.+?)\)>>/u.exec(rest)
     if (frame === null) break
     frames.push(frame[1] as string)
     rest = rest.slice(frame[0].length)
@@ -160,6 +166,12 @@ function throwIfAborted(signal: AbortSignal | undefined, commandKind: string): v
 
 class PlaywrightSession implements BrowserSession {
   private closed = false
+  private closing: Promise<void> | undefined
+  private pendingPageCreations = 0
+  /** Interrupted raw input can still reach the site; only a human may reconcile its outcome. */
+  private readonly interruptedPages = new WeakSet<Page>()
+  /** Raw input has no Playwright cancellation API; session teardown owns its final settlement. */
+  private readonly pendingInputs = new Set<Promise<void>>()
   /** Live tabs by ref; the ref is the parallel caller's tab identity. */
   private readonly pages = new Map<string, Page>()
   /** Per-tab serial chains: same tab orders, different tabs overlap. */
@@ -174,6 +186,9 @@ class PlaywrightSession implements BrowserSession {
     private readonly context: BrowserContext,
     private readonly defaultTimeoutMs: number,
     private readonly defaultMaxChars: number,
+    private readonly navigationTimeoutMs: number,
+    private readonly navigationWaitUntil: ResolvedPlaywrightConfig['navigationWaitUntil'],
+    private readonly maxOpenPages: number,
   ) {
     this.context.on('close', () => {
       this.closed = true
@@ -188,7 +203,7 @@ class PlaywrightSession implements BrowserSession {
   async act(command: BrowserCommand, signal?: AbortSignal): Promise<BrowserResult> {
     throwIfAborted(signal, command.kind)
     if (this.closed) {
-      throw new BrowserError('browser session is closed', 'BROWSER_ACTION_FAILED')
+      throw new BrowserError('browser session is closed', 'BROWSER_SESSION_CLOSED')
     }
     return await (command.page === undefined
       ? this.chained(this.legacyTail, (tail) => { this.legacyTail = tail }, command, signal)
@@ -216,21 +231,63 @@ class PlaywrightSession implements BrowserSession {
 
   private async execute(command: BrowserCommand, signal?: AbortSignal): Promise<BrowserResult> {
     throwIfAborted(signal, command.kind)
+    if (this.closed) throw new BrowserError('browser session is closed', 'BROWSER_SESSION_CLOSED')
     try {
       switch (command.kind) {
+        case 'newPage': {
+          if (this.pages.has(command.page)) {
+            throw new BrowserError(`browser page "${command.page}" is already open`, 'BROWSER_ACTION_FAILED')
+          }
+          const { page, ref } = await this.resolveForNavigate(command.page)
+          return { kind: 'page', page: ref, url: page.url(), title: await page.title(), text: '', truncated: false }
+        }
         case 'navigate': {
           const { page, ref } = await this.resolveForNavigate(command.page)
           await page.goto(command.url, {
-            timeout: this.defaultTimeoutMs,
-            ...command.waitUntil === undefined ? {} : { waitUntil: command.waitUntil },
+            timeout: this.navigationTimeoutMs,
+            waitUntil: command.waitUntil ?? this.navigationWaitUntil,
           })
           return await this.pageResult(page, ref, command.maxChars ?? this.defaultMaxChars)
         }
         case 'snapshot': {
           const { page, ref } = await this.requirePage(command.page)
           if (command.format === 'aria') {
-            const tree = await page.locator(command.selector ?? 'body').ariaSnapshot()
+            const tree = await elementLocator(page, parseSelector(command.selector ?? 'body')).ariaSnapshot()
             const { text, truncated } = truncate(tree, command.maxChars ?? this.defaultMaxChars)
+            return { kind: 'page', page: ref, url: page.url(), title: await page.title(), text, truncated }
+          }
+          if (command.format === 'form' || command.format === 'links') {
+            const raw = await elementLocator(page, parseSelector(command.selector ?? 'body')).evaluate((root, format) => {
+              const fieldSelector = 'input:not([type=hidden]),textarea,select,[contenteditable]:not([contenteditable=false])'
+              const selector = format === 'links' ? 'a[href]' : `a[href],${fieldSelector}`
+              const elements = [
+                ...root.matches(selector) ? [root] : [], ...root.querySelectorAll(selector),
+              ].filter(element => element.getClientRects().length > 0
+                && !['hidden', 'collapse'].includes(getComputedStyle(element).visibility))
+              const links = elements.filter(element => element.matches('a[href]')).map(element => ({
+                text: element.textContent.trim(),
+                href: (element as HTMLAnchorElement).href,
+              }))
+              if (format === 'links') return JSON.stringify({ links })
+              const fields = elements.filter(element => element.matches(fieldSelector)).map(element => ({
+                tag: element.tagName.toLowerCase(),
+                id: element.id,
+                name: element.getAttribute('name'),
+                type: element.getAttribute('type'),
+                label: element.getAttribute('aria-label')
+                  ?? [...(element as HTMLInputElement).labels ?? []].map(label => label.textContent.trim()).join(' '),
+                placeholder: element.getAttribute('placeholder'),
+                required: element.hasAttribute('required'),
+                disabled: element.hasAttribute('disabled'),
+                value: (element as HTMLInputElement).type === 'password' ? null
+                  : 'value' in element ? String(element.value) : element.textContent,
+                ...element.tagName === 'SELECT' ? { options: [...(element as HTMLSelectElement).options].map(option => ({
+                  label: option.label, value: option.value, selected: option.selected,
+                })) } : {},
+              }))
+              return JSON.stringify({ fields, links })
+            }, command.format)
+            const { text, truncated } = truncate(raw, command.maxChars ?? this.defaultMaxChars)
             return { kind: 'page', page: ref, url: page.url(), title: await page.title(), text, truncated }
           }
           return await this.pageResult(page, ref, command.maxChars ?? this.defaultMaxChars, command.selector)
@@ -239,7 +296,7 @@ class PlaywrightSession implements BrowserSession {
           const { page } = await this.requirePage(command.page)
           const addressing = parseSelector(command.selector)
           if (addressing.mode === 'xy') {
-            await page.mouse.click(addressing.x, addressing.y)
+            await this.boundedInput(page, command, () => page.mouse.click(addressing.x, addressing.y), signal)
             return { kind: 'acked' }
           }
           await buildLocator(page, addressing)?.click({ timeout: this.defaultTimeoutMs })
@@ -247,8 +304,11 @@ class PlaywrightSession implements BrowserSession {
         }
         case 'fill': {
           const { page } = await this.requirePage(command.page)
-          const locator = elementLocator(page, parseSelector(command.selector))
-          await locator.fill(command.value, { timeout: this.defaultTimeoutMs })
+          for (const field of command.fields ?? [command]) {
+            throwIfAborted(signal, command.kind)
+            const locator = elementLocator(page, parseSelector(field.selector))
+            await locator.fill(field.value, { timeout: this.defaultTimeoutMs })
+          }
           return { kind: 'acked' }
         }
         case 'select': {
@@ -259,7 +319,7 @@ class PlaywrightSession implements BrowserSession {
         }
         case 'press': {
           const { page } = await this.requirePage(command.page)
-          await page.keyboard.press(command.key)
+          await this.boundedInput(page, command, () => page.keyboard.press(command.key), signal)
           return { kind: 'acked' }
         }
         case 'upload': {
@@ -288,12 +348,12 @@ class PlaywrightSession implements BrowserSession {
           return { kind: 'acked' }
         }
         case 'bringToFront': {
-          const { page } = await this.requirePage(command.page)
+          const { page } = await this.requirePage(command.page, true)
           await page.bringToFront()
           return { kind: 'acked' }
         }
         case 'closePage': {
-          const { page, ref } = await this.requirePage(command.page)
+          const { page, ref } = await this.requirePage(command.page, true)
           await page.close()
           this.pages.delete(ref)
           this.chains.delete(ref)
@@ -306,19 +366,74 @@ class PlaywrightSession implements BrowserSession {
       if (error instanceof BrowserError) throw error
       throw new BrowserError(
         `playwright ${command.kind} failed: ${String(error instanceof Error ? error.message : error)}`,
-        'BROWSER_ACTION_FAILED',
+        // The browser's close event can fire while an awaited action rejects.
+        // oxlint-disable-next-line typescript/no-unnecessary-condition
+        this.closed ? 'BROWSER_SESSION_CLOSED' : 'BROWSER_ACTION_FAILED',
         { cause: error },
       )
     }
   }
 
-  async close(): Promise<void> {
-    if (this.closed) return
-    this.closed = true
+  close(): Promise<void> {
+    return this.closing ??= (async () => {
+      if (!this.closed) {
+        this.closed = true
+        try {
+          await this.context.close()
+        } catch {
+          // swallow: closing an already-dead browser
+        }
+      }
+      await Promise.allSettled([...this.chains.values(), this.legacyTail])
+      await Promise.allSettled(this.pendingInputs)
+    })()
+  }
+
+  /** Bound raw input waiting without releasing an uncertain page for another submission. */
+  private async boundedInput(
+    page: Page,
+    command: BrowserCommand,
+    action: () => Promise<void>,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    throwIfAborted(signal, command.kind)
+    if (this.closed) throw new BrowserError('browser session is closed', 'BROWSER_SESSION_CLOSED')
+    let interrupt!: (reason: string) => void
+    const interrupted = new Promise<never>((_, reject) => {
+      interrupt = (reason) => {
+        this.interruptedPages.add(page)
+        reject(new BrowserError(
+          `browser ${command.kind} ${reason}. Its outcome is unknown and the input may still complete. `
+          + 'The page is preserved and locked for manual review; do not retry the submission. '
+          + 'Only bringToFront or an explicit closePage is allowed.',
+          'BROWSER_ACTION_UNCERTAIN',
+        ))
+      }
+    })
+    const onAbort = (): void => { interrupt('was cancelled') }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    const timer = setTimeout(() => { interrupt(`exceeded ${this.defaultTimeoutMs}ms`) }, this.defaultTimeoutMs)
     try {
-      await this.context.close()
-    } catch {
-      // swallow: closing an already-dead browser
+      const operation = action()
+      this.pendingInputs.add(operation)
+      void operation.then(
+        () => { this.pendingInputs.delete(operation) },
+        () => { this.pendingInputs.delete(operation) },
+      )
+      await Promise.race([operation, interrupted])
+    } finally {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+    }
+  }
+
+  private assertAutomationAllowed(page: Page, allowInterrupted: boolean): void {
+    if (!allowInterrupted && this.interruptedPages.has(page)) {
+      throw new BrowserError(
+        'This page has an input with an unknown outcome. Do not retry the submission. '
+        + 'Only bringToFront or an explicit closePage is allowed after manual review.',
+        'BROWSER_ACTION_UNCERTAIN',
+      )
     }
   }
 
@@ -341,23 +456,25 @@ class PlaywrightSession implements BrowserSession {
    * recently adopted tab (the legacy single-tab contract); a named ref must be
    * live. Every return path leaves `lastRef` naming the returned tab.
    */
-  private async requirePage(ref: string | undefined): Promise<{ page: Page; ref: string }> {
+  private async requirePage(ref: string | undefined, allowInterrupted = false): Promise<{ page: Page; ref: string }> {
     if (ref === undefined) {
       const pages = this.context.pages()
       const last = pages[pages.length - 1]
       if (last) {
+        this.assertAutomationAllowed(last, allowInterrupted)
         if (this.pages.get(this.lastRef ?? '') !== last) {
           this.adopt(last)
         }
         return { page: last, ref: this.lastRef as string }
       }
-      const page = await this.context.newPage()
+      const page = await this.createPage()
       return { page, ref: this.adopt(page) }
     }
     const page = this.pages.get(ref)
     if (page === undefined || page.isClosed()) {
       throw new BrowserError(`browser page "${ref}" is not open`, 'BROWSER_ACTION_FAILED')
     }
+    this.assertAutomationAllowed(page, allowInterrupted)
     this.lastRef = ref
     return { page, ref }
   }
@@ -367,12 +484,11 @@ class PlaywrightSession implements BrowserSession {
     if (ref !== undefined) {
       const existing = this.pages.get(ref)
       if (existing !== undefined && !existing.isClosed()) {
-        this.lastRef = ref
-        return { page: existing, ref }
+        return await this.requirePage(ref)
       }
       // The caller's name IS the tab identity: bind the fresh tab to it so
       // every later command can keep addressing it by the same ref.
-      const page = await this.context.newPage()
+      const page = await this.createPage()
       this.pages.set(ref, page)
       this.lastRef = ref
       page.on('close', () => {
@@ -381,6 +497,22 @@ class PlaywrightSession implements BrowserSession {
       return { page, ref }
     }
     return await this.requirePage(undefined)
+  }
+
+  /** Reserve capacity across concurrent creations without closing another task's page. */
+  private async createPage(): Promise<Page> {
+    if (this.maxOpenPages > 0 && this.context.pages().length + this.pendingPageCreations >= this.maxOpenPages) {
+      throw new BrowserError(
+        `browser page limit reached (${this.maxOpenPages}). Close completed pages before opening another; preserve unfinished submissions.`,
+        'BROWSER_PAGE_LIMIT',
+      )
+    }
+    this.pendingPageCreations++
+    try {
+      return await this.context.newPage()
+    } finally {
+      this.pendingPageCreations--
+    }
   }
 
   /** Capture url/title/text (whole body or one selector's subtree), bounded. */
@@ -393,7 +525,7 @@ class PlaywrightSession implements BrowserSession {
     const [url, title, rawText] = await Promise.all([
       Promise.resolve(page.url()),
       page.title(),
-      page.innerText(selector ?? 'body'),
+      elementLocator(page, parseSelector(selector ?? 'body')).innerText(),
     ])
     const { text, truncated } = truncate(rawText, maxChars)
     return { kind: 'page', page: ref, url, title, text, truncated }
@@ -414,6 +546,10 @@ export class PlaywrightBrowserProvider implements BrowserAutomationProvider {
   async open(signal?: AbortSignal): Promise<BrowserSession> {
     throwIfAborted(signal, 'launch')
     assertPositiveInteger('defaultTimeoutMs', this.config.defaultTimeoutMs)
+    assertPositiveInteger('navigationTimeoutMs', this.config.navigationTimeoutMs)
+    if (!Number.isSafeInteger(this.config.maxOpenPages) || this.config.maxOpenPages < 0) {
+      throw new Error('browser-playwright: maxOpenPages must be an integer >= 0')
+    }
     let context: BrowserContext
     try {
       context = await chromium.launchPersistentContext(this.config.userDataDir, {
@@ -437,6 +573,8 @@ export class PlaywrightBrowserProvider implements BrowserAutomationProvider {
         { cause: error },
       )
     }
-    return new PlaywrightSession(context, this.config.defaultTimeoutMs, DEFAULT_SNAPSHOT_MAX_CHARS)
+    context.setDefaultTimeout(this.config.defaultTimeoutMs)
+    return new PlaywrightSession(context, this.config.defaultTimeoutMs, DEFAULT_SNAPSHOT_MAX_CHARS,
+      this.config.navigationTimeoutMs, this.config.navigationWaitUntil, this.config.maxOpenPages)
   }
 }

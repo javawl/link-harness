@@ -26,6 +26,12 @@ export interface Config {
   readonly channel?: string
   /** Default per-operation timeout in milliseconds. */
   readonly defaultTimeoutMs?: number
+  /** Timeout for navigation, independent of locator and snapshot waits. */
+  readonly navigationTimeoutMs?: number
+  /** Readiness required by navigations that do not specify waitUntil. */
+  readonly navigationWaitUntil?: 'load' | 'domcontentloaded' | 'networkidle'
+  /** Live-page ceiling for tool-requested page creation; zero disables it. Existing pages remain usable. */
+  readonly maxOpenPages?: number
   /** Extra Chromium launch arguments (proxy, window size, …). */
   readonly launchArgs?: string[]
   /**
@@ -47,6 +53,9 @@ export const Config: z<Config> = z.object({
   headless: z.boolean().default(false),
   channel: z.string().default('chrome'),
   defaultTimeoutMs: z.number().default(15_000),
+  navigationTimeoutMs: z.number().default(20_000),
+  navigationWaitUntil: z.union(['load', 'domcontentloaded', 'networkidle'] as const).default('domcontentloaded'),
+  maxOpenPages: z.number().default(16),
   launchArgs: z.array(z.string()).default([]),
   ignoreDefaultArgs: z.array(z.string()).default([]),
   windowPosition: z.string(),
@@ -59,6 +68,12 @@ export function apply(ctx: Context, config: Config): void {
   }
   if (!Number.isSafeInteger(resolved.defaultTimeoutMs) || resolved.defaultTimeoutMs <= 0) {
     throw new Error(`browser-playwright: defaultTimeoutMs must be a positive integer, got ${resolved.defaultTimeoutMs}`)
+  }
+  for (const key of ['navigationTimeoutMs', 'maxOpenPages'] as const) {
+    const minimum = key === 'maxOpenPages' ? 0 : 1
+    if (!Number.isSafeInteger(resolved[key]) || resolved[key] < minimum) {
+      throw new Error(`browser-playwright: ${key} must be an integer >= ${minimum}`)
+    }
   }
   ctx.browser.registerProvider(new PlaywrightBrowserProvider(resolved))
 }

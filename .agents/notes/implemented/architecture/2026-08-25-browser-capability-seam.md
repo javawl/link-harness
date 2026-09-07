@@ -33,7 +33,6 @@ A provider that leaks a raw (non-`BrowserError`) failure loses the session: the 
 - Named-tab addressing (commands always drive the most recently opened page); parallel sessions.
 - Full-page screenshots; DOM-level structured snapshots beyond text capture (`page` result carries url/title/text only).
 - An observation surface (page-lifecycle events) — intentionally absent, same posture as web's dropped observation surface.
-- Real-browser e2e lane: current tests cover the provider through a mocked `playwright-core`; a keyless real-Chrome smoke (self-skipping when no Chrome is installed) is future work alongside the backlinks workflow's snapshot tests.
 
 ## Consequences
 

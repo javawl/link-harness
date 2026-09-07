@@ -18,6 +18,9 @@ function resolvedConfig(overrides: Partial<ResolvedPlaywrightConfig> = {}): Reso
     headless: false,
     channel: 'chrome',
     defaultTimeoutMs: 5_000,
+    navigationTimeoutMs: 5_000,
+    navigationWaitUntil: 'domcontentloaded',
+    maxOpenPages: 16,
     launchArgs: [],
     ignoreDefaultArgs: [],
     windowPosition: undefined,
@@ -62,8 +65,10 @@ function fakePage(overrides: { innerText?: (selector: string) => Promise<string>
       actions.push({ selector, method: 'waitFor', args })
     },
     ariaSnapshot: async () => overrides.aria ?? '- button "Go"',
+    innerText: async () => overrides.innerText?.(selector) ?? 'page text',
   })
   const frameScope = (frameSelector: string) => ({
+    frameLocator: (selector: string): unknown => frameScope(`${frameSelector})>>frame(${selector}`),
     getByRole: (role: string, ...opts: unknown[]) =>
       makeLocator(`frame(${frameSelector})>>role:${role}${(opts[0] as { name?: string } | undefined)?.name !== undefined ? `|${(opts[0] as { name: string }).name}` : ''}`),
     getByLabel: (text: string) => makeLocator(`frame(${frameSelector})>>label:${text}`),
@@ -76,9 +81,9 @@ function fakePage(overrides: { innerText?: (selector: string) => Promise<string>
     screenshot: vi.fn(async () => Buffer.from('png-bytes')),
     waitForURL: vi.fn(async () => null),
     close: vi.fn(async () => undefined),
-    press: vi.fn(async () => undefined),
+    press: vi.fn(async (): Promise<void> => undefined),
     bringToFront: vi.fn(async () => undefined),
-    xyClick: vi.fn(async () => undefined),
+    xyClick: vi.fn(async (): Promise<void> => undefined),
     on: vi.fn(),
     actions,
     failOnce: (method: string, fn: () => void) => {
@@ -111,16 +116,25 @@ function fakePage(overrides: { innerText?: (selector: string) => Promise<string>
 
 function fakeContext(pages: Page[]) {
   const allPages = [...pages]
+  const closePage = (page: Page): void => {
+    vi.spyOn(page, 'close').mockImplementation(async () => {
+      const index = allPages.indexOf(page)
+      if (index >= 0) allPages.splice(index, 1)
+    })
+  }
+  for (const page of allPages) closePage(page)
   const created: ReturnType<typeof fakePage>[] = []
   const newPage = vi.fn(async () => {
     const fresh = fakePage()
     created.push(fresh)
     allPages.push(fresh.page)
+    closePage(fresh.page)
     return fresh.page
   })
   const context = {
     pages: () => allPages,
     newPage,
+    setDefaultTimeout: vi.fn(),
     close: vi.fn(async () => undefined),
     on: vi.fn(),
   }
@@ -149,6 +163,7 @@ describe('PlaywrightBrowserProvider', () => {
     }))
 
     const session = await provider.open()
+    expect(context.setDefaultTimeout).toHaveBeenCalledWith(5_000)
     expect(launchPersistentContext).toHaveBeenCalledWith('.test-profile', {
       headless: true,
       timeout: 5_000,
@@ -214,12 +229,33 @@ describe('PlaywrightBrowserProvider', () => {
 })
 
 describe('PlaywrightSession command dispatch', () => {
-  async function mount(pages: Page[]) {
+  async function mount(pages: Page[], config: Partial<ResolvedPlaywrightConfig> = {}) {
     const { context, mocks } = fakeContext(pages)
     launchPersistentContext.mockResolvedValueOnce(context)
-    const provider = new PlaywrightBrowserProvider(resolvedConfig())
+    const provider = new PlaywrightBrowserProvider(resolvedConfig(config))
     return { session: await provider.open(), context, mocks }
   }
+
+  it('reserves a blank page without navigation and rejects an occupied ref', async () => {
+    const { session, mocks } = await mount([])
+    expect(await session.act({ kind: 'newPage', page: 'reserved' })).toMatchObject({ kind: 'page', page: 'reserved', text: '' })
+    expect(mocks.created[0]?.mocks.goto).not.toHaveBeenCalled()
+    await expect(session.act({ kind: 'newPage', page: 'reserved' })).rejects.toThrow('already open')
+  })
+
+  it('reads semantic snapshots and fills several controls in order without undoing completed fields', async () => {
+    const made = fakePage({ innerText: async selector => `content of ${selector}` })
+    const { session } = await mount([made.page])
+    expect(await session.act({ kind: 'snapshot', selector: 'role:form|Publish' })).toMatchObject({ text: 'content of role:form|Publish' })
+    await session.act({ kind: 'fill', fields: [{ selector: 'label:Name', value: ' Site ' }, { selector: 'placeholder:Comment', value: '' }] })
+    made.mocks.failOnce('fill', () => {})
+    made.mocks.failOnce('fill', () => { throw new Error('field unavailable') })
+    await expect(session.act({ kind: 'fill', fields: [{ selector: 'label:Name', value: 'Updated' }, { selector: '#gone', value: 'x' }, { selector: '#untouched', value: 'y' }] }))
+      .rejects.toThrow('field unavailable')
+    expect(made.mocks.actions.map(action => [action.selector, action.args[0]])).toEqual([
+      ['label:Name', ' Site '], ['placeholder:Comment', ''], ['label:Name', 'Updated'],
+    ])
+  })
 
   it('navigates and returns a bounded page result', async () => {
     const made = fakePage()
@@ -242,7 +278,7 @@ describe('PlaywrightSession command dispatch', () => {
     const { session } = await mount([made.page])
 
     await session.act({ kind: 'navigate', url: 'https://example.com/' })
-    expect(made.mocks.goto).toHaveBeenCalledWith('https://example.com/', { timeout: 5_000 })
+    expect(made.mocks.goto).toHaveBeenCalledWith('https://example.com/', { timeout: 5_000, waitUntil: 'domcontentloaded' })
   })
 
   it('captures the accessibility tree on an aria snapshot', async () => {
@@ -365,6 +401,69 @@ describe('PlaywrightSession command dispatch', () => {
     expect(made.mocks.press).toHaveBeenCalledWith('Enter')
   })
 
+  it('bounds a stuck input and locks its actual page even after the input eventually settles', async () => {
+    const { session, mocks } = await mount([], { defaultTimeoutMs: 20 })
+    await session.act({ kind: 'navigate', page: 'work', url: 'https://a.test/' })
+    const work = mocks.created[0]!
+    const input = Promise.withResolvers<undefined>()
+    work.mocks.press.mockReturnValueOnce(input.promise)
+    try {
+      const stalled = session.act({ kind: 'press', page: 'work', key: 'Enter' })
+      const queued = session.act({ kind: 'click', page: 'work', selector: 'button' })
+      await expect(stalled).rejects.toMatchObject({ code: 'BROWSER_ACTION_UNCERTAIN' })
+      await expect(queued).rejects.toMatchObject({ code: 'BROWSER_ACTION_UNCERTAIN' })
+      await expect(session.act({ kind: 'press', key: 'Enter' })).rejects.toMatchObject({ code: 'BROWSER_ACTION_UNCERTAIN' })
+      await expect(session.act({ kind: 'navigate', page: 'work', url: 'https://a.test/' }))
+        .rejects.toMatchObject({ code: 'BROWSER_ACTION_UNCERTAIN' })
+      expect(work.mocks.press).toHaveBeenCalledTimes(1)
+      expect(work.mocks.close).not.toHaveBeenCalled()
+      expect(work.mocks.actions).toEqual([])
+      await expect(session.act({ kind: 'navigate', page: 'other', url: 'https://b.test/' })).resolves.toMatchObject({ kind: 'page' })
+      input.resolve(undefined)
+      await expect(session.act({ kind: 'fill', page: 'work', selector: 'input', value: 'retry' }))
+        .rejects.toMatchObject({ code: 'BROWSER_ACTION_UNCERTAIN' })
+      await session.act({ kind: 'bringToFront', page: 'work' })
+      expect(work.mocks.bringToFront).toHaveBeenCalledTimes(1)
+      await session.act({ kind: 'closePage', page: 'work' })
+      expect(work.mocks.close).toHaveBeenCalledTimes(1)
+    } finally {
+      input.resolve(undefined)
+      await session.close()
+    }
+  })
+
+  it.each(['press', 'click'] as const)('retains ownership of cancelled raw %s until browser teardown settles it', async (kind) => {
+    const made = fakePage()
+    const { session, context } = await mount([made.page])
+    const input = Promise.withResolvers<undefined>()
+    const started = Promise.withResolvers<undefined>()
+    const action = kind === 'press' ? made.mocks.press : made.mocks.xyClick
+    action.mockImplementationOnce(() => {
+      started.resolve(undefined)
+      return input.promise
+    })
+    const controller = new AbortController()
+    const command = kind === 'press' ? { kind, key: 'Enter' } : { kind, selector: 'xy:10,20' }
+    const result = session.act(command, controller.signal)
+    const failed = expect(result).rejects.toMatchObject({ code: 'BROWSER_ACTION_UNCERTAIN' })
+    await started.promise
+    controller.abort()
+    await failed
+    expect(made.mocks.close).not.toHaveBeenCalled()
+    let disposed = false
+    const closing = session.close().then(() => { disposed = true })
+    let repeatedCloseFinished = false
+    const repeatedClose = session.close().then(() => { repeatedCloseFinished = true })
+    await Promise.resolve()
+    expect(context.close).toHaveBeenCalledTimes(1)
+    expect(disposed).toBe(false)
+    expect(repeatedCloseFinished).toBe(false)
+    input.reject(new Error('browser closed'))
+    await closing
+    await repeatedClose
+    expect(disposed).toBe(true)
+  })
+
   it('returns a base64 screenshot', async () => {
     const made = fakePage()
     const { session } = await mount([made.page])
@@ -457,7 +556,7 @@ describe('PlaywrightSession command dispatch', () => {
     await session.close()
 
     await expect(session.act({ kind: 'snapshot' }))
-      .rejects.toThrow(expect.objectContaining({ code: 'BROWSER_ACTION_FAILED' }))
+      .rejects.toThrow(expect.objectContaining({ code: 'BROWSER_SESSION_CLOSED' }))
   })
 
   it('rejects an aborted command signal before touching the browser', async () => {
@@ -477,6 +576,65 @@ describe('PlaywrightSession command dispatch', () => {
     const session = await provider.open()
 
     await expect(session.close()).resolves.toBeUndefined()
+  })
+
+  it('preserves existing tabs at capacity and releases capacity after an explicit close', async () => {
+    const existing = fakePage()
+    const { session, mocks } = await mount([existing.page], { maxOpenPages: 1 })
+    await expect(session.act({ kind: 'navigate', page: 'overflow', url: 'https://a.test/' }))
+      .rejects.toMatchObject({ code: 'BROWSER_PAGE_LIMIT' })
+    expect(existing.mocks.close).not.toHaveBeenCalled()
+    await expect(session.act({ kind: 'navigate', url: 'https://a.test/' })).resolves.toMatchObject({ kind: 'page' })
+    await session.act({ kind: 'closePage' })
+    await expect(session.act({ kind: 'navigate', page: 'replacement', url: 'https://a.test/' }))
+      .resolves.toMatchObject({ kind: 'page', page: 'replacement' })
+    expect(mocks.newPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('reserves page capacity across parallel callers', async () => {
+    const { session, mocks } = await mount([], { maxOpenPages: 1 })
+    const results = await Promise.allSettled(['a', 'b'].map(page => session.act({
+      kind: 'navigate', page, url: 'https://a.test/',
+    })))
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter(result => result.status === 'rejected')).toMatchObject([
+      { reason: { code: 'BROWSER_PAGE_LIMIT' } },
+    ])
+    expect(mocks.newPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens more than six pages without closing existing work when the ceiling is disabled', async () => {
+    const existing = fakePage()
+    const { session, mocks } = await mount([existing.page], { maxOpenPages: 0 })
+    const results = await Promise.all(Array.from({ length: 7 }, (_, index) => session.act({
+      kind: 'newPage', page: `work-${index}`,
+    })))
+    expect(results).toHaveLength(7)
+    expect(mocks.newPage).toHaveBeenCalledTimes(7)
+    expect(existing.mocks.close).not.toHaveBeenCalled()
+    await expect(session.act({ kind: 'snapshot', page: 'p1' })).resolves.toMatchObject({ kind: 'page' })
+  })
+
+  it('rejects a negative page ceiling before launching Chromium', async () => {
+    const provider = new PlaywrightBrowserProvider(resolvedConfig({ maxOpenPages: -1 }))
+    await expect(provider.open()).rejects.toThrow('maxOpenPages must be an integer >= 0')
+    expect(launchPersistentContext).not.toHaveBeenCalled()
+  })
+
+  it('releases a reservation when Chromium cannot create the page', async () => {
+    const { session, mocks } = await mount([], { maxOpenPages: 1 })
+    mocks.newPage.mockRejectedValueOnce(new Error('creation failed'))
+    await expect(session.act({ kind: 'navigate', page: 'a', url: 'https://a.test/' })).rejects.toThrow('creation failed')
+    await expect(session.act({ kind: 'navigate', page: 'b', url: 'https://b.test/' })).resolves.toMatchObject({ kind: 'page' })
+  })
+
+  it('uses the deployment navigation settings unless the command overrides readiness', async () => {
+    const existing = fakePage()
+    const { session } = await mount([existing.page], { navigationTimeoutMs: 20_000, navigationWaitUntil: 'load' })
+    await session.act({ kind: 'navigate', url: 'https://a.test/' })
+    expect(existing.mocks.goto).toHaveBeenLastCalledWith('https://a.test/', { timeout: 20_000, waitUntil: 'load' })
+    await session.act({ kind: 'navigate', url: 'https://a.test/', waitUntil: 'domcontentloaded' })
+    expect(existing.mocks.goto).toHaveBeenLastCalledWith('https://a.test/', { timeout: 20_000, waitUntil: 'domcontentloaded' })
   })
 
   it('opens a new tab bound to the caller-named ref and reuses it after', async () => {
@@ -578,6 +736,17 @@ describe('PlaywrightSession command dispatch', () => {
 })
 
 describe('browser-playwright plugin apply', () => {
+  it.each(['maxOpenPages', 'navigationTimeoutMs'])('rejects invalid %s settings', (key) => {
+    for (const value of [-1, 1.5, ...key === 'navigationTimeoutMs' ? [0] : []]) {
+      expect(() => { apply({ browser: { registerProvider: vi.fn() } } as never, Config({ [key]: value })) })
+        .toThrow(/integer >=/u)
+    }
+  })
+  it('accepts a disabled page ceiling at plugin load', () => {
+    const registerProvider = vi.fn()
+    apply({ browser: { registerProvider } } as never, Config({ maxOpenPages: 0 }))
+    expect(registerProvider).toHaveBeenCalledOnce()
+  })
   it('registers the provider with defaulted config', () => {
     const registerProvider = vi.fn()
     const defaulted = Config({}) as ResolvedPlaywrightConfig

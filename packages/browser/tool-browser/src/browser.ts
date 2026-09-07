@@ -11,10 +11,10 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, GenericResultView, JsonValue, ToolResult } from '@deepseek-ai/dsh-tools'
 import { assertNever } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import type { BrowserCommand, BrowserResult } from '@deepseek-ai/dsh-browser'
+import type { BrowserCommand, BrowserFillField, BrowserResult } from '@deepseek-ai/dsh-browser'
 
 /** Tool actions, one per closed-union command kind. */
-const ACTIONS = ['navigate', 'snapshot', 'click', 'fill', 'select', 'press', 'upload', 'screenshot', 'waitFor', 'closePage', 'bringToFront'] as const
+const ACTIONS = ['navigate', 'snapshot', 'click', 'fill', 'select', 'press', 'upload', 'screenshot', 'waitFor', 'closePage', 'bringToFront', 'newPage'] as const
 
 type BrowserAction = typeof ACTIONS[number]
 
@@ -25,6 +25,7 @@ export interface BrowserToolInput {
   readonly url?: string
   readonly selector?: string
   readonly value?: string
+  readonly fields?: readonly BrowserFillField[]
   readonly key?: string
   readonly files?: readonly string[]
   readonly waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'
@@ -42,7 +43,6 @@ export function parseBrowserArgs(args: Record<string, unknown>): BrowserCommand 
   const page = readNonEmpty(args.page, 'page')
   const url = readNonEmpty(args.url, 'url')
   const selector = readSelector(args.selector)
-  const value = readNonEmpty(args.value, 'value')
   const waitUntil = readWaitUntil(args.waitUntil)
   const timeoutMs = readPositiveInt(args.timeoutMs, 'timeoutMs')
 
@@ -51,6 +51,9 @@ export function parseBrowserArgs(args: Record<string, unknown>): BrowserCommand 
   )
 
   switch (action as BrowserAction) {
+    case 'newPage':
+      if (page === undefined) throw new Error('browser newPage requires a new page ref.')
+      return { kind: 'newPage', page }
     case 'bringToFront':
       return addressed({ kind: 'bringToFront' })
     case 'navigate': {
@@ -58,23 +61,47 @@ export function parseBrowserArgs(args: Record<string, unknown>): BrowserCommand 
       if (target === undefined) throw new Error('browser navigate requires an http(s) url.')
       return addressed({ kind: 'navigate', url: target, ...waitUntil === undefined ? {} : { waitUntil } })
     }
-    case 'snapshot':
+    case 'snapshot': {
+      if (args.format !== undefined && (typeof args.format !== 'string' || !['text', 'aria', 'form', 'links'].includes(args.format))) {
+        throw new Error('browser snapshot format must be text, aria, form, or links.')
+      }
       return addressed({
         kind: 'snapshot',
         ...selector === undefined ? {} : { selector },
-        ...args.format === 'aria' ? { format: 'aria' as const } : {},
+        ...args.format === undefined ? {} : { format: args.format as 'text' | 'aria' | 'form' | 'links' },
       })
+    }
     case 'click':
       if (selector === undefined) throw new Error('browser click requires a selector.')
       return addressed({ kind: 'click', selector })
-    case 'fill':
+    case 'fill': {
+      if (args.fields !== undefined) {
+        if (args.selector !== undefined || args.value !== undefined) {
+          throw new Error('browser fill accepts fields or selector/value, not both.')
+        }
+        if (!Array.isArray(args.fields) || args.fields.length === 0) {
+          throw new Error('browser fill requires a non-empty fields array.')
+        }
+        const fields = args.fields.map((field: unknown) => {
+          if (typeof field !== 'object' || field === null || Array.isArray(field)) {
+            throw new Error('browser fill fields must contain selector/value objects.')
+          }
+          const candidate = field as Record<string, unknown>
+          const selector = readSelector(candidate.selector)
+          if (selector === undefined) throw new Error('browser fill requires a selector for every field.')
+          return { selector, value: readFillValue(candidate.value) }
+        })
+        return addressed({ kind: 'fill', fields })
+      }
       if (selector === undefined) throw new Error('browser fill requires a selector.')
-      if (value === undefined) throw new Error('browser fill requires a value.')
-      return addressed({ kind: 'fill', selector, value })
-    case 'select':
+      return addressed({ kind: 'fill', selector, value: readFillValue(args.value) })
+    }
+    case 'select': {
+      const value = readNonEmpty(args.value, 'value')
       if (selector === undefined) throw new Error('browser select requires a selector.')
       if (value === undefined) throw new Error('browser select requires a value.')
       return addressed({ kind: 'select', selector, value })
+    }
     case 'press':
       if (typeof args.key !== 'string' || args.key.trim().length === 0) {
         throw new Error('browser press requires a key (for example Enter, Tab).')
@@ -104,6 +131,11 @@ export function parseBrowserArgs(args: Record<string, unknown>): BrowserCommand 
     default:
       return assertNever(action as never, `browser action must be one of ${ACTIONS.join(', ')}.`)
   }
+}
+
+function readFillValue(value: unknown): string {
+  if (typeof value !== 'string') throw new Error('browser fill requires a string value.')
+  return value
 }
 
 /**
@@ -175,7 +207,7 @@ export function formatBrowserOutput(result: BrowserResult, maxChars: number): st
   switch (result.kind) {
     case 'page': {
       const header = `[page ${result.page}] ${result.title}\n${result.url}`
-      const body = result.text.length > maxChars
+      const body = result.truncated || result.text.length > maxChars
         ? `${result.text.slice(0, maxChars)}\n… (truncated)`
         : result.text
       return `${header}\n\n${body}`
@@ -271,10 +303,12 @@ export function applyBrowserTool(ctx: Context, timeoutMs: number, maxOutputChars
     text: [
       'Use the browser tool to drive one shared, persistent real-browser session across tabs.',
       'Tabs: navigate returns a page ref like p2; pass that page on every later command for the tab you are working. Work several sites in parallel by giving each its own ref. Omit page only for single-tab serial work.',
+      'newPage reserves a blank tab under a new page ref without visiting a website; it fails if the ref exists or page capacity is exhausted.',
       'Selectors address semantically first: role:<role>|<name> (for example role:button|Submit), label:<text>, placeholder:<text>, text:<text>, or bare CSS as fallback; prefix frame(<iframe css>)>> to reach inside an iframe; click also takes xy:<x>,<y> viewport coordinates from a screenshot.',
       'Prefer snapshot with format=aria to read element roles and names, then address them by role/label/placeholder — far more reliable than guessing CSS.',
+      'Use a scoped snapshot with format=form for input attributes and values (password values are omitted), or format=links for visible anchor text and resolved hrefs. Link text alone does not verify a destination. Fill several known text controls in one call with fields: [{selector, value}]; fills run in order and stop at the first failure without undoing earlier fields. Submit separately after checking the form.',
       'The window may run offscreen; when a human must step in (CAPTCHA, login), call bringToFront first so the window surfaces.',
-      'Actions: navigate (absolute http(s) url), snapshot (url/title/text of the page or a selector), click/fill/select (CSS selector; fill and select need value), press (key like Enter), upload (selector + files), screenshot (PNG base64), waitFor (selector or url), closePage.',
+      'Actions: navigate (absolute http(s) url), snapshot (url/title/text of the page or a selector), click/fill/select (semantic or CSS selector; fill and select need value), press (key like Enter), upload (selector + files), screenshot (PNG base64), waitFor (selector or url), closePage.',
       'The session persists cookies and logins across calls and runs; prefer it for sites that need JavaScript, logins, or form submission. Confirm outcomes with snapshot or waitFor after state-changing actions.',
     ].join(' '),
   })
@@ -302,11 +336,24 @@ export function applyBrowserTool(ctx: Context, timeoutMs: number, maxOutputChars
       },
       format: {
         type: 'string',
-        description: 'snapshot capture shape: text (visible text) or aria (accessibility tree with roles and names).',
+        enum: ['text', 'aria', 'form', 'links'],
+        description: 'snapshot: visible text, accessibility tree, form fields (passwords omitted), or visible links with resolved hrefs. All accept the same selector grammar.',
       },
       value: {
         type: 'string',
         description: 'Value for fill; option value for select.',
+      },
+      fields: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            selector: { type: 'string', required: true },
+            value: { type: 'string', required: true },
+          },
+        },
+        description: 'fill only: ordered text fields, instead of selector/value. Values are verbatim; an empty string clears a field. No submission is performed; earlier fills remain if a later one fails.',
       },
       key: {
         type: 'string',

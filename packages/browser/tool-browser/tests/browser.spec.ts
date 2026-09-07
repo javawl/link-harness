@@ -12,6 +12,18 @@ import {
 } from '@deepseek-ai/dsh-tool-browser/src/browser.ts'
 
 describe('parseBrowserArgs', () => {
+  it('validates a complete fill batch before dispatch and preserves field values', () => {
+    const fields = [{ selector: 'label:Comment', value: '  first line\nsecond line  ' }, { selector: 'label:Name', value: '' }]
+    expect(parseBrowserArgs({ action: 'fill', page: 'work', fields })).toEqual({ kind: 'fill', page: 'work', fields })
+    for (const value of [[], [null], [{ value: 'x' }], [{ selector: 'input', value: 2 }]]) {
+      expect(() => parseBrowserArgs({ action: 'fill', fields: value })).toThrow()
+    }
+    expect(() => parseBrowserArgs({ action: 'fill', fields, selector: 'input', value: 'x' })).toThrow('not both')
+    expect(() => parseBrowserArgs({ action: 'snapshot', format: 'unknown' })).toThrow('format')
+    expect(parseBrowserArgs({ action: 'newPage', page: 'work' })).toEqual({ kind: 'newPage', page: 'work' })
+    expect(() => parseBrowserArgs({ action: 'newPage' })).toThrow('page ref')
+  })
+
   it('maps every action to its command shape', () => {
     expect(parseBrowserArgs({ action: 'navigate', url: 'https://example.com' }))
       .toEqual({ kind: 'navigate', url: 'https://example.com/' })
@@ -59,7 +71,8 @@ describe('parseBrowserArgs', () => {
     expect(() => parseBrowserArgs({ action: 'fill', selector: 'input' })).toThrow(/value/u)
     expect(() => parseBrowserArgs({ action: 'select' })).toThrow(/selector/u)
     expect(() => parseBrowserArgs({ action: 'upload' })).toThrow(/selector/u)
-    expect(() => parseBrowserArgs({ action: 'fill', selector: 'input', value: '' })).toThrow(/value/u)
+    expect(parseBrowserArgs({ action: 'fill', selector: 'input', value: '' }))
+      .toEqual({ kind: 'fill', selector: 'input', value: '' })
     expect(() => parseBrowserArgs({ action: 'select', selector: 'select' })).toThrow(/value/u)
     expect(() => parseBrowserArgs({ action: 'press' })).toThrow(/key/u)
     expect(() => parseBrowserArgs({ action: 'upload', selector: 'input', files: [] })).toThrow(/files/u)

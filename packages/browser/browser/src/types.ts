@@ -15,6 +15,7 @@ import { HarnessError } from '@deepseek-ai/dsh-llm'
  */
 export type BrowserCommand =
   | BrowserNavigateCommand
+  | BrowserNewPageCommand
   | BrowserSnapshotCommand
   | BrowserBringToFrontCommand
   | BrowserClickCommand
@@ -39,6 +40,12 @@ export interface BrowserPageAddress {
   readonly page?: string
 }
 
+/** Reserve a blank tab under a new explicit ref, without navigating to a website. */
+export interface BrowserNewPageCommand {
+  readonly kind: 'newPage'
+  readonly page: string
+}
+
 /** Navigate the addressed page to a URL and return the resulting page snapshot. */
 export interface BrowserNavigateCommand extends BrowserPageAddress {
   readonly kind: 'navigate'
@@ -55,8 +62,8 @@ export interface BrowserSnapshotCommand extends BrowserPageAddress {
   readonly kind: 'snapshot'
   /** Selector limiting the capture; omitted = whole page body. */
   readonly selector?: string
-  /** Capture shape: `text` = visible text, `aria` = the accessibility tree with element roles and names. */
-  readonly format?: 'text' | 'aria'
+  /** Capture visible text, accessibility roles, form fields, or visible links with resolved hrefs. */
+  readonly format?: 'text' | 'aria' | 'form' | 'links'
   /** Bound on the returned text; over-long text is truncated and flagged. */
   readonly maxChars?: number
 }
@@ -72,12 +79,17 @@ export interface BrowserClickCommand extends BrowserPageAddress {
   readonly selector: string
 }
 
-/** Replace the value of a text input or textarea on the addressed page. */
-export interface BrowserFillCommand extends BrowserPageAddress {
-  readonly kind: 'fill'
+/** One text control to fill; values are preserved verbatim, including an empty string to clear it. */
+export interface BrowserFillField {
   readonly selector: string
   readonly value: string
 }
+
+/** Fill one control or several in order on one page. Earlier fills remain if a later field fails. */
+export type BrowserFillCommand = BrowserPageAddress & { readonly kind: 'fill' } & (
+  | (BrowserFillField & { readonly fields?: never })
+  | { readonly fields: readonly BrowserFillField[]; readonly selector?: never; readonly value?: never }
+)
 
 /** Choose an option of a `<select>` on the addressed page. */
 export interface BrowserSelectCommand extends BrowserPageAddress {
@@ -166,8 +178,9 @@ export interface BrowserSession {
   /**
    * Perform one command on the addressed page.
    * @param command - the closed-union command to execute.
-   * @param signal - optional cancellation signal checked before dispatch.
+   * @param signal - optional cancellation signal; interruption after dispatch does not guarantee rollback.
    * @returns the closed-union outcome for the command kind.
+   * @throws BrowserError with BROWSER_ACTION_UNCERTAIN when an input may still complete; never automatically retry it.
    */
   act(command: BrowserCommand, signal?: AbortSignal): Promise<BrowserResult>
   /** Close the browser and reject further commands. Idempotent. */
@@ -197,7 +210,10 @@ export type BrowserErrorCode =
   | 'BROWSER_PROVIDER_AMBIGUOUS'
   | 'BROWSER_LAUNCH_FAILED'
   | 'BROWSER_ABORTED'
+  | 'BROWSER_PAGE_LIMIT'
+  | 'BROWSER_SESSION_CLOSED'
   | 'BROWSER_ACTION_FAILED'
+  | 'BROWSER_ACTION_UNCERTAIN'
 
 /** Browser seam error with a stable machine-routable code. */
 export class BrowserError extends HarnessError {}

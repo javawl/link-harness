@@ -193,7 +193,7 @@ describe('BrowserRuntime session lifecycle', () => {
       onCommand: () => {
         if (failFirst) {
           failFirst = false
-          throw new BrowserError('Target page, context or browser has been closed', 'BROWSER_ACTION_FAILED')
+          throw new BrowserError('browser session is closed', 'BROWSER_SESSION_CLOSED')
         }
         return pageResult
       },
@@ -201,9 +201,51 @@ describe('BrowserRuntime session lifecycle', () => {
     browser.registerProvider(made.provider)
 
     await expect(browser.act({ kind: 'snapshot' }))
-      .rejects.toThrow(expect.objectContaining({ code: 'BROWSER_ACTION_FAILED' }))
+      .rejects.toThrow(expect.objectContaining({ code: 'BROWSER_SESSION_CLOSED' }))
     await expect(browser.act({ kind: 'snapshot' })).resolves.toMatchObject({ kind: 'page' })
     expect(made.opens).toBe(2)
+  })
+
+  it('keeps other pages usable when a page closes during an action', async () => {
+    const { browser } = await mountBrowser()
+    let failed = false
+    const made = makeProvider({ onCommand: () => {
+      if (!failed) {
+        failed = true
+        throw new BrowserError('Target page, context or browser has been closed', 'BROWSER_ACTION_FAILED')
+      }
+      return pageResult
+    } })
+    browser.registerProvider(made.provider)
+    await expect(browser.act({ kind: 'snapshot', page: 'closed' })).rejects.toThrow('has been closed')
+    await expect(browser.act({ kind: 'snapshot', page: 'other' })).resolves.toMatchObject({ kind: 'page' })
+    expect(made.opens).toBe(1)
+    expect(made.sessions[0]?.closed).toBe(false)
+  })
+
+  it('does not discard a replacement session for a late error from the old one', async () => {
+    const { browser } = await mountBrowser()
+    const first = Promise.withResolvers<BrowserResult>()
+    const late = Promise.withResolvers<BrowserResult>()
+    const entered = Promise.withResolvers<undefined>()
+    let count = 0
+    const made = makeProvider({ onCommand: (command) => {
+      if (++count === 2) entered.resolve(undefined)
+      if (command.page === 'first') return first.promise
+      if (command.page === 'late') return late.promise
+      return pageResult
+    } })
+    browser.registerProvider(made.provider)
+    const a = browser.act({ kind: 'snapshot', page: 'first' })
+    const b = browser.act({ kind: 'snapshot', page: 'late' })
+    await entered.promise
+    first.reject(new BrowserError('closed', 'BROWSER_SESSION_CLOSED'))
+    await expect(a).rejects.toThrow('closed')
+    await browser.act({ kind: 'snapshot', page: 'replacement' })
+    late.reject(new BrowserError('closed', 'BROWSER_SESSION_CLOSED'))
+    await expect(b).rejects.toThrow('closed')
+    expect(made.opens).toBe(2)
+    expect(made.sessions[1]?.closed).toBe(false)
   })
 
   it('keeps the session when the provider throws a BrowserError itself', async () => {
