@@ -149,3 +149,12 @@ Docs accompany every code change: update affected README and JSDoc contracts tog
 ## Vendoring policy
 
 `vendor/` packages are pinned source copies (manifest with upstream SHAs in [vendor/README.md](vendor/README.md)). Update via the sync procedure there; re-apply or retire the logged local modifications; rerun `pnpm run test && pnpm run build`.
+
+<!-- TRELLIS:START -->
+# Trellis instructions
+
+遵循[工作流](.trellis/workflow.md)和[项目规范](.trellis/spec/)。
+
+仅用户主动明确要求时才创建 Trellis 父任务或子任务；不得主动询问。其余工作直接实施，读取相关规范并完成验证。Codex 仅在当前请求明确授权的范围内派发子代理；复杂度、工作流、历史授权或隐含意图均不构成许可，否则由主会话完成。
+
+<!-- TRELLIS:END -->

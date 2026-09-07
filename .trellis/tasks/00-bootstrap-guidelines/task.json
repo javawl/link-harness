@@ -1,0 +1,28 @@
+{
+  "id": "00-bootstrap-guidelines",
+  "name": "00-bootstrap-guidelines",
+  "title": "初始化 link-harness 项目规范",
+  "description": "从当前源码和现有文档提取可执行的项目规范",
+  "status": "in_progress",
+  "dev_type": "docs",
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "zlb",
+  "assignee": "zlb",
+  "createdAt": "2026-09-06",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": null,
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    ".trellis/spec/project/"
+  ],
+  "notes": "通用工程规则来自内网 registry；项目规则必须引用当前仓库真实证据",
+  "meta": {}
+}
