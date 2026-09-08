@@ -4,6 +4,8 @@
  * page serves every command. Failures wrap into the seam's `BrowserError` taxonomy.
  */
 
+import { realpathSync } from 'node:fs'
+import { dirname, basename, resolve } from 'node:path'
 import { chromium } from 'playwright-core'
 import type { BrowserContext, Locator, Page } from 'playwright-core'
 import { assertNever } from '@deepseek-ai/dsh-llm'
@@ -23,6 +25,8 @@ export const DEFAULT_SNAPSHOT_MAX_CHARS = 60_000
 
 /** Resolved launch configuration after schemastery defaults. */
 export interface ResolvedPlaywrightConfig {
+  /** Existing local Chromium endpoint; cleanup disconnects without closing its tabs. */
+  readonly cdpEndpoint?: string
   /** Persistent profile directory; logins and cookies survive runs. */
   readonly userDataDir: string
   /** Headed by default: a human can step in to solve a challenge in the same profile. */
@@ -189,6 +193,7 @@ class PlaywrightSession implements BrowserSession {
     private readonly navigationTimeoutMs: number,
     private readonly navigationWaitUntil: ResolvedPlaywrightConfig['navigationWaitUntil'],
     private readonly maxOpenPages: number,
+    private readonly disconnect?: () => Promise<void>,
   ) {
     this.context.on('close', () => {
       this.closed = true
@@ -379,7 +384,7 @@ class PlaywrightSession implements BrowserSession {
       if (!this.closed) {
         this.closed = true
         try {
-          await this.context.close()
+          await (this.disconnect?.() ?? this.context.close())
         } catch {
           // swallow: closing an already-dead browser
         }
@@ -534,9 +539,33 @@ class PlaywrightSession implements BrowserSession {
 
 /** Playwright-backed browser automation provider. */
 export class PlaywrightBrowserProvider implements BrowserAutomationProvider {
-  readonly id = PLAYWRIGHT_BROWSER_PROVIDER_ID
+  readonly resourceKey: string
 
-  constructor(private readonly config: ResolvedPlaywrightConfig) {}
+  constructor(private readonly config: ResolvedPlaywrightConfig, readonly id = PLAYWRIGHT_BROWSER_PROVIDER_ID) {
+    if (config.cdpEndpoint !== undefined) {
+      const endpoint = new URL(config.cdpEndpoint)
+      if (endpoint.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname)
+        || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || endpoint.pathname !== '/') {
+        throw new Error('browser-playwright: cdpEndpoint must be a local HTTP origin, such as http://127.0.0.1:9222')
+      }
+      endpoint.hostname = '127.0.0.1'
+      this.resourceKey = `cdp:${endpoint.origin}`
+    } else {
+      let directory = resolve(config.userDataDir)
+      const missing: string[] = []
+      while (true) {
+        try {
+          directory = realpathSync(directory)
+          break
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+          missing.unshift(basename(directory))
+          directory = dirname(directory)
+        }
+      }
+      this.resourceKey = `profile:${resolve(directory, ...missing)}`
+    }
+  }
 
   /** The playwright-core import succeeded, so launches are possible; no browser is started here. */
   available(): boolean {
@@ -551,8 +580,18 @@ export class PlaywrightBrowserProvider implements BrowserAutomationProvider {
       throw new Error('browser-playwright: maxOpenPages must be an integer >= 0')
     }
     let context: BrowserContext
+    let disconnect: (() => Promise<void>) | undefined
     try {
-      context = await chromium.launchPersistentContext(this.config.userDataDir, {
+      if (this.config.cdpEndpoint !== undefined) {
+        const browser = await chromium.connectOverCDP(this.config.cdpEndpoint, { timeout: this.config.defaultTimeoutMs })
+        disconnect = () => browser.close()
+        const existing = browser.contexts()[0]
+        if (existing === undefined) {
+          await disconnect()
+          throw new Error('the attached browser has no default context')
+        }
+        context = existing
+      } else context = await chromium.launchPersistentContext(this.config.userDataDir, {
         headless: this.config.headless,
         timeout: this.config.defaultTimeoutMs,
         ...this.config.channel.length > 0 ? { channel: this.config.channel } : {},
@@ -568,13 +607,13 @@ export class PlaywrightBrowserProvider implements BrowserAutomationProvider {
       })
     } catch (error) {
       throw new BrowserError(
-        `failed to launch the persistent browser profile at ${this.config.userDataDir}: ${String(error instanceof Error ? error.message : error)}`,
+        `failed to open browser ${this.id}: ${String(error instanceof Error ? error.message : error)}`,
         'BROWSER_LAUNCH_FAILED',
         { cause: error },
       )
     }
     context.setDefaultTimeout(this.config.defaultTimeoutMs)
     return new PlaywrightSession(context, this.config.defaultTimeoutMs, DEFAULT_SNAPSHOT_MAX_CHARS,
-      this.config.navigationTimeoutMs, this.config.navigationWaitUntil, this.config.maxOpenPages)
+      this.config.navigationTimeoutMs, this.config.navigationWaitUntil, this.config.maxOpenPages, disconnect)
   }
 }

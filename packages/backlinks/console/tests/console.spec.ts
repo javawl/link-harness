@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import BrowserRuntime from '@deepseek-ai/dsh-browser'
+import BacklinksRuntime from '@deepseek-ai/dsh-backlinks'
+import * as Playwright from '@deepseek-ai/dsh-browser-playwright'
+import { FileSettingsProvider } from '@deepseek-ai/dsh-settings-file'
 
 import { BacklinksConsoleRuntime } from '@deepseek-ai/dsh-backlinks-console/src/index.ts'
 import { apply } from '@deepseek-ai/dsh-backlinks-console/src/invariant.ts'
@@ -71,5 +78,50 @@ describe('invariant companion', () => {
     const dispose = await apply({ invariants: { register } } as never)
     expect(register).toHaveBeenCalledWith('@deepseek-ai/dsh-backlinks-console', expect.any(Function))
     dispose()
+  })
+})
+
+
+describe('persistent browser configuration', () => {
+  it('adds isolated profiles and connections, rejects aliases, and restores website bindings', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'browser-bindings-'))
+    const mount = async () => {
+      const ctx = new Context()
+      await ctx.plugin(FileSettingsProvider, { path: join(directory, 'settings.yaml'), watch: false })
+      await ctx.plugin(BrowserRuntime, { provider: 'playwright' })
+      await ctx.plugin(BacklinksRuntime)
+      await ctx.plugin(Playwright, { userDataDir: join(directory, 'default') })
+      ctx.backlinks.registerBatchSourceProvider({
+        id: 'fixture', available: () => true, listBatches: async () => [summary], getBatch: async () => detail,
+        claim: async () => { throw new Error('unexpected claim') },
+        heartbeat: async () => { throw new Error('unexpected heartbeat') }, release: async () => {},
+        reportItemResult: async () => { throw new Error('unexpected result') },
+        addBadge: async () => { throw new Error('unexpected badge') }, tagSource: async () => { throw new Error('unexpected tags') },
+      })
+      return { ctx, console: new BacklinksConsoleRuntime(ctx) }
+    }
+    let current = await mount()
+    try {
+      await current.console.addBrowser('site-a', 'profile', join(directory, 'a'))
+      await current.console.addBrowser('site-b', 'cdp', 'http://localhost:9222')
+      await expect(current.console.addBrowser('same-dir', 'profile', join(directory, 'a', '..', 'a'))).rejects.toThrow(/distinct/)
+      await expect(current.console.addBrowser('same-port', 'cdp', 'http://127.0.0.1:9222/')).rejects.toThrow(/distinct/)
+      await expect(current.console.addBrowser('remote', 'cdp', 'https://untrusted.example/')).rejects.toThrow(/local HTTP/)
+      await expect(current.console.addBrowser('site-a', 'profile', join(directory, 'c'))).rejects.toThrow(/distinct/)
+      await expect(current.console.bindBrowser(82, 'missing')).rejects.toThrow(/not registered/)
+      await expect(current.console.bindBrowser(999, 'site-a')).rejects.toThrow(/not present/)
+      await current.console.bindBrowser(82, 'site-a')
+      expect((await current.console.browsers()).bindings).toEqual({ 82: 'site-a' })
+      expect(current.ctx.browser.hasSession('site-a')).toBe(false)
+      await current.ctx.fiber.dispose()
+      current = await mount()
+      expect((await current.console.browsers()).browsers.map(browser => browser.id)).toEqual(['playwright', 'site-a', 'site-b'])
+      expect((await current.console.browsers()).bindings).toEqual({ 82: 'site-a' })
+      await current.console.bindBrowser(82, '')
+      expect((await current.console.browsers()).bindings).toEqual({ 82: '' })
+    } finally {
+      await current.ctx.fiber.dispose()
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 })

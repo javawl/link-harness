@@ -79,14 +79,14 @@ describe('BrowserRuntime provider registration', () => {
       .rejects.toThrow(expect.objectContaining({ code: 'BROWSER_PROVIDER_UNAVAILABLE' }))
   })
 
-  it('keeps serving an already-open session after its provider unregisters', async () => {
+  it('stops dispatching to an unregistered browser', async () => {
     const { browser } = await mountBrowser()
     const made = makeProvider({})
     const dispose = browser.registerProvider(made.provider)
 
     await expect(browser.act({ kind: 'snapshot' })).resolves.toMatchObject({ kind: 'page' })
     dispose()
-    await expect(browser.act({ kind: 'click', selector: 'a' })).resolves.toMatchObject({ kind: 'page' })
+    await expect(browser.act({ kind: 'click', selector: 'a' })).rejects.toThrow(expect.objectContaining({ code: 'BROWSER_PROVIDER_UNAVAILABLE' }))
     expect(made.opens).toBe(1)
   })
 
@@ -354,5 +354,55 @@ describe('BrowserRuntime session lifecycle', () => {
       .rejects.toThrow(expect.objectContaining({ code: 'BROWSER_ACTION_FAILED' }))
     await expect(browser.closeSession()).resolves.toBeUndefined()
     expect(closeCalls).toBeGreaterThanOrEqual(1)
+  })
+})
+
+
+describe('isolated browser sessions', () => {
+  it('routes identical page refs independently and closes only the selected browser', async () => {
+    const { ctx, browser } = await mountBrowser({ provider: 'a' })
+    const a = makeProvider({ id: 'a' })
+    const b = makeProvider({ id: 'b' })
+    browser.registerProvider(a.provider)
+    browser.registerProvider(b.provider)
+    expect(browser.list()).toEqual([{ id: 'a', available: true }, { id: 'b', available: true }])
+    expect(a.opens + b.opens).toBe(0)
+    await Promise.all([
+      browser.act({ kind: 'newPage', page: 'same' }, undefined, 'a'),
+      browser.act({ kind: 'newPage', page: 'same' }, undefined, 'b'),
+    ])
+    await browser.closeSession('a')
+    await browser.act({ kind: 'fill', page: 'same', selector: 'input', value: 'b' }, undefined, 'b')
+    expect(a.sessions[0]?.closed).toBe(true)
+    expect(b.sessions[0]?.closed).toBe(false)
+    expect(b.sessions[0]?.commands).toHaveLength(2)
+    await ctx.fiber.dispose()
+    expect(b.sessions[0]?.closed).toBe(true)
+  })
+
+  it('does not route an unknown browser to the default or duplicate a browser resource', async () => {
+    const { ctx, browser } = await mountBrowser({ provider: 'a' })
+    const a = makeProvider({ id: 'a' })
+    browser.registerProvider({ ...a.provider, resourceKey: 'profile:shared' })
+    expect(() => browser.registerProvider({ ...makeProvider({ id: 'b' }).provider, resourceKey: 'profile:shared' }))
+      .toThrow(expect.objectContaining({ code: 'BROWSER_DUPLICATE_PROVIDER' }))
+    await expect(browser.act({ kind: 'newPage', page: 'page' }, undefined, 'missing'))
+      .rejects.toThrow(expect.objectContaining({ code: 'BROWSER_PROVIDER_CONFIGURED_MISSING' }))
+    expect(a.opens).toBe(0)
+    await ctx.fiber.dispose()
+  })
+
+  it('awaits pending launches on disposal without dispatching late commands', async () => {
+    const { ctx, browser } = await mountBrowser()
+    const opening = Promise.withResolvers<BrowserSession>()
+    const session = new ScriptedSession()
+    browser.registerProvider({ id: 'slow', available: () => true, open: () => opening.promise })
+    const command = browser.act({ kind: 'snapshot' }).catch((error: unknown) => error as BrowserError)
+    const disposing = ctx.fiber.dispose()
+    opening.resolve(session)
+    await disposing
+    expect(await command).toMatchObject({ code: 'BROWSER_SESSION_CLOSED' })
+    expect(session.commands).toEqual([])
+    expect(session.closed).toBe(true)
   })
 })

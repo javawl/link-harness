@@ -21,6 +21,8 @@ export async function apply(ctx: Context): Promise<void> {
   const missingAnchors = process.env.DSH_PUBLISHER_SCENARIO === 'anchors'
   const invalidProfile = process.env.DSH_PUBLISHER_SCENARIO === 'invalid-profile'
   const budget = process.env.DSH_PUBLISHER_SCENARIO === 'budget'
+  const multiBrowser = process.env.DSH_PUBLISHER_SCENARIO === 'multi-browser'
+  const guardedTools = process.env.DSH_PUBLISHER_SCENARIO === 'guarded-tools'
   const posted = new Map<number, URLSearchParams>()
   const serve = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const path = request.url ?? '/'
@@ -30,9 +32,9 @@ export async function apply(ctx: Context): Promise<void> {
       // setEncoding makes the request's otherwise untyped chunks strings.
       for await (const chunk of request as AsyncIterable<string>) body += chunk
     }
-    if (path === '/api/agent/batches/176') {
+    if (/^\/api\/agent\/batches\/[0-9]+$/.test(path)) {
       response.writeHead(200, { 'content-type': 'application/json' })
-      response.end(JSON.stringify({ ok: true, ...detail() }))
+      response.end(JSON.stringify({ ok: true, ...detail(Number(path.split('/').at(-1))) }))
       return
     }
     if (path.startsWith('/api/agent/')) {
@@ -74,7 +76,7 @@ export async function apply(ctx: Context): Promise<void> {
         <a style="visibility:hidden" href="https://hidden.test/">Hidden</a>
         <a href="https://wrong.test/">Site</a>
         <p>&lt;a href="https://site.test/"&gt;Site&lt;/a&gt;</p>
-        ${posted.has(id) ? '<a href="https://site.test/">Site</a>' : ''}`)
+        ${posted.has(id) ? `<a href="https://${multiBrowser && id === 2 ? 'second' : 'site'}.test/">Site</a>` : ''}`)
     }
   }
   const server = createServer((request, response) => {
@@ -99,16 +101,20 @@ export async function apply(ctx: Context): Promise<void> {
     submitUrl: null, sourceNotes: null, category: 'directory', tags: [], paymentType: 'free', linkType: 'dofollow',
     status: 'pending', failureMode: null, failureReason: null, publishStatus: null, publishedUrl: null, plannedAt: 't',
   }))
-  const detail = (): BacklinkBatchDetail => ({
-    batch: { id: 176, name: 'Fixture batch', websiteId: 82, websiteName: 'Site', websiteHost: 'site.test', plannedAt: 't', executing: false,
+  const detail = (batchId = 176): BacklinkBatchDetail => ({
+    batch: { id: batchId, name: 'Fixture batch', websiteId: 82, websiteName: 'Site', websiteHost: 'site.test', plannedAt: 't', executing: false,
       counts: { pending: items.filter(item => item.status === 'pending').length, executed: items.filter(item => item.status === 'executed').length,
         failed: items.filter(item => item.status === 'failed').length, skipped: 0, total: items.length } },
-    website: { id: 82, name: invalidProfile ? '' : 'Site', siteUrl: 'https://site.test/', siteHost: 'site.test' },
-    anchors: missingAnchors || invalidProfile ? [] : [{ id: 1, anchorText: 'Site', targetUrl: 'https://site.test/' }], items,
+    website: { id: multiBrowser && batchId === 177 ? 83 : 82, name: invalidProfile ? '' : 'Site',
+      siteUrl: multiBrowser && batchId === 177 ? 'https://second.test/' : 'https://site.test/',
+      siteHost: multiBrowser && batchId === 177 ? 'second.test' : 'site.test' },
+    anchors: missingAnchors || invalidProfile ? [] : [{ id: 1, anchorText: 'Site',
+      targetUrl: multiBrowser && batchId === 177 ? 'https://second.test/' : 'https://site.test/' }],
+    items: multiBrowser ? items.filter(item => item.id === (batchId === 177 ? 2 : 1)) : items,
   })
   const backend: BacklinkBatchSourceProvider = {
     id: 'fixture', available: () => true, listBatches: async () => [detail().batch], getBatch: async () => detail(),
-    claim: async (_batch, ids) => ({ leaseId: 900, leaseExpiresAt: 'server-clock', items: items.filter(item => ids?.includes(item.id)) }),
+    claim: async (batchId, ids) => ({ leaseId: batchId + 724, leaseExpiresAt: 'server-clock', items: items.filter(item => ids?.includes(item.id)) }),
     heartbeat: async leaseId => ({ leaseId, leaseExpiresAt: 'server-clock' }),
     release: async () => {
       if (quota && (posted.size !== 0 || items.filter(item => item.status === 'pending').length !== 2)) {
@@ -150,16 +156,19 @@ export async function apply(ctx: Context): Promise<void> {
       if (step < 3) return toolCallResponse(`skill-${step}`, 'skill', { name: 'publish-fixture' })
       if (unresolved && step === 3) return toolCallResponse('prior-claim', 'backlinks', { action: 'batch_claim', batchId: 176, itemIds: [1] })
       if (unresolved && step === 4) return toolCallResponse('prior-release', 'backlinks', { action: 'lease_release', leaseId: 900 })
+      if (multiBrowser && step === 3) return toolCallResponse('publish', 'backlink_publish_many', {
+        batches: [{ batchId: 176, browserId: 'playwright' }, { batchId: 177, browserId: 'isolated' }], scope: 'pending', mode: 'all',
+      })
       if (step === 3 + (unresolved ? 2 : 0)) return toolCallResponse('publish', 'backlink_publish', { batchId: 176, scope: 'pending', mode: 'all' })
       if (step === 4 + (unresolved ? 2 : 0)) return toolCallResponse('summary', 'backlinks', { action: 'batch_get', batchId: 176 })
-      if (unresolved) return textResponse('Publication requires reconciliation of item 1; three items remain pending.')
+      if (unresolved) return textResponse('Item 1 skipped for manual review; two other listings verified.')
       if (invalidProfile) return textResponse('Complete the website name and URL; two items remain untouched.')
       if (budget) return textResponse('Both item budgets reached; both outcomes saved.')
       return textResponse(quota ? 'Publication paused after QUOTA; two items remain pending.' : 'Two public fixture listings verified.')
     }
     if (request.provider !== 'mock-selected' || request.model !== 'selected-model') throw new Error('Publication inherited the stale model.')
     if (quota) return [{ type: 'finish', reason: { kind: 'error', failure: { code: 'QUOTA', message: 'private provider payload' } } }]
-    const prompt = JSON.parse(block.text) as { item: BacklinkBatchItem; leaseId: number }
+    const prompt = JSON.parse(block.text) as { item: BacklinkBatchItem; leaseId: number; anchors: { targetUrl: string }[] }
     const { item, leaseId } = prompt
     if (budget) return toolCallResponse(`budget-${item.id}`, 'backlinks', {
       action: 'item_result', itemId: item.id, leaseId, status: 'failed', failureMode: 'retryable', failureReason: 'Fixture site unavailable.',
@@ -168,7 +177,9 @@ export async function apply(ctx: Context): Promise<void> {
     childSteps.set(item.id, step + 1)
     const frame = item.id === 2 ? 'frame(#outer)>>frame(#inner)>>' : ''
     const call = (name: string, args: object) => toolCallResponse(`item-${item.id}-${step}`, name, args)
-    switch (step) {
+    const shellProbe = guardedTools && item.id === 1
+    if (shellProbe && step === 0) return call('bash', { command: `curl -X POST ${item.sourceUrl}` })
+    switch (step - (shellProbe ? 1 : 0)) {
       case 0: return call('browser', { action: 'navigate', url: item.sourceUrl })
       case 1: return call('browser', { action: 'snapshot', format: 'aria', selector: `${frame}role:form|Publish` })
       case 2: return call('browser', { action: 'fill', fields: [
@@ -179,7 +190,7 @@ export async function apply(ctx: Context): Promise<void> {
       case 5: return call('browser', { action: 'click', selector: `${frame}role:button|Publish`, submission: true })
       case 6: return call('browser', { action: 'waitFor', selector: `${frame}text:Your submission is awaiting review.` })
       case 7: return call('backlinks', { action: 'item_result', itemId: item.id, leaseId, status: 'live',
-        publicUrl: item.sourceUrl, targetUrl: 'https://site.test/', anchorText: 'Site', evidence: 'Fresh public listing contains the target href.',
+        publicUrl: item.sourceUrl, targetUrl: prompt.anchors[0]!.targetUrl, anchorText: 'Site', evidence: 'Fresh public listing contains the target href.',
         verificationSelector: `${frame}body` })
       default: return textResponse('Live result saved.')
     }

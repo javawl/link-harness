@@ -7,6 +7,7 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {
   BacklinkBadgeInput,
   BacklinkBadgeResult,
@@ -53,12 +54,17 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+const BROWSER_BINDINGS = settingsNamespace('backlinks-publication')
+const BrowserBindings = z.object({ websiteBrowsers: z.dict(z.string()).default({}) })
+
 /**
  * Config for the backlinks seam. `batchSourceProvider` / `mailboxProvider` pin
  * which provider wins for each registry; omitted auto-selects when exactly one
  * usable provider is registered.
  */
 export interface BacklinksRuntimeConfig {
+  /** Promoted website id to default browser id; an empty value clears the binding. */
+  readonly websiteBrowsers?: Record<string, string>
   /** Explicit batch-source provider id. Omitted = auto-select when exactly one usable. */
   readonly batchSourceProvider?: string
   /** Explicit mailbox provider id. Omitted = auto-select when exactly one usable. */
@@ -74,6 +80,7 @@ export interface BacklinksRuntimeConfig {
 export class BacklinksRuntime extends Service {
   /** Provider selection config; `$DSH_BACKLINKS_BATCH_SOURCE` / `$DSH_BACKLINKS_MAILBOX` are equivalent fields. */
   static Config: z<BacklinksRuntimeConfig> = z.object({
+    websiteBrowsers: z.dict(z.string()).default({}),
     batchSourceProvider: z.string(),
     mailboxProvider: z.string(),
   })
@@ -82,11 +89,49 @@ export class BacklinksRuntime extends Service {
   private mailboxes = new Map<string, MailboxProvider>()
   private readonly batchSourceId: string | undefined
   private readonly mailboxId: string | undefined
+  private bindingSource: () => { websiteBrowsers: Record<string, string> }
 
   constructor(ctx: Context, config: BacklinksRuntimeConfig = {}) {
     super(ctx, 'backlinks')
     this.batchSourceId = config.batchSourceProvider ?? process.env.DSH_BACKLINKS_BATCH_SOURCE
     this.mailboxId = config.mailboxProvider ?? process.env.DSH_BACKLINKS_MAILBOX
+    const entry = { websiteBrowsers: config.websiteBrowsers ?? {} }
+    this.bindingSource = () => entry
+    const validate = (section: typeof entry): void => {
+      for (const [websiteId, browserId] of Object.entries(section.websiteBrowsers)) {
+        if (!/^[1-9][0-9]*$/.test(websiteId) || !Number.isSafeInteger(Number(websiteId))
+          || (browserId !== '' && !/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(browserId))) {
+          throw new Error('Website browser bindings require positive website ids and valid browser ids.')
+        }
+      }
+    }
+    validate(entry)
+    installSettingsSection(ctx, BROWSER_BINDINGS, BrowserBindings, entry, {
+      setSource: (current) => { this.bindingSource = current }, onChange: () => {}, validate,
+    })
+  }
+
+  /**
+   * Read saved default browsers without selecting or launching one.
+   * @returns promoted website ids mapped to browser ids; empty values mean unbound.
+   */
+  browserBindings(): Readonly<Record<string, string>> {
+    return { ...this.bindingSource().websiteBrowsers }
+  }
+
+  /**
+   * Persist one website's browser preference. Active publications keep their captured selection.
+   * @param websiteId - promoted website id.
+   * @param browserId - registered browser id, or empty to clear the preference.
+   */
+  async bindBrowser(websiteId: number, browserId: string): Promise<void> {
+    if (!Number.isSafeInteger(websiteId) || websiteId <= 0
+      || (browserId !== '' && !/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(browserId))) {
+      throw new Error('A browser binding needs a positive website id and a valid browser id.')
+    }
+    const settings = this.ctx.get('settings')
+    if (settings === undefined) throw new Error('Saving browser bindings requires persistent settings.')
+    await settings.update(BROWSER_BINDINGS, { websiteBrowsers: { [websiteId]: browserId } })
   }
 
   /**

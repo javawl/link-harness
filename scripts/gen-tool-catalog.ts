@@ -626,7 +626,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ToolBrowser)
     },
     note:
-      'browser keeps provider selection and the shared persistent session behind ctx.browser so model-visible schemas stay stable across backend swaps.',
+      'browser keeps provider selection and isolated persistent sessions behind ctx.browser so model-visible schemas stay stable across backend swaps.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-backlinks',
@@ -634,6 +634,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
     source: {
       backlinks: 'packages/backlinks/tool-backlinks/src/backlinks.ts',
       backlink_publish: 'packages/backlinks/tool-backlinks/src/publisher.ts',
+      backlink_publish_many: 'packages/backlinks/tool-backlinks/src/publisher.ts',
     },
     requires: ['ctx.tools', 'ctx.backlinks', 'ctx.systemPrompt', 'ctx.browser (publisher)', 'ctx.agents (publisher)', 'ctx.subagents (publisher)'],
     writes: ['tool/call', 'tool/result'],
@@ -651,7 +652,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
       } })
     },
     note:
-      'The catalog enables the optional publisher with concurrency 3 and a non-executing provider to include backlink_publish. Omitting publisher exposes only the low-level backlinks tool. The backlink example supplies fixed child discipline and request budgets; runtime scheduling binds each item to its page and reconciles results before lease release.',
+      'The catalog enables the optional publisher with concurrency 3 and a non-executing provider to include backlink_publish and backlink_publish_many. Omitting publisher exposes only the low-level backlinks tool. The backlink example supplies fixed child discipline and request budgets; runtime scheduling binds each item to its page and reconciles results before lease release.',
   },
 ]
 

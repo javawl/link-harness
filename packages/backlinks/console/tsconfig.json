@@ -25,6 +25,15 @@
     },
     {
       "path": "../../runtime-diagnostics/invariants"
+    },
+    {
+      "path": "../../browser/browser"
+    },
+    {
+      "path": "../../browser/browser-playwright"
+    },
+    {
+      "path": "../../settings/settings"
     }
   ]
 }

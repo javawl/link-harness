@@ -180,3 +180,10 @@ describe('BacklinksRuntime passthrough', () => {
     expect(polled).toBe(1)
   })
 })
+
+
+it('rejects invalid browser bindings without a settings provider', () => {
+  const ctx = new Context()
+  expect(() => new BacklinksRuntime(ctx, { websiteBrowsers: { '-1': 'browser-a' } }))
+    .toThrow('Website browser bindings require positive website ids and valid browser ids.')
+})

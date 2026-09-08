@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-07-backlinks-publication-checkpoints.md
-2026-09-07-backlinks-publication-checkpoints.md: 29d4ee69536246c0751aec0869f6cd955731cd15
-2026-09-07-backlinks-publication-checkpoints.zh.md: 1f7c98817f22f44c872d1aafb60df52ee48658e2
+2026-09-07-backlinks-publication-checkpoints.md: 83c23a121f06f29cc7a755b4e94380bd909f9dfe
+2026-09-07-backlinks-publication-checkpoints.zh.md: 24c8606e247d6b5022a375a2212ed471b8644f4f

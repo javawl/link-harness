@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-浏览器自动化能力服务定义（`ctx.browser`）：Provider 注册表、惰性单会话生命周期、按标签页引用寻址且页内保序的闭合判别联合命令分发，以及 `BrowserError` 错误分类。
+浏览器自动化能力服务定义（`ctx.browser`）：Provider 注册表、每个已注册浏览器的惰性会话生命周期、按标签页引用寻址且页内保序的闭合判别联合命令分发，以及 `BrowserError` 错误分类。
 
 | 包 | 角色 | ctx 键 |
 |---|---|---|
@@ -15,10 +15,12 @@
 | 成员 | 用途 |
 |---|---|
 | `registerProvider(provider)` | 注册浏览器 Provider；重复 id 抛 `BROWSER_DUPLICATE_PROVIDER`；返回随 fiber 销毁的清理器 |
-| `act(command, signal?)` | 在共享会话（惰性打开）上分发一条闭合联合命令；同页命令保序，不同页可并行 |
-| `closeSession()` | 关闭共享浏览器；下一次 `act()` 打开新会话 |
+| `act(command, signal?, browserId?)` | 在选定浏览器中执行命令；页面引用及同页命令顺序均限定在该浏览器内 |
+| `closeSession(browserId?)` | 仅关闭选定浏览器，并等待在途启动及清理结束 |
 
 `BrowserCommand`（`navigate`/`newPage`/`snapshot`/`click`/`fill`/`select`/`press`/`upload`/`screenshot`/`waitFor`/`closePage`/`bringToFront`）与 `BrowserResult`（`page`/`acked`/`screenshot`）是本包持有的闭合联合。Provider 泄漏的裸失败会丢弃会话（`BROWSER_ACTION_FAILED`），下一条命令重新启动浏览器而不是复用未知状态。
+
+`list()` 返回已配置浏览器 id 与本地可用性，不启动浏览器。`resolve(browserId?)` 在执行前核对显式 id 或部署默认值；显式 id 缺失时不会自动改用其他浏览器。重复 id 与同一规范化资源拒绝注册。注销提供方仅关闭其会话；上下文释放等待所有会话，包括在途启动。
 
 ## 选择
 
@@ -51,6 +53,6 @@ Provider 可用 `BROWSER_PAGE_LIMIT` 拒绝创建新页。该资源错误保留�
 
 ## 已知限制与遗留工作
 
-- **单会话多可寻址标签页** — 每条命令可带 `page` 引用；navigate 以调用者命名的引用绑定标签页，后续命令按引用寻址，并行调用方各驭其页（cookie 共享）。不带引用的命令保持『最近标签页』旧契约；第二个并行会话仍不在范围内。
-- **无观察面** — 没有页面生命周期事件，也没有会话状态查询；调用方按命令观察结果。
+- **页面引用限定在浏览器内** — 并行调用方必须始终保留 browserId 和 page；同一浏览器内共享登录状态，不同浏览器必须使用独立资源。
+- **无观察面** — 没有页面生命周期事件；调用方可观察命令结果、配置可用性及会话是否已打开。
 - **取消不保证回滚** — 提供方在分发前检查 `AbortSignal`；在途操作可能完成，也可能报告结果未知。调用方须遵循提供方的恢复指引。

@@ -6,10 +6,10 @@ import { createUserMessage, CallId, type GenerateOptions, type StreamChunk } fro
 import { type SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import BrowserRuntime, { BrowserError, type BrowserCommand } from '@deepseek-ai/dsh-browser'
 import * as ToolBrowser from '@deepseek-ai/dsh-tool-browser'
-import BacklinksRuntime, { type BacklinkBatchDetail, type BacklinkBatchItem, type BacklinkItemResult } from '@deepseek-ai/dsh-backlinks'
+import BacklinksRuntime, { BacklinksError, type BacklinkBatchDetail, type BacklinkBatchItem, type BacklinkItemResult } from '@deepseek-ai/dsh-backlinks'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import * as Spawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
-import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import { assertObjectJsonSchema, defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import { MockAdapter, maxTokensResponse, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import * as ToolBacklinks from '../src/index.ts'
 
@@ -34,9 +34,13 @@ async function setup(options: {
   readBatch?: () => void
   workBudget?: Spawn.Config['workBudget']
   items?: BacklinkBatchItem[]
+  batchItems?: Record<number, BacklinkBatchItem[]>
+  batchWebsites?: Record<number, number>
+  extraBrowser?: boolean
+  bindings?: Record<string, string>
   anchors?: BacklinkBatchDetail['anchors']
   capacity?: number
-  reserve?: (command: BrowserCommand) => Promise<void>
+  reserve?: (command: BrowserCommand, browserId: string) => Promise<void>
   navigate?: (command: BrowserCommand, signal?: AbortSignal) => Promise<void>
   linkHref?: string
   claimedItems?: (items: BacklinkBatchItem[]) => BacklinkBatchItem[]
@@ -51,28 +55,30 @@ async function setup(options: {
   await ctx.plugin(SubagentRuntime)
   await ctx.plugin(Spawn, { providerName: 'spawn', ...options.workBudget === undefined ? {} : { workBudget: options.workBudget } })
   await ctx.plugin(BrowserRuntime)
-  await ctx.plugin(BacklinksRuntime)
+  await ctx.plugin(BacklinksRuntime, { websiteBrowsers: options.bindings ?? {} })
   const pages = new Map<string, string>([['operator-page', 'https://operator.test/unfinished']])
   const received: BrowserCommand[] = []
+  const shellCalls: unknown[] = []
   const results: { itemId: number; result: BacklinkItemResult }[] = []
-  let items = options.items ?? [item(1)]
+  let items = options.batchItems === undefined ? options.items ?? [item(1)] : Object.values(options.batchItems).flat()
   let claims = 0
   let releases = 0
   let heartbeats = 0
-  const detail = (): BacklinkBatchDetail => ({
-    batch: { id: 176, name: 'Publish batch', websiteId: 82, websiteName: 'Site', websiteHost: 'site.test', plannedAt: 't',
+  const detail = (batchId = 176): BacklinkBatchDetail => ({
+    batch: { id: batchId, name: 'Publish batch', websiteId: 82, websiteName: 'Site', websiteHost: 'site.test', plannedAt: 't',
       counts: { pending: items.filter(item => item.status === 'pending').length, executed: results.filter(row => row.result.status === 'live' || row.result.status === 'submitted').length,
         failed: results.filter(row => row.result.status === 'failed').length, skipped: results.filter(row => row.result.status === 'skipped').length, total: items.length }, executing: claims > releases },
-    website: { id: 82, name: 'Site', siteUrl: 'https://site.test/', siteHost: 'site.test' },
-    anchors: options.anchors ?? [{ id: 1, anchorText: 'Site', targetUrl: 'https://site.test/' }], items,
+    website: { id: options.batchWebsites?.[batchId] ?? 82, name: 'Site', siteUrl: 'https://site.test/', siteHost: 'site.test' },
+    anchors: options.anchors ?? [{ id: 1, anchorText: 'Site', targetUrl: 'https://site.test/' }], items: options.batchItems === undefined ? items
+      : items.filter(item => options.batchItems![batchId]?.some(value => value.id === item.id)),
   })
   ctx.backlinks.registerBatchSourceProvider({
     id: 'fixture', available: () => true,
-    listBatches: async () => [detail().batch], getBatch: async () => { options.readBatch?.(); return detail() },
-    claim: async (_batch, ids) => {
+    listBatches: async () => [detail().batch], getBatch: async (batchId) => { options.readBatch?.(); return detail(batchId) },
+    claim: async (batchId, ids) => {
       claims++
       const selected = items.filter(item => ids?.includes(item.id))
-      return { leaseId: 900, leaseExpiresAt: 'server-clock', items: options.claimedItems?.(selected) ?? selected }
+      return { leaseId: batchId + 724, leaseExpiresAt: 'server-clock', items: options.claimedItems?.(selected) ?? selected }
     },
     heartbeat: async (leaseId) => { heartbeats++; return { leaseId, leaseExpiresAt: 'server-clock' } },
     release: async () => { releases++ },
@@ -89,29 +95,39 @@ async function setup(options: {
     addBadge: async () => { throw new Error('unexpected badge') },
     tagSource: async sourceId => ({ sourceId, attached: [] }),
   })
-  ctx.browser.registerProvider({ id: 'fixture', available: () => true, open: async () => ({
-    act: async (command, signal) => {
-      received.push(command)
-      const page = command.page ?? 'operator-page'
-      if (command.kind === 'newPage') {
-        if (pages.size >= (options.capacity ?? 6)) throw new BrowserError('page capacity occupied', 'BROWSER_PAGE_LIMIT')
-        pages.set(page, 'about:blank')
-        await options.reserve?.(command)
-      } else if (!pages.has(page)) throw new BrowserError('missing page', 'BROWSER_ACTION_FAILED')
-      if (command.kind === 'closePage') { pages.delete(page); return { kind: 'acked' } }
-      if (command.kind === 'navigate') {
-        await options.navigate?.(command, signal)
-        pages.set(page, command.url)
-      }
-      if (command.kind === 'click' || command.kind === 'press' || command.kind === 'fill') return { kind: 'acked' }
-      return { kind: 'page', page, url: pages.get(page)!, title: 'Fixture', truncated: false,
-        text: command.kind === 'snapshot' && command.format === 'links'
-          ? JSON.stringify({ links: [{ text: 'Site', href: options.linkHref ?? 'https://site.test/' }] }) : 'Your submission is awaiting review.' }
-    },
-    close: async () => {},
-  }) })
+  const routed: { browserId: string; command: BrowserCommand }[] = []
+  const browserPages = new Map<string, Map<string, string>>()
+  for (const browserId of options.extraBrowser ? ['fixture', 'second'] : ['fixture']) {
+    const ownedPages = browserId === 'fixture' ? pages : new Map<string, string>()
+    browserPages.set(browserId, ownedPages)
+    ctx.browser.registerProvider({ id: browserId, available: () => true, open: async () => ({
+      act: async (command, signal) => {
+        routed.push({ browserId, command })
+        received.push(command)
+        const page = command.page ?? 'operator-page'
+        if (command.kind === 'newPage') {
+          if (ownedPages.size >= (options.capacity ?? 6)) throw new BrowserError('page capacity occupied', 'BROWSER_PAGE_LIMIT')
+          ownedPages.set(page, 'about:blank')
+          await options.reserve?.(command, browserId)
+        } else if (!ownedPages.has(page)) throw new BrowserError('missing page', 'BROWSER_ACTION_FAILED')
+        if (command.kind === 'closePage') { ownedPages.delete(page); return { kind: 'acked' } }
+        if (command.kind === 'navigate') {
+          await options.navigate?.(command, signal)
+          ownedPages.set(page, command.url)
+        }
+        if (command.kind === 'click' || command.kind === 'press' || command.kind === 'fill') return { kind: 'acked' }
+        return { kind: 'page', page, url: ownedPages.get(page)!, title: 'Fixture', truncated: false,
+          text: command.kind === 'snapshot' && command.format === 'links'
+            ? JSON.stringify({ links: [{ text: 'Site', href: options.linkHref ?? 'https://site.test/' }] }) : 'Your submission is awaiting review.' }
+      },
+      close: async () => {},
+    }) })
+  }
   await ctx.plugin(ToolBrowser, { maxOutputChars: 1000, timeoutMs: 5000 })
-  ctx.tools.register(defineContentToolFixture({ name: 'bash', description: 'Unused external shell', parameters: {}, execute: async () => { throw new Error('unexpected shell') } }))
+  ctx.tools.register(defineContentToolFixture({ name: 'bash', description: 'Unused external shell', parameters: {}, execute: async (args) => {
+    shellCalls.push(args)
+    throw new Error('unexpected shell')
+  } }))
   await ctx.plugin(ToolBacklinks, { leaseHeartbeatMs: 10, timeoutMs: 5000, publisher: {
     provider: 'spawn', concurrency: 3, maxTokens: 128, persona: 'FIXED_PUBLICATION_DISCIPLINE',
   } })
@@ -146,10 +162,63 @@ async function setup(options: {
     name: 'backlink_publish', callId: CallId('publish'), agent: parent.agent, signal,
     arguments: { batchId: 176, scope: 'all', mode: 'all' },
   })
-  return { ctx, parent, publish, pages, received, results, starts, adapter, counts: () => ({ claims, releases, heartbeats }) }
+  return { ctx, parent, publish, pages, received, results, starts, adapter, routed, browserPages, shellCalls,
+    counts: () => ({ claims, releases, heartbeats }) }
 }
 
 describe('foreground publication through the native child and tool executors', () => {
+  it('declares publication fields inside the child model tool schema properties', async () => {
+    const made = await setup()
+    await made.publish()
+    const tools = made.adapter.requests[0]!.tools!
+    for (const tool of tools) expect(() => { assertObjectJsonSchema(tool.parameters) }).not.toThrow()
+    expect(tools.find(tool => tool.name === 'browser')?.parameters).toMatchObject({
+      type: 'object', properties: { action: { type: 'string' }, submission: { type: 'boolean' } },
+    })
+    expect(tools.find(tool => tool.name === 'backlinks')?.parameters).toMatchObject({
+      type: 'object', properties: {
+        action: { type: 'string' }, receipt: { type: 'string' }, verificationSelector: { type: 'string' },
+      },
+    })
+    expect(made.ctx.tools.get('browser')!.parameters).not.toHaveProperty('properties.submission')
+    expect(made.ctx.tools.get('backlinks')!.parameters).not.toHaveProperty('properties.receipt')
+  })
+
+  it('rejects a child shell call without executing the registered global tool', async () => {
+    const made = await setup({ script: (prompt, step) => {
+      if (step === 0) return toolCallResponse('shell', 'bash', { command: 'curl -X POST https://directory-1.test/' })
+      if (step === 1) return toolCallResponse('save', 'backlinks', {
+        action: 'item_result', itemId: prompt.item.id, leaseId: prompt.leaseId,
+        status: 'skipped', skipReason: 'No browser submission.',
+      })
+      return textResponse('Done.')
+    } })
+    await made.publish()
+    expect(made.adapter.requests[0]!.tools!.map(tool => tool.name).sort()).toEqual(['backlinks', 'browser'])
+    expect(made.shellCalls).toEqual([])
+    expect(JSON.stringify(made.adapter.requests)).toContain('unknown tool')
+    expect(made.results).toMatchObject([{ itemId: 1, result: { status: 'skipped' } }])
+  })
+
+  it('rejects string submission flags while allowing navigation and one declared publication', async () => {
+    const made = await setup({ script: (prompt, step) => {
+      if (step === 0) return toolCallResponse('string-false', 'browser', { action: 'click', selector: 'button', submission: 'False' })
+      if (step === 1) return toolCallResponse('string-true', 'browser', { action: 'press', key: 'Enter', submission: 'True' })
+      if (step === 2) return toolCallResponse('navigate', 'browser', { action: 'click', selector: 'button', submission: false })
+      if (step === 3) return toolCallResponse('submit', 'browser', { action: 'press', key: 'Enter', submission: true })
+      if (step === 4) return toolCallResponse('save', 'backlinks', {
+        action: 'item_result', itemId: prompt.item.id, leaseId: prompt.leaseId,
+        status: 'submitted', anchorText: 'Site', targetUrl: 'https://site.test/', evidence: 'Awaiting review.',
+        receipt: 'Your submission is awaiting review.',
+      })
+      return textResponse('Done.')
+    } })
+    await made.publish()
+    expect(made.received.filter(command => command.kind === 'click' || command.kind === 'press').map(command => command.kind))
+      .toEqual(['click', 'press'])
+    expect(made.results).toMatchObject([{ itemId: 1, result: { status: 'submitted' } }])
+  })
+
   it('leaves a batch untouched when its website has no publication anchors', async () => {
     const made = await setup({ anchors: [] })
     const result = await made.publish()
@@ -244,17 +313,21 @@ describe('foreground publication through the native child and tool executors', (
     expect(JSON.stringify(result.value)).not.toContain('private provider response')
   })
 
-  it('requires reconciliation when an earlier claimed item still has no recorded result', async () => {
-    const made = await setup()
+  it('skips an earlier unresolved attempt and processes the other sources', async () => {
+    const made = await setup({ items: [item(1), item(2), item(3)] })
     await made.ctx.tools.execute({ name: 'backlinks', callId: CallId('prior-claim'), agent: made.parent.agent,
       signal: new AbortController().signal, arguments: { action: 'batch_claim', batchId: 176, scope: 'pending', itemIds: [1] },
     })
+    await made.ctx.tools.execute({ name: 'backlinks', callId: CallId('prior-release'), agent: made.parent.agent,
+      signal: new AbortController().signal, arguments: { action: 'lease_release', leaseId: 900 },
+    })
     const result = await made.publish()
-    expect(result.value).toMatchObject({ attempted: 0, remaining: 0 })
-    expect(result.value).toHaveProperty('stoppedReason', expect.stringContaining('Item 1'))
-    expect(made.adapter.requests).toHaveLength(0)
-    expect(made.results).toEqual([])
-    expect(made.counts().claims).toBe(1)
+    expect(result.value).toMatchObject({ attempted: 2, remaining: 0, counts: { skipped: 2 }, unresolvedItemIds: [1], stoppedReason: null })
+    expect(made.starts).toEqual([2, 3])
+    expect(made.results.map(row => row.itemId)).toEqual([2, 3])
+    expect((await made.ctx.backlinks.getBatch(176)).items[0]).toHaveProperty('status', 'pending')
+    expect((await made.publish()).value).toMatchObject({ attempted: 0, remaining: 0, unresolvedItemIds: [1], stoppedReason: null })
+    expect(made.counts()).toMatchObject({ claims: 2, releases: 2 })
   })
 
   it('stops a startup failure without marking unstarted items failed or requesting a model', async () => {
@@ -516,9 +589,43 @@ describe('publication outcome and recovery guards', () => {
     const events = structuredClone(made.parent.agent.session.events)
     expect(events.filter(event => event.type === 'backlinks/attempt').map(event => event.data.itemIds)).toEqual([[1]])
     expect(made.results).toHaveLength(0)
-    const restored = await setup({ seed: events })
-    expect((await restored.publish()).value).toHaveProperty('stoppedReason', expect.stringContaining('Item 1'))
-    expect(restored.starts).toEqual([])
+    const restored = await setup({ seed: events, items: [item(1), item(2)] })
+    expect((await restored.publish()).value).toMatchObject({ attempted: 1, remaining: 0, unresolvedItemIds: [1], stoppedReason: null })
+    expect(restored.starts).toEqual([2])
+  })
+
+  it('continues after a reconciliation transport failure without rewriting or closing the unknown submission', async () => {
+    let reads = 0
+    const made = await setup({ items: [1, 2, 3, 4, 5].map(id => item(id)),
+      readBatch: () => { if (++reads === 2) throw new BacklinksError('backend unreachable', 'BACKLINKS_TRANSPORT') },
+      script: (prompt, step) => {
+        if (step > 0) return textResponse('Done.')
+        return prompt.item.id === 1
+          ? toolCallResponse('submit', 'browser', { action: 'click', selector: 'role:button|Submit', submission: true })
+          : toolCallResponse(`skip-${prompt.item.id}`, 'backlinks', { action: 'item_result', itemId: prompt.item.id,
+            leaseId: prompt.leaseId, status: 'skipped', skipReason: 'Ineligible.' })
+      },
+    })
+    expect((await made.publish()).value).toMatchObject({ attempted: 5, remaining: 0,
+      counts: { unresolved: 1, skipped: 4 }, unresolvedItemIds: [1], stoppedReason: null })
+    expect(made.starts).toEqual([1, 2, 3, 4, 5])
+    expect(made.results.map(row => row.itemId)).toEqual([2, 3, 4, 5])
+    expect(made.pages.size).toBe(2)
+    expect(made.counts().releases).toBe(1)
+    expect((await made.publish()).value).toMatchObject({ attempted: 0, remaining: 0, unresolvedItemIds: [1], stoppedReason: null })
+  })
+
+  it.each(['BACKLINKS_UNAUTHORIZED', 'BACKLINKS_CONFLICT'] as const)('halts admission when reconciliation reports %s', async (code) => {
+    let reads = 0
+    const made = await setup({ items: [item(1), item(2)], capacity: 2,
+      readBatch: () => { if (++reads === 2) throw new BacklinksError('global backend failure', code) },
+      script: () => textResponse('No saved result.'),
+    })
+    const result = await made.publish()
+    expect(result.value).toMatchObject({ attempted: 1, remaining: 1, unresolvedItemIds: [1] })
+    expect(result.value).toHaveProperty('stoppedReason', expect.stringContaining('global backend failure'))
+    expect(made.starts).toEqual([1])
+    expect(made.counts().releases).toBe(1)
   })
 })
 
@@ -530,4 +637,90 @@ it('honors a selected duplicate-source item when the lower-id sibling was not se
   })
   expect(made.starts).toEqual([2])
   expect(result.value).toMatchObject({ attempted: 1, remaining: 0 })
+})
+
+
+describe('publication across browsers', () => {
+  it('runs different browser/site pairs together and queues a shared browser', async () => {
+    const bothReserved = Promise.withResolvers<undefined>()
+    const reservations: string[] = []
+    const made = await setup({ extraBrowser: true,
+      batchItems: { 176: [item(1)], 177: [item(2)], 178: [item(3)] },
+      batchWebsites: { 176: 82, 177: 83, 178: 84 }, bindings: { 82: 'fixture', 83: 'second', 84: 'fixture' },
+      reserve: async (_command, browserId) => {
+        reservations.push(browserId)
+        if (reservations.length === 2) bothReserved.resolve(undefined)
+        await bothReserved.promise
+      },
+    })
+    const result = await made.ctx.tools.execute({ name: 'backlink_publish_many', callId: CallId('many'),
+      agent: made.parent.agent, signal: new AbortController().signal,
+      arguments: { batches: [{ batchId: 176 }, { batchId: 177 }, { batchId: 178 }], scope: 'pending', mode: 'all' } })
+    expect(result.isError).not.toBe(true)
+    expect(result.value).toMatchObject({ pendingBatchIds: [], results: [
+      { batchId: 176, browserId: 'fixture', result: { attempted: 1, counts: { skipped: 1 } } },
+      { batchId: 177, browserId: 'second', result: { attempted: 1, counts: { skipped: 1 } } },
+      { batchId: 178, browserId: 'fixture', result: { attempted: 1, counts: { skipped: 1 } } },
+    ] })
+    expect(reservations).toEqual(['fixture', 'second', 'fixture'])
+    expect(made.browserPages.get('second')?.size).toBe(0)
+    expect([...made.pages.keys()]).toEqual(['operator-page'])
+    expect(made.counts()).toMatchObject({ claims: 3, releases: 3 })
+  })
+
+  it('serializes the same website even when different browsers are specified', async () => {
+    const made = await setup({ extraBrowser: true, batchItems: { 176: [item(1)], 177: [item(2)] } })
+    await made.ctx.tools.execute({ name: 'backlink_publish_many', callId: CallId('same-site'),
+      agent: made.parent.agent, signal: new AbortController().signal,
+      arguments: { batches: [{ batchId: 176, browserId: 'fixture' }, { batchId: 177, browserId: 'second' }], scope: 'pending', mode: 'all' } })
+    const commands = made.routed.filter(row => row.command.kind === 'newPage' || row.command.kind === 'closePage')
+    expect(commands.map(row => [row.browserId, row.command.kind])).toEqual([
+      ['fixture', 'newPage'], ['fixture', 'closePage'], ['second', 'newPage'], ['second', 'closePage'],
+    ])
+  })
+
+  it('does not let a later batch overtake an earlier batch waiting on its website', async () => {
+    const made = await setup({ extraBrowser: true,
+      batchItems: { 176: [item(1)], 177: [item(2)], 178: [item(3)] },
+      batchWebsites: { 176: 82, 177: 82, 178: 83 },
+    })
+    await made.ctx.tools.execute({ name: 'backlink_publish_many', callId: CallId('ordered'),
+      agent: made.parent.agent, signal: new AbortController().signal,
+      arguments: { batches: [{ batchId: 176, browserId: 'fixture' }, { batchId: 177, browserId: 'second' },
+        { batchId: 178, browserId: 'second' }], scope: 'pending', mode: 'all' } })
+    expect(made.starts).toEqual([1, 2, 3])
+  })
+
+  it('leaves queued batches unstarted after a model failure and releases the active lease', async () => {
+    const made = await setup({ batchItems: { 176: [item(1)], 177: [item(2)] }, script: () => [
+      { type: 'finish', reason: { kind: 'error', failure: { code: 'QUOTA', message: 'quota exhausted' } } },
+    ] })
+    const result = await made.ctx.tools.execute({ name: 'backlink_publish_many', callId: CallId('stopped'),
+      agent: made.parent.agent, signal: new AbortController().signal,
+      arguments: { batches: [{ batchId: 176 }, { batchId: 177 }], scope: 'pending', mode: 'all' } })
+    expect(result.value).toMatchObject({ pendingBatchIds: [177], results: [{ batchId: 176 }] })
+    expect(made.starts).toEqual([1])
+    expect(made.counts()).toMatchObject({ claims: 1, releases: 1 })
+  })
+
+  it('rejects an invalid browser in any batch before allocating pages or leases', async () => {
+    const made = await setup({ batchItems: { 176: [item(1)], 177: [item(2)] } })
+    const result = await made.ctx.tools.execute({ name: 'backlink_publish_many', callId: CallId('invalid'),
+      agent: made.parent.agent, signal: new AbortController().signal,
+      arguments: { batches: [{ batchId: 176, browserId: 'fixture' }, { batchId: 177, browserId: 'missing' }], scope: 'pending', mode: 'all' } })
+    expect(result.isError).toBe(true)
+    expect(made.received).toEqual([])
+    expect(made.counts().claims).toBe(0)
+    expect(made.adapter.requests).toEqual([])
+  })
+
+  it('pins browser commands to the assignment even when a child requests another browser', async () => {
+    const made = await setup({ extraBrowser: true, bindings: { 82: 'fixture' }, script: (prompt, step) => step === 0
+      ? toolCallResponse('escape-browser', 'browser', { action: 'navigate', browserId: 'second', page: prompt.page, url: 'https://escape.test/' })
+      : textResponse('Stopped.') })
+    await made.publish()
+    expect(made.routed.some(row => row.browserId === 'second')).toBe(false)
+    expect(made.received.some(command => command.kind === 'navigate')).toBe(false)
+    expect(made.results[0]?.result).toMatchObject({ status: 'failed', failureMode: 'retryable' })
+  })
 })

@@ -2,19 +2,21 @@
 
 English | [中文](browser.zh.md)
 
-The browser automation seam — a capability seam that spans **one stateful operation** (closed-union command dispatch) on one `ctx.browser` service, split across packages: Service Definition ([dsh-browser](../../packages/browser/browser), `ctx.browser` + the provider registry and shared session lifecycle), Service Provider ([dsh-browser-playwright](../../packages/browser/browser-playwright), a persistent Chromium context over Playwright), and Consumer ([dsh-tool-browser](../../packages/browser/tool-browser), the `browser` tool schema). Browser is **one optional capability**, not part of the agent-loop spine — so its vocabulary lives here, not in [core.md](core.md). A provider swap does not change how the model drives a page.
+The browser automation seam — a capability seam that spans **one stateful operation** (closed-union command dispatch) on one `ctx.browser` service, split across packages: Service Definition ([dsh-browser](../../packages/browser/browser), `ctx.browser` + the provider registry and per-browser session lifetime), Service Provider ([dsh-browser-playwright](../../packages/browser/browser-playwright), a persistent Chromium context over Playwright), and Consumer ([dsh-tool-browser](../../packages/browser/tool-browser), the `browser` tool schema). Browser is **one optional capability**, not part of the agent-loop spine — so its vocabulary lives here, not in [core.md](core.md). A provider swap does not change how the model drives a page.
 
 Source: [`packages/browser/browser/src/types.ts`](../../packages/browser/browser/src/types.ts)
 
 ## Why one command dispatch instead of one method per operation
 
-The shared browser session orders commands by addressed tab: one tab serializes while distinct tabs may overlap. `BrowserCommand` is a closed discriminated union dispatched through `act()`; providers handle every kind and the model tool exposes the same operations. `newPage` reserves a named blank tab, `fill` accepts one field or an ordered field list, and snapshot formats share semantic and frame addressing. The [command types](../../packages/browser/browser/src/types.ts) own the complete operation set.
+Each browser session orders commands by addressed tab: one tab serializes while distinct tabs may overlap. `BrowserCommand` is a closed discriminated union dispatched through `act()`; providers handle every kind and the model tool exposes the same operations. `newPage` reserves a named blank tab, `fill` accepts one field or an ordered field list, and snapshot formats share semantic and frame addressing. The [command types](../../packages/browser/browser/src/types.ts) own the complete operation set.
 
 ## Session lifecycle and selection
 
-The session opens lazily on the first command and is reused until `closeSession()` or context disposal; commands serialize through the seam, and a raw provider failure discards the session so the next command relaunches rather than reusing unknown browser state. Provider selection follows the execution-time rules shared with the web seam (configured id must be registered and `available()`; unconfigured requires exactly one usable provider), and `$DSH_BROWSER_PROVIDER` is equivalent to the `provider` config field.
+Each selected browser opens lazily on its first command and is reused until `closeSession(browserId?)` or context disposal; commands serialize per tab, and a raw provider failure discards only that browser session so the next command relaunches rather than reusing unknown browser state. Provider selection follows the execution-time rules shared with the web seam (configured id must be registered and `available()`; unconfigured requires exactly one usable provider), and `$DSH_BROWSER_PROVIDER` is equivalent to the `provider` config field.
 
 The Playwright provider launches a persistent context (`userDataDir`, headed by default, real Chrome channel by default), so cookie logins and human-solved challenges in the shared profile survive across harness runs — the operational stance backlink publishing depends on.
+
+Pass `browserId` as the third argument to `act()` to select an isolated browser. Explicit selection takes precedence over the deployment default and never falls back on failure. The [Playwright provider](../../packages/browser/browser-playwright/README.md) owns profile and local CDP configuration; the [publication runtime](../../packages/backlinks/tool-backlinks/README.md) owns website bindings and batch scheduling.
 
 ## Vocabulary
 
@@ -45,32 +47,47 @@ Selection semantics (resolved at execution time, never order-dependent):
 
 ```ts cordis-catalog
 /**
- * Register a browser automation provider. Throws {@link BrowserError}
- * `BROWSER_DUPLICATE_PROVIDER` if its id is already registered. Returns a
- * disposer; disposed with the calling fiber.
- * @param provider - the provider; its `id` is the registry key.
- * @returns the disposer that unregisters the provider.
+ * Register one independently addressable browser. A resource cannot have two ids.
+ * @param provider - backend owning this browser's login state and tabs.
+ * @returns disposer that unregisters and closes only this browser.
  */
 registerProvider(provider: BrowserAutomationProvider): () => void
 
 /**
- * Perform one command on the shared session, opening it lazily (and
- * single-flight) through the selected provider on first use. Ordering is
- * per addressed tab: same-tab commands serialize in dispatch order while
- * different-tab commands may overlap. Provider selection and session open
- * throw {@link BrowserError} before any page work runs.
- * @param command - the closed-union command to execute.
- * @param signal - optional cancellation signal checked before dispatch.
- * @returns the closed-union outcome for the command kind.
+ * List configured browser ids without launching or connecting to them.
+ * @returns browser ids and their local availability; no credentials or page contents.
  */
-act(command: BrowserCommand, signal?: AbortSignal): Promise<BrowserResult>
+list(): { id: string; available: boolean }[]
 
 /**
- * Close the shared session (and its browser). Safe when no session is open;
- * the next `act()` opens a fresh one.
- * @returns when the session is closed or none existed.
+ * Resolve an explicit browser or the configured default before starting work.
+ * @param browserId - registered id; omitted uses the service's provider selection.
+ * @returns selected browser id; an unknown or ambiguous selection throws before launch.
  */
-async closeSession(): Promise<void>
+resolve(browserId?: string): string
+
+/**
+ * Check whether a browser has a live or opening session.
+ * @param browserId - registered browser id.
+ * @returns whether changing its configuration would affect retained pages.
+ */
+hasSession(browserId: string): boolean
+
+/**
+ * Execute in the selected browser's lazy session. Tab refs are local to that browser.
+ * @param command - closed-union command; parallel callers must address a page.
+ * @param signal - cancellation forwarded to the provider.
+ * @param browserId - explicit browser; omitted uses the configured default.
+ * @returns the command outcome. Failure discards only the affected browser session.
+ */
+async act(command: BrowserCommand, signal?: AbortSignal, browserId?: string): Promise<BrowserResult>
+
+/**
+ * Close one selected browser, awaiting a pending launch. Other browsers remain usable.
+ * @param browserId - explicit id; omitted closes the configured default, if any session exists.
+ * @returns when its provider cleanup settles; a dead browser's close error is ignored.
+ */
+async closeSession(browserId?: string): Promise<void>
 ```
 
 Source: [`packages/browser/browser/src/index.ts`](../../packages/browser/browser/src/index.ts)

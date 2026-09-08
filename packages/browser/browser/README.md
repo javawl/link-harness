@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Service Definition for the browser automation capability seam (`ctx.browser`): the provider registry, the lazy single-session lifecycle, per-tab-ordered closed-union command dispatch over page refs, and the `BrowserError` taxonomy.
+Service Definition for the browser automation capability seam (`ctx.browser`): the provider registry, one lazy session per registered browser, per-tab-ordered closed-union command dispatch over page refs, and the `BrowserError` taxonomy.
 
 | Package | Role | ctx key |
 |---|---|---|
@@ -15,10 +15,12 @@ Service Definition for the browser automation capability seam (`ctx.browser`): t
 | Member | Purpose |
 |---|---|
 | `registerProvider(provider)` | Register a browser provider; duplicate ids throw `BROWSER_DUPLICATE_PROVIDER`; returns a fiber-scoped disposer |
-| `act(command, signal?)` | Dispatch one closed-union command on the shared session (opened lazily); same-tab commands serialize while different-tab commands may overlap |
-| `closeSession()` | Close the shared browser; the next `act()` opens a fresh one |
+| `act(command, signal?, browserId?)` | Dispatch in the selected browser; page refs and command ordering are local to that browser |
+| `closeSession(browserId?)` | Close only the selected browser; await pending launch and cleanup |
 
 `BrowserCommand` (`navigate`/`newPage`/`snapshot`/`click`/`fill`/`select`/`press`/`upload`/`screenshot`/`waitFor`/`closePage`/`bringToFront`) and `BrowserResult` (`page`/`acked`/`screenshot`) are CLOSED unions owned here. A raw provider failure discards the session (`BROWSER_ACTION_FAILED`), so the next command relaunches rather than reusing unknown browser state.
+
+`list()` returns configured browser ids and local availability without launching. `resolve(browserId?)` validates an explicit id or the configured default before work begins. Explicit missing ids never fall back. Duplicate ids and canonical provider resources are rejected. Unregistering a provider closes only its session; context disposal waits for every session, including pending launches.
 
 ## Selection
 
@@ -51,6 +53,6 @@ No direct invalidation; the named consumer owns any request-prefix changes.
 
 ## Known Limitations and Deferred Work
 
-- **One session, many addressed tabs** — every command takes an optional `page` ref; a navigate binds a caller-named ref to a tab and later commands address it, so parallel callers each drive their own tab (cookie jar shared). Commands without a ref keep the legacy most-recent-tab contract; a second parallel session remains out of scope.
-- **No observation surface** — no page-lifecycle events and no session-status query; callers observe outcomes per command.
+- **Tab refs are local to a browser** — parallel callers must retain both browser id and page ref. Tabs in one browser share its login state; different browsers require separate provider resources.
+- **No observation surface** — no page-lifecycle events; callers observe command results, configured availability, and whether a session is open.
 - **Cancellation does not guarantee rollback** — providers check `AbortSignal` before dispatch; in-flight operations may finish or report an uncertain outcome. Callers must follow the provider’s recovery instructions.

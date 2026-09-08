@@ -744,7 +744,7 @@ describe('browser-playwright plugin apply', () => {
   })
   it('accepts a disabled page ceiling at plugin load', () => {
     const registerProvider = vi.fn()
-    apply({ browser: { registerProvider } } as never, Config({ maxOpenPages: 0 }))
+    apply({ browser: { registerProvider }, inject: vi.fn() } as never, Config({ maxOpenPages: 0 }))
     expect(registerProvider).toHaveBeenCalledOnce()
   })
   it('registers the provider with defaulted config', () => {
@@ -752,7 +752,7 @@ describe('browser-playwright plugin apply', () => {
     const defaulted = Config({}) as ResolvedPlaywrightConfig
     expect(defaulted).toMatchObject({ userDataDir: '.browser-profile', headless: false, channel: 'chrome' })
 
-    apply({ browser: { registerProvider } } as never, defaulted as never)
+    apply({ browser: { registerProvider }, inject: vi.fn() } as never, defaulted as never)
     expect(registerProvider).toHaveBeenCalledWith(expect.objectContaining({ id: 'playwright' }))
   })
 

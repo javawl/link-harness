@@ -37,14 +37,20 @@ function bench() {
     items: [{ workspaceId: 'current-workspace', sessionIds: ['existing'] }],
     recentWorkspaceId: 'recent-workspace',
   }
-  ctx.provide('remote', { backlinksConsole: { batches, batch: detail } } as never)
+  const browsers = vi.fn(async () => ({ ok: true, value: {
+    browsers: [{ id: 'playwright', available: true }, { id: 'site-a', available: true }, { id: 'site-b', available: true }],
+    bindings: {},
+  } }))
+  const bindBrowser = vi.fn(async (_websiteId: number, _browserId: string) => ({ ok: true }))
+  const addBrowser = vi.fn(async (_id: string, _kind: string, _location: string) => ({ ok: true }))
+  ctx.provide('remote', { backlinksConsole: { batches, batch: detail, browsers, bindBrowser, addBrowser } } as never)
   ctx.provide('workspaces', { list: { getSnapshot: () => workspaceState }, connectWorkspace } as never)
   ctx.provide('sessions', { list: { getSnapshot: () => ({ current: 'existing' }) }, scope, open } as never)
   const store = createConsoleStore(ctx)
   const locale = new LocaleRuntime(ctx)
   locale.register('backlinksConsole', { zh, en })
   locale.setLocale('zh')
-  return { store, batches, detail, send, open, connectWorkspace, scope, workspaceState, t: locale.bind('backlinksConsole') }
+  return { store, batches, detail, send, open, connectWorkspace, scope, workspaceState, browsers, bindBrowser, addBrowser, t: locale.bind('backlinksConsole') }
 }
 
 afterEach(cleanup)
@@ -76,7 +82,7 @@ describe('publish batch console', () => {
     await pending
     expect(b.connectWorkspace).toHaveBeenCalledExactlyOnceWith('current-workspace')
     expect(b.scope).toHaveBeenCalledExactlyOnceWith('new-blank')
-    expect(b.send).toHaveBeenCalledExactlyOnceWith('/backlink-publish 389 99\n请按以上批次号顺序依次发布，仅处理这些批次。')
+    expect(b.send).toHaveBeenCalledExactlyOnceWith('/backlink-publish 389 99\n浏览器分配：[{"batchId":389},{"batchId":99}]。仅处理这些批次，保留指定的 browserId。使用 backlink_publish_many 并行发布；同一浏览器或网站的批次由运行时排队。')
     expect(b.open).toHaveBeenCalledExactlyOnceWith('new-blank')
     expect(b.store.store.getSnapshot()).toMatchObject({ selectedBatchIds: [], publishing: null, error: null })
   })
@@ -128,5 +134,87 @@ describe('publish batch console', () => {
     fireEvent.click(screen.getByRole('button', { name: '批量发布 (1)' }))
     await waitFor(() => { expect(b.send).toHaveBeenCalledWith('/backlink-publish 389') })
     expect(screen.getByRole('button', { name: '批量发布 (0)' }).hasAttribute('disabled')).toBe(true)
+  })
+})
+
+
+describe('browser selection in the publish panel', () => {
+  it('starts with compact rows and preserves choices when concurrent controls are toggled', async () => {
+    const b = bench()
+    const { unmount } = render(<SidebarConsolePanel store={b.store} t={b.t} />)
+    const row = await screen.findByRole('button', { name: /#389 389.example/ })
+    expect(row.textContent).toContain('待 1成 1败 1')
+    const toggle = screen.getByRole<HTMLInputElement>('checkbox', { name: '并发' })
+    expect(toggle.checked).toBe(false)
+    expect(screen.getAllByRole('checkbox')).toHaveLength(5)
+    expect(screen.queryByRole('combobox', { name: '本次浏览器 #389' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: '发布' })).toHaveLength(3)
+    fireEvent.click(toggle)
+    fireEvent.change(screen.getByRole('combobox', { name: '本次浏览器 #389' }), { target: { value: 'site-b' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: '选择批次 #389 389.example' }))
+    expect(screen.getAllByRole('button', { name: '发布' })).toHaveLength(3)
+    fireEvent.click(toggle)
+    expect(screen.getAllByRole('checkbox')).toHaveLength(5)
+    expect(screen.getByRole('button', { name: '批量发布 (1)' }).hasAttribute('disabled')).toBe(false)
+    expect(screen.queryByRole('button', { name: '绑定网站' })).toBeNull()
+    expect(screen.queryByRole('combobox', { name: '本次浏览器 #389' })).toBeNull()
+    fireEvent.click(toggle)
+    expect(screen.getByRole<HTMLSelectElement>('combobox', { name: '本次浏览器 #389' }).value).toBe('site-b')
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: '选择批次 #389 389.example' }).checked).toBe(true)
+    expect(b.send).not.toHaveBeenCalled()
+    expect(b.bindBrowser).not.toHaveBeenCalled()
+    unmount()
+    render(<SidebarConsolePanel store={b.store} t={b.t} />)
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: '并发' }).checked).toBe(true)
+    expect(screen.getByRole<HTMLSelectElement>('combobox', { name: '本次浏览器 #389' }).value).toBe('site-b')
+  })
+
+  it('publishes one batch from compact mode', async () => {
+    const b = bench()
+    render(<SidebarConsolePanel store={b.store} t={b.t} />)
+    fireEvent.click((await screen.findAllByRole('button', { name: '发布' }))[0]!)
+    await waitFor(() => { expect(b.send).toHaveBeenCalledExactlyOnceWith('/backlink-publish 389') })
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: '并发' }).checked).toBe(false)
+  })
+
+  it('uses saved website defaults and includes explicit overrides in the submitted request', async () => {
+    const b = bench()
+    b.browsers.mockResolvedValueOnce({ ok: true, value: {
+      browsers: [{ id: 'site-a', available: true }, { id: 'site-b', available: true }], bindings: { 389: 'site-a', 99: 'site-a' },
+    } })
+    await b.store.refresh()
+    b.store.selectBrowser(99, 'site-b')
+    b.store.selectBatches([389, 99], true)
+    await b.store.publishSelected()
+    expect(b.send).toHaveBeenCalledWith(expect.stringContaining('[{"batchId":389,"browserId":"site-a"},{"batchId":99,"browserId":"site-b"}]'))
+    expect(b.bindBrowser).not.toHaveBeenCalled()
+  })
+
+  it('saves a website binding through the backend and clears it explicitly', async () => {
+    const b = bench()
+    render(<SidebarConsolePanel store={b.store} t={b.t} />)
+    fireEvent.click(screen.getByRole('checkbox', { name: '并发' }))
+    const select = await screen.findByRole('combobox', { name: '本次浏览器 #389' })
+    fireEvent.change(select, { target: { value: 'site-b' } })
+    fireEvent.click(screen.getAllByRole('button', { name: '绑定网站' })[0]!)
+    await waitFor(() => { expect(b.bindBrowser).toHaveBeenCalledWith(389, 'site-b') })
+    await waitFor(() => { expect(b.store.store.getSnapshot().browserBindings[389]).toBe('site-b') })
+    fireEvent.click(screen.getByRole('button', { name: '解除绑定' }))
+    await waitFor(() => { expect(b.bindBrowser).toHaveBeenCalledWith(389, '') })
+  })
+
+  it('adds an existing browser connection and reports persistence errors', async () => {
+    const b = bench()
+    render(<SidebarConsolePanel store={b.store} t={b.t} />)
+    fireEvent.change(screen.getByLabelText('浏览器名称'), { target: { value: 'personal' } })
+    fireEvent.change(screen.getByLabelText('浏览器类型'), { target: { value: 'cdp' } })
+    fireEvent.change(screen.getByLabelText('本机调试地址'), { target: { value: 'http://127.0.0.1:9222' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存浏览器' }))
+    await waitFor(() => { expect(b.addBrowser).toHaveBeenCalledWith('personal', 'cdp', 'http://127.0.0.1:9222') })
+    await waitFor(() => { expect(b.store.store.getSnapshot().savingBrowser).toBe(false) })
+    b.bindBrowser.mockRejectedValueOnce(new Error('disk is read-only'))
+    await b.store.bindBrowser(389, 'site-a')
+    expect(b.store.store.getSnapshot().browserBindings[389]).toBeUndefined()
+    expect(screen.getByRole('alert').textContent).toContain('disk is read-only')
   })
 })

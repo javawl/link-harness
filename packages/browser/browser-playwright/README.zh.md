@@ -35,6 +35,14 @@
 
 浏览器上下文关闭报告 `BROWSER_SESSION_CLOSED`。操作期间单个页面关闭仍属于页面失败，不丢弃其他调用方的页面。
 
+## 命名浏览器
+
+默认浏览器 id 为 `playwright`。额外 `profiles` 条目提供唯一 `id`，并在 `userDataDir` 与 `cdpEndpoint` 中选择一项；可用 `channel` 指定已安装的其他 Chromium 发行版，例如 `msedge`。托管浏览器继承启动和超时配置，但目录、cookie、标签页与页面上限各自独立。存在多个浏览器时，可在浏览器服务设置 `provider: playwright` 保留默认选择。
+
+`cdpEndpoint` 绑定已经运行的本机 Chrome/Edge HTTP 调试地址，例如 `http://127.0.0.1:9222`。每个实例须使用独立登录目录与调试端口。连接按需建立；关闭绑定会话只断开连接并保留已有标签页，关闭托管会话则关闭对应浏览器。不复制 profile 或登录状态；不支持远程地址和非 Chromium 浏览器。
+
+存在 settings 提供方时，`browser-playwright` 设置区持久化额外浏览器，新增后立即生效；发布控制台提供添加和绑定表单。重复目录（含已有符号链接别名）、浏览器 id 和等价本地调试地址均被拒绝。已有会话的配置不能修改或移除，须先核对保留提交并关闭该会话。各 CDP 地址必须指向不同浏览器实例，不能给已托管浏览器再添加连接别名。
+
 ## 模型体验
 
 间接经由 `dsh-tool-browser`；本 Provider 不产出提示词、schema 或会话面。

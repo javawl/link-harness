@@ -8,6 +8,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-browser'
 import { PlaywrightBrowserProvider, type ResolvedPlaywrightConfig } from './provider.ts'
 
@@ -16,8 +17,29 @@ export const name = 'browser-playwright'
 /** The browser seam this provider registers into. */
 export const inject = ['browser']
 
+/** A named browser with its own profile directory or an existing Chromium debugging endpoint. */
+export interface BrowserProfile {
+  /** User-facing identifier used for browser selection. */
+  readonly id: string
+  /** Dedicated persistent directory; required unless cdpEndpoint is supplied. */
+  readonly userDataDir?: string
+  /** HTTP endpoint of an existing local Chromium browser, for example http://127.0.0.1:9222. */
+  readonly cdpEndpoint?: string
+  /** Installed Chromium channel override, for example chrome or msedge. */
+  readonly channel?: string
+}
+
+const BrowserProfile: z<BrowserProfile> = z.object({
+  id: z.string().required(),
+  userDataDir: z.string(),
+  cdpEndpoint: z.string(),
+  channel: z.string(),
+})
+
 /** Configuration for the Playwright browser provider. */
 export interface Config {
+  /** Additional browsers selectable independently of the default playwright browser. */
+  readonly profiles?: BrowserProfile[]
   /** Persistent profile directory; logins, cookies, and challenge solutions survive runs. */
   readonly userDataDir?: string
   /** Launch headless; default false so a human can step into the same browser. */
@@ -49,6 +71,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
+  profiles: z.array(BrowserProfile).default([]),
   userDataDir: z.string().default('.browser-profile'),
   headless: z.boolean().default(false),
   channel: z.string().default('chrome'),
@@ -75,7 +98,61 @@ export function apply(ctx: Context, config: Config): void {
       throw new Error(`browser-playwright: ${key} must be an integer >= ${minimum}`)
     }
   }
-  ctx.browser.registerProvider(new PlaywrightBrowserProvider(resolved))
+  const defaultProvider = new PlaywrightBrowserProvider(resolved)
+  ctx.browser.registerProvider(defaultProvider)
+  const installed = new Map<string, { signature: string; dispose: () => void }>()
+  const Section = z.object({ profiles: z.array(BrowserProfile).default([]) })
+  const entry = { profiles: config.profiles ?? [] }
+  let source = () => entry
+  const providersFor = (profiles: BrowserProfile[]) => profiles.map((profile) => {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(profile.id) || profile.id === defaultProvider.id) {
+      throw new Error('browser-playwright: profile id must be unique, use letters/digits/_/-, and cannot be playwright')
+    }
+    if ((profile.userDataDir === undefined) === (profile.cdpEndpoint === undefined)
+      || profile.userDataDir?.trim() === '') {
+      throw new Error(`browser-playwright: ${profile.id} needs exactly one userDataDir or cdpEndpoint`)
+    }
+    return new PlaywrightBrowserProvider({ ...resolved,
+      ...profile.userDataDir === undefined ? {} : { userDataDir: profile.userDataDir },
+      ...profile.channel === undefined ? {} : { channel: profile.channel },
+      ...profile.cdpEndpoint === undefined ? {} : { cdpEndpoint: profile.cdpEndpoint },
+    }, profile.id)
+  })
+  const validate = (section: typeof entry): void => {
+    const providers = [defaultProvider, ...providersFor(section.profiles)]
+    if (new Set(providers.map(provider => provider.id)).size !== providers.length
+      || new Set(providers.map(provider => provider.resourceKey)).size !== providers.length) {
+      throw new Error('browser-playwright: browser ids, profile directories and debugging endpoints must be distinct')
+    }
+    for (const [id, previous] of installed) {
+      if (ctx.browser.hasSession(id)
+        && JSON.stringify(section.profiles.find(profile => profile.id === id)) !== previous.signature) {
+        throw new Error(`browser-playwright: ${id} has retained pages; close its session before changing or removing it`)
+      }
+    }
+  }
+  const install = (): void => {
+    const section = source()
+    validate(section)
+    const providers = providersFor(section.profiles)
+    for (const [id, previous] of installed) {
+      if (!providers.some(provider => provider.id === id)
+        || JSON.stringify(section.profiles.find(profile => profile.id === id)) !== previous.signature) {
+        previous.dispose()
+        installed.delete(id)
+      }
+    }
+    for (const provider of providers) {
+      if (!installed.has(provider.id)) installed.set(provider.id, {
+        signature: JSON.stringify(section.profiles.find(profile => profile.id === provider.id)),
+        dispose: ctx.browser.registerProvider(provider),
+      })
+    }
+  }
+  install()
+  installSettingsSection(ctx, settingsNamespace('browser-playwright'), Section, entry, {
+    validate, setSource: (current) => { source = current }, onChange: install,
+  })
 }
 
 export { PLAYWRIGHT_BROWSER_PROVIDER_ID } from './provider.ts'

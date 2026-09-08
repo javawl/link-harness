@@ -507,6 +507,17 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'The backlinks service. Registered as `ctx.backlinks` (one instance per context). Selection follows the shared execution-time rules: a configured id must be registered and `available()`; without one, exactly one usable provider is required.',
     methods: [
       {
+        signature: 'browserBindings(): Readonly<Record<string, string>>',
+        description: 'Read saved default browsers without selecting or launching one.',
+        parameters: [],
+        returns: 'promoted website ids mapped to browser ids; empty values mean unbound.',
+      },
+      {
+        signature: 'async bindBrowser(websiteId: number, browserId: string): Promise<void>',
+        description: 'Persist one website\'s browser preference. Active publications keep their captured selection.',
+        parameters: [{ name: 'websiteId', description: 'promoted website id.' }, { name: 'browserId', description: 'registered browser id, or empty to clear the preference.' }],
+      },
+      {
         signature: 'registerBatchSourceProvider(provider: BacklinkBatchSourceProvider): () => void',
         description: 'Register a batch work source. Throws BacklinksError `BACKLINKS_DUPLICATE_PROVIDER` on a duplicate id. Returns a disposer; disposed with the calling fiber.',
         parameters: [{ name: 'provider', description: 'the provider; its `id` is the registry key.' }],
@@ -581,8 +592,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'backlinksConsole',
-    summary: 'The read-only Remote console over `ctx.backlinks`.',
-    description: 'The read-only Remote console over `ctx.backlinks`. Mounted as a Service plugin (`ctx.plugin(BacklinksConsoleRuntime)` via the composition row), it binds the `backlinksConsole` wire namespace for the gateway.',
+    summary: 'The Remote console over `ctx.backlinks`.',
+    description: 'The Remote console over `ctx.backlinks`. Mounted as a Service plugin (`ctx.plugin(BacklinksConsoleRuntime)` via the composition row), it binds the `backlinksConsole` wire namespace for the gateway.',
     methods: [
       {
         signature: '@Remote async batches(): Promise<readonly BacklinkBatchSummary[]>',
@@ -596,6 +607,22 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'batchId', description: 'the batch to read.' }],
         returns: 'batch, website, anchors, and items.',
       },
+      {
+        signature: '@Remote browsers(): Promise<{ browsers: { id: string; available: boolean }[]; bindings: Record<string, string> }>',
+        description: 'Browser choices and durable website defaults for the publish panel.',
+        parameters: [],
+        returns: 'configured browser availability and website-to-browser bindings.',
+      },
+      {
+        signature: '@Remote async bindBrowser(websiteId: number, browserId: string): Promise<void>',
+        description: 'Save or clear a website default after verifying both references.',
+        parameters: [{ name: 'websiteId', description: 'website visible in the current backend\'s batches.' }, { name: 'browserId', description: 'configured browser id; empty clears the binding.' }],
+      },
+      {
+        signature: '@Remote async addBrowser(id: string, kind: \'profile\' | \'cdp\', location: string): Promise<void>',
+        description: 'Add a named local browser through the Playwright provider\'s validated persistent settings.',
+        parameters: [{ name: 'id', description: 'unique user-facing browser id.' }, { name: 'kind', description: 'dedicated profile directory or existing local Chromium connection.' }, { name: 'location', description: 'profile directory or HTTP debugging endpoint.' }],
+      },
     ],
   },
   {
@@ -605,21 +632,39 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'registerProvider(provider: BrowserAutomationProvider): () => void',
-        description: 'Register a browser automation provider. Throws BrowserError `BROWSER_DUPLICATE_PROVIDER` if its id is already registered. Returns a disposer; disposed with the calling fiber.',
-        parameters: [{ name: 'provider', description: 'the provider; its `id` is the registry key.' }],
-        returns: 'the disposer that unregisters the provider.',
+        description: 'Register one independently addressable browser. A resource cannot have two ids.',
+        parameters: [{ name: 'provider', description: 'backend owning this browser\'s login state and tabs.' }],
+        returns: 'disposer that unregisters and closes only this browser.',
       },
       {
-        signature: 'act(command: BrowserCommand, signal?: AbortSignal): Promise<BrowserResult>',
-        description: 'Perform one command on the shared session, opening it lazily (and single-flight) through the selected provider on first use. Ordering is per addressed tab: same-tab commands serialize in dispatch order while different-tab commands may overlap. Provider selection and session open throw BrowserError before any page work runs.',
-        parameters: [{ name: 'command', description: 'the closed-union command to execute.' }, { name: 'signal', description: 'optional cancellation signal checked before dispatch.' }],
-        returns: 'the closed-union outcome for the command kind.',
-      },
-      {
-        signature: 'async closeSession(): Promise<void>',
-        description: 'Close the shared session (and its browser). Safe when no session is open; the next `act()` opens a fresh one.',
+        signature: 'list(): { id: string; available: boolean }[]',
+        description: 'List configured browser ids without launching or connecting to them.',
         parameters: [],
-        returns: 'when the session is closed or none existed.',
+        returns: 'browser ids and their local availability; no credentials or page contents.',
+      },
+      {
+        signature: 'resolve(browserId?: string): string',
+        description: 'Resolve an explicit browser or the configured default before starting work.',
+        parameters: [{ name: 'browserId', description: 'registered id; omitted uses the service\'s provider selection.' }],
+        returns: 'selected browser id; an unknown or ambiguous selection throws before launch.',
+      },
+      {
+        signature: 'hasSession(browserId: string): boolean',
+        description: 'Check whether a browser has a live or opening session.',
+        parameters: [{ name: 'browserId', description: 'registered browser id.' }],
+        returns: 'whether changing its configuration would affect retained pages.',
+      },
+      {
+        signature: 'async act(command: BrowserCommand, signal?: AbortSignal, browserId?: string): Promise<BrowserResult>',
+        description: 'Execute in the selected browser\'s lazy session. Tab refs are local to that browser.',
+        parameters: [{ name: 'command', description: 'closed-union command; parallel callers must address a page.' }, { name: 'signal', description: 'cancellation forwarded to the provider.' }, { name: 'browserId', description: 'explicit browser; omitted uses the configured default.' }],
+        returns: 'the command outcome. Failure discards only the affected browser session.',
+      },
+      {
+        signature: 'async closeSession(browserId?: string): Promise<void>',
+        description: 'Close one selected browser, awaiting a pending launch. Other browsers remain usable.',
+        parameters: [{ name: 'browserId', description: 'explicit id; omitted closes the configured default, if any session exists.' }],
+        returns: 'when its provider cleanup settles; a dead browser\'s close error is ignored.',
       },
     ],
   },
@@ -3193,7 +3238,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'BrowserAutomationProvider',
-    declaration: 'export interface BrowserAutomationProvider {\n    readonly id: string;\n    available(): boolean;\n    open(signal?: AbortSignal): Promise<BrowserSession>;\n}',
+    declaration: 'export interface BrowserAutomationProvider {\n    readonly id: string;\n    readonly resourceKey?: string;\n    available(): boolean;\n    open(signal?: AbortSignal): Promise<BrowserSession>;\n}',
   },
   {
     name: 'BrowserBringToFrontCommand',

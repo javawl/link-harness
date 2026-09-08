@@ -20,12 +20,16 @@ it.skipIf(!chromeInstalled)('bounds real browser pages, snapshot waits and stuck
   expect(result.stderr).toBe('')
   expect(JSON.parse(result.stdout.trim())).toMatchInlineSnapshot(`
     {
+      "activeProfileProtected": true,
+      "attachedPagesPreserved": true,
       "configuredSnapshotTimeout": true,
+      "cookieIsolation": true,
       "first": "page",
       "interruptedInput": "BROWSER_ACTION_UNCERTAIN",
       "limit": "BROWSER_PAGE_LIMIT",
       "otherPage": "page",
       "preserved": "page",
+      "profilePersistence": true,
       "repeatedInput": "BROWSER_ACTION_UNCERTAIN",
       "replacement": "page",
       "retained": "page",

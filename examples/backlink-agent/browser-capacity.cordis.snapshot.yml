@@ -1,5 +1,12 @@
+- id: settings
+  name: '@deepseek-ai/dsh-settings-file'
+  config:
+    path: ./.browser-settings.yaml
+    watch: false
 - id: browser
   name: '@deepseek-ai/dsh-browser'
+  config:
+    provider: playwright
 - id: browser-playwright
   name: '@deepseek-ai/dsh-browser-playwright'
   config:
@@ -10,3 +17,8 @@
     navigationTimeoutMs: 10000
     navigationWaitUntil: domcontentloaded
     maxOpenPages: !!js Number(process.env.DSH_CAPACITY_LIMIT ?? 2)
+    profiles:
+      - id: isolated
+        userDataDir: ./.browser-isolated-profile
+      - id: attached
+        cdpEndpoint: !!js process.env.DSH_CDP_ENDPOINT

@@ -36,6 +36,19 @@ The backlinks service. Registered as `ctx.backlinks` (one instance per context).
 
 ```ts cordis-catalog
 /**
+ * Read saved default browsers without selecting or launching one.
+ * @returns promoted website ids mapped to browser ids; empty values mean unbound.
+ */
+browserBindings(): Readonly<Record<string, string>>
+
+/**
+ * Persist one website's browser preference. Active publications keep their captured selection.
+ * @param websiteId - promoted website id.
+ * @param browserId - registered browser id, or empty to clear the preference.
+ */
+async bindBrowser(websiteId: number, browserId: string): Promise<void>
+
+/**
  * Register a batch work source. Throws {@link BacklinksError}
  * `BACKLINKS_DUPLICATE_PROVIDER` on a duplicate id. Returns a disposer;
  * disposed with the calling fiber.
@@ -143,7 +156,7 @@ Source: [`packages/backlinks/backlinks/src/index.ts`](../../packages/backlinks/b
 
 ### `ctx.backlinksConsole` — `BacklinksConsoleRuntime`
 
-The read-only Remote console over `ctx.backlinks`. Mounted as a Service plugin (`ctx.plugin(BacklinksConsoleRuntime)` via the composition row), it binds the `backlinksConsole` wire namespace for the gateway.
+The Remote console over `ctx.backlinks`. Mounted as a Service plugin (`ctx.plugin(BacklinksConsoleRuntime)` via the composition row), it binds the `backlinksConsole` wire namespace for the gateway.
 
 ```ts cordis-catalog
 /**
@@ -158,6 +171,27 @@ The read-only Remote console over `ctx.backlinks`. Mounted as a Service plugin (
  * @returns batch, website, anchors, and items.
  */
 @Remote async batch(batchId: number): Promise<BacklinkBatchDetail>
+
+/**
+ * Browser choices and durable website defaults for the publish panel.
+ * @returns configured browser availability and website-to-browser bindings.
+ */
+@Remote browsers(): Promise<{ browsers: { id: string; available: boolean }[]; bindings: Record<string, string> }>
+
+/**
+ * Save or clear a website default after verifying both references.
+ * @param websiteId - website visible in the current backend's batches.
+ * @param browserId - configured browser id; empty clears the binding.
+ */
+@Remote async bindBrowser(websiteId: number, browserId: string): Promise<void>
+
+/**
+ * Add a named local browser through the Playwright provider's validated persistent settings.
+ * @param id - unique user-facing browser id.
+ * @param kind - dedicated profile directory or existing local Chromium connection.
+ * @param location - profile directory or HTTP debugging endpoint.
+ */
+@Remote async addBrowser(id: string, kind: 'profile' | 'cdp', location: string): Promise<void>
 ```
 
 Source: [`packages/backlinks/console/src/index.ts`](../../packages/backlinks/console/src/index.ts)

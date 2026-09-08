@@ -35,6 +35,14 @@ All snapshot formats share action selectors, including semantic addressing and n
 
 A browser-context close reports `BROWSER_SESSION_CLOSED`. Closing one page during an action remains a page failure and does not discard other callers’ pages.
 
+## Named browsers
+
+The default browser id is `playwright`. Additional `profiles` entries use a unique `id` plus exactly one of `userDataDir` or `cdpEndpoint`; `channel` optionally selects another installed Chromium distribution such as `msedge`. Managed browsers inherit launch and timeout settings, with independent directories, cookies, tabs and page limits. Set the browser service's `provider: playwright` to retain a default when multiple browsers exist.
+
+`cdpEndpoint` binds an already-running local Chrome/Edge HTTP debugging origin, for example `http://127.0.0.1:9222`. Each instance needs its own profile directory and debugging port. Connections are lazy; closing an attached session disconnects and preserves its existing tabs, while closing a managed session closes its browser. No profile or login state is copied. Remote endpoints and non-Chromium browsers are unsupported.
+
+With a settings provider, the `browser-playwright` section persists the additional profiles and applies additions immediately. The publish console provides an add/connect form. Duplicate directories (including existing symlink aliases), browser ids, and equivalent local endpoints are rejected. Changing or removing a profile with an open session fails until that session is closed; retained submissions must be reconciled first. CDP endpoints must refer to distinct browser instances; do not expose a managed browser under another connection alias.
+
 ## Model Experience
 
 Indirectly, through `dsh-tool-browser`; this provider contributes no prompt, schema, or session surface of its own.

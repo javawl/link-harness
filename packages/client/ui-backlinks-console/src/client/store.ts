@@ -16,11 +16,16 @@ import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 /** What the publish panel renders. */
 export interface ConsoleViewState {
   open: boolean
+  concurrent: boolean
   status: 'idle' | 'loading' | 'ready' | 'error'
   error: string | null
   batches: readonly BacklinkBatchSummary[]
   /** Expanded batch id → its detail (loaded lazily on first expand). */
   details: Record<number, BacklinkBatchDetail>
+  browsers: readonly { id: string; available: boolean }[]
+  browserBindings: Record<string, string>
+  browserOverrides: Record<number, string>
+  savingBrowser: boolean
   selectedBatchIds: readonly number[]
   /** Batch ids being submitted to Harness (null when no submission is pending). */
   publishing: readonly number[] | null
@@ -34,6 +39,11 @@ export interface ConsoleStore {
   refresh(): Promise<void>
   toggleDetail(batchId: number): Promise<void>
   /**
+   * Keep the browser-control visibility choice across sidebar remounts.
+   * @param concurrent - whether to show browser assignment and binding controls.
+   */
+  setConcurrent(concurrent: boolean): void
+  /**
    * Select or deselect listed batches; ignored while submission is pending.
    * @param batchIds - batch ids to update; unknown ids are ignored.
    * @param selected - whether to include the batches in the next submission.
@@ -44,7 +54,13 @@ export interface ConsoleStore {
    * @param batchId - batch to publish.
    */
   publish(batchId: number): Promise<void>
-  /** Submit the selection in descending id order as one Harness request. */
+  /** Set this batch's browser override; empty uses the saved website default. */
+  selectBrowser(batchId: number, browserId: string): void
+  /** Save the selected browser as this website's default; empty clears it. */
+  bindBrowser(websiteId: number, browserId: string): Promise<void>
+  /** Register a named browser through the provider's persistent configuration. */
+  addBrowser(id: string, kind: 'profile' | 'cdp', location: string): Promise<void>
+  /** Submit the selection as one Harness request with fixed browser assignments. */
   publishSelected(): Promise<void>
 }
 
@@ -56,10 +72,12 @@ export interface ConsoleStore {
 export function createConsoleStore(ctx: ClientContext): ConsoleStore {
   const store = createSnapshotStore<ConsoleViewState>({
     open: false,
+    concurrent: false,
     status: 'idle',
     error: null,
     batches: [],
     details: {},
+    browsers: [], browserBindings: {}, browserOverrides: {}, savingBrowser: false,
     selectedBatchIds: [],
     publishing: null,
   })
@@ -79,6 +97,13 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
   const publishBatches = async (batchIds: readonly number[]): Promise<void> => {
     if (store.getSnapshot().publishing !== null || batchIds.length === 0) return
     const ids = [...new Set(batchIds)].sort((a, b) => b - a)
+    const state = store.getSnapshot()
+    const batches = ids.map((batchId) => {
+      const batch = state.batches.find(value => value.id === batchId)
+      const browserId = state.browserOverrides[batchId]
+          || (batch === undefined ? undefined : state.browserBindings[batch.websiteId])
+      return { batchId, ...browserId ? { browserId } : {} }
+    })
     store.update((state) => { state.publishing = ids; state.error = null })
     try {
       const current = ctx.sessions.list.getSnapshot().current
@@ -90,7 +115,9 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
       const scope = ctx.sessions.scope(sessionId)
       if (scope === undefined) throw new Error('publish: new session is unavailable')
       const command = `/backlink-publish ${ids.join(' ')}`
-        + (ids.length > 1 ? '\n请按以上批次号顺序依次发布，仅处理这些批次。' : '')
+        + (ids.length > 1 || batches.some(batch => batch.browserId !== undefined)
+          ? `\n浏览器分配：${JSON.stringify(batches)}。仅处理这些批次，保留指定的 browserId。${ids.length > 1
+            ? '使用 backlink_publish_many 并行发布；同一浏览器或网站的批次由运行时排队。' : '使用 backlink_publish 发布。'}` : '')
       await scope.inject(['conversation'], async (bound) => {
         await bound.conversation.send(command)
       })
@@ -120,9 +147,12 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
     async refresh(): Promise<void> {
       store.update((state) => { state.status = 'loading'; state.error = null })
       try {
-        const batches = await readBatches()
+        const [batches, browserResult] = await Promise.all([readBatches(), ctx.remote.backlinksConsole.browsers()])
+        if (!browserResult.ok) throw new Error(`${browserResult.error.code}: ${browserResult.error.message}`)
         store.update((state) => {
           state.batches = batches
+          state.browsers = browserResult.value.browsers
+          state.browserBindings = browserResult.value.bindings
           state.selectedBatchIds = state.selectedBatchIds.filter(id => batches.some(batch => batch.id === id))
           state.status = 'ready'
         })
@@ -150,6 +180,9 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
         })
       }
     },
+    setConcurrent(concurrent): void {
+      store.update((state) => { state.concurrent = concurrent })
+    },
     selectBatches(batchIds, selected): void {
       if (store.getSnapshot().publishing !== null) return
       store.update((state) => {
@@ -160,6 +193,36 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
         }
         state.selectedBatchIds = [...ids].sort((a, b) => b - a)
       })
+    },
+    selectBrowser(batchId, browserId): void {
+      if (store.getSnapshot().publishing !== null) return
+      store.update((state) => { state.browserOverrides[batchId] = browserId })
+    },
+    async bindBrowser(websiteId, browserId): Promise<void> {
+      if (store.getSnapshot().savingBrowser) return
+      store.update((state) => { state.savingBrowser = true; state.error = null })
+      try {
+        const result = await ctx.remote.backlinksConsole.bindBrowser(websiteId, browserId)
+        if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
+        store.update((state) => { state.browserBindings[websiteId] = browserId })
+      } catch (error) {
+        store.update((state) => { state.error = error instanceof Error ? error.message : String(error) })
+      } finally {
+        store.update((state) => { state.savingBrowser = false })
+      }
+    },
+    async addBrowser(id, kind, location): Promise<void> {
+      if (store.getSnapshot().savingBrowser) return
+      store.update((state) => { state.savingBrowser = true; state.error = null })
+      try {
+        const result = await ctx.remote.backlinksConsole.addBrowser(id, kind, location)
+        if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
+        await this.refresh()
+      } catch (error) {
+        store.update((state) => { state.error = error instanceof Error ? error.message : String(error) })
+      } finally {
+        store.update((state) => { state.savingBrowser = false })
+      }
     },
     async publish(batchId): Promise<void> {
       await publishBatches([batchId])

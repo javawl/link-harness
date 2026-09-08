@@ -371,6 +371,8 @@ Source: [`packages/attachment/attachment-local/src/index.ts:51`](../packages/att
  * usable provider is registered.
  */
 export interface BacklinksRuntimeConfig {
+  /** Promoted website id to default browser id; an empty value clears the binding. */
+  readonly websiteBrowsers?: Record<string, string>
   /** Explicit batch-source provider id. Omitted = auto-select when exactly one usable. */
   readonly batchSourceProvider?: string
   /** Explicit mailbox provider id. Omitted = auto-select when exactly one usable. */
@@ -378,7 +380,7 @@ export interface BacklinksRuntimeConfig {
 }
 ```
 
-Source: [`packages/backlinks/backlinks/src/index.ts:61`](../packages/backlinks/backlinks/src/index.ts)
+Source: [`packages/backlinks/backlinks/src/index.ts:65`](../packages/backlinks/backlinks/src/index.ts)
 
 <a id="deepseek-aidsh-backlinks-cloud-mail"></a>
 
@@ -494,6 +496,8 @@ Requires: `browser`
 ```ts config-catalog
 /** Configuration for the Playwright browser provider. */
 export interface Config {
+  /** Additional browsers selectable independently of the default playwright browser. */
+  readonly profiles?: BrowserProfile[]
   /** Persistent profile directory; logins, cookies, and challenge solutions survive runs. */
   readonly userDataDir?: string
   /** Launch headless; default false so a human can step into the same browser. */
@@ -523,9 +527,21 @@ export interface Config {
    */
   readonly ignoreDefaultArgs?: string[]
 }
+
+/** A named browser with its own profile directory or an existing Chromium debugging endpoint. */
+export interface BrowserProfile {
+  /** User-facing identifier used for browser selection. */
+  readonly id: string
+  /** Dedicated persistent directory; required unless cdpEndpoint is supplied. */
+  readonly userDataDir?: string
+  /** HTTP endpoint of an existing local Chromium browser, for example http://127.0.0.1:9222. */
+  readonly cdpEndpoint?: string
+  /** Installed Chromium channel override, for example chrome or msedge. */
+  readonly channel?: string
+}
 ```
 
-Source: [`packages/browser/browser-playwright/src/index.ts:20`](../packages/browser/browser-playwright/src/index.ts)
+Source: [`packages/browser/browser-playwright/src/index.ts:40`](../packages/browser/browser-playwright/src/index.ts)
 
 <a id="deepseek-aidsh-client-connection"></a>
 
@@ -2670,7 +2686,7 @@ export interface Config {
 export interface PublisherConfig {
   /** One-shot in-process provider with persona, tool-filter, and depth-limit support. */
   readonly provider: string
-  /** Maximum concurrently running items; each target hostname runs serially. */
+  /** Maximum concurrently running items per browser; each target hostname runs serially. */
   readonly concurrency: number
   /** Fixed instructions installed once as each child's persona. */
   readonly persona: string

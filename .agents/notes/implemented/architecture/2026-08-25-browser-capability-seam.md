@@ -1,4 +1,4 @@
-# Agent Note: Browser capability seam — one session, one verb set
+# Agent Note: Browser capability seam — persistent state, one verb set
 
 Status: implemented
 
@@ -15,6 +15,8 @@ Two contract questions had to be settled up front: how the model addresses a sta
 
 ## Decision
 
+Named-browser selection and independent session lifetime are owned by the [isolated publication decision](../feature/2026-09-07-isolated-browser-publication.md); this note retains the capability and per-profile ordering rationale.
+
 
 Browser automation is its own capability seam, not a widening of `ctx.web`. The web Agent Note already named provider-backed page interaction as separate-surface work (a `web_extract` sibling, not a fetch arm); driving a logged-in, JavaScript-heavy site is further still — it needs a stateful browser process, not a request/response. The seam follows the web trio's shape exactly: provider registry with execution-time selection, a service error taxonomy extending `HarnessError`, model-facing names/schemas only in the consumer.
 
@@ -22,22 +24,21 @@ Two contract choices differ from web and define the seam:
 
 1. **One command dispatch, not one method per operation.** The browser is a single stateful surface: every operation lands on the same session's active page and must observe the previous operation's settled state. The SD therefore exposes one `act(command)` over a CLOSED `BrowserCommand` union (`navigate`/`snapshot`/`click`/`fill`/`select`/`press`/`upload`/`screenshot`/`waitFor`/`closePage`) returning a CLOSED `BrowserResult` union (`page`/`acked`/`screenshot`). The consumer mirrors the same set as one `browser` tool's `action` field — ten page-driving verbs on one shared browser instead of ten tools whose schemas would churn independently.
 
-2. **One shared lazy session owned by the SD.** The session opens on the first command and survives until `closeSession()` or context disposal; commands serialize through a promise chain inside the SD. This is what lets a persistent browser profile outlive individual tool calls and whole runs: the Playwright provider launches `chromate.launchPersistentContext` over a configurable `userDataDir`, headed by default on the real Chrome channel. Cookie logins and human-solved CAPTCHAs in that profile are the operational basis of the backlink-publishing workflow that consumes this seam.
+2. **Lazy sessions owned by the SD.** Each registered browser opens on its first command and persists until selected closure or disposal. The [isolated publication decision](../feature/2026-09-07-isolated-browser-publication.md) owns named-session routing. Providers serialize commands per tab. Persistent profiles keep login state across calls without launching a browser for each operation.
 
 ## Failure discipline
 
-A provider that leaks a raw (non-`BrowserError`) failure loses the session: the SD discards it, so the next command relaunches rather than reusing unknown browser state. Launch failures wrap as `BROWSER_LAUNCH_FAILED`; command failures as `BROWSER_ACTION_FAILED`; cancellation is checked before dispatch (`BROWSER_ABORTED`). An unregistered provider after a session is open does NOT affect that session — selection matters at open time, which the SD tests pin explicitly.
+A provider that leaks a raw (non-`BrowserError`) failure loses the session: the SD discards it, so the next command relaunches rather than reusing unknown browser state. Launch failures wrap as `BROWSER_LAUNCH_FAILED`; command failures as `BROWSER_ACTION_FAILED`; cancellation is checked before dispatch (`BROWSER_ABORTED`). Unregistering a provider closes its session; other browsers remain usable.
 
 ## Deferred work
 
-- Named-tab addressing (commands always drive the most recently opened page); parallel sessions.
 - Full-page screenshots; DOM-level structured snapshots beyond text capture (`page` result carries url/title/text only).
 - An observation surface (page-lifecycle events) — intentionally absent, same posture as web's dropped observation surface.
 
 ## Consequences
 
 - `BrowserCommand` and `BrowserResult` are closed unions owned by `dsh-browser`; providers and consumers `switch` to exhaustiveness, so adding a kind or outcome is a compile-enforced change across all three packages.
-- The SD owns one shared lazy session and serializes every command; consumers cannot open parallel sessions, and a provider that leaks a raw failure loses the session (next command relaunches instead of reusing unknown state).
+- The SD owns session lifetime; a raw provider failure discards only that browser session. Providers own per-tab ordering.
 - The Playwright provider's persistent context makes browser state (logins, solved challenges) durable across runs; that durability is now an operational property other capabilities may rely on.
 - Model-facing verbs live only in `dsh-tool-browser`, so a provider swap never changes how the model drives a page.
 

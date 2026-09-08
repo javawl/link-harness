@@ -41,8 +41,8 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
-| `@deepseek-ai/dsh-tool-browser` | `browser` | `ctx.tools`, `ctx.browser`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | browser keeps provider selection and the shared persistent session behind ctx.browser so model-visible schemas stay stable across backend swaps. |
-| `@deepseek-ai/dsh-tool-backlinks` | `backlink_publish`, `backlinks` | `ctx.tools`, `ctx.backlinks`, `ctx.systemPrompt`, `ctx.browser (publisher)`, `ctx.agents (publisher)`, `ctx.subagents (publisher)` | `tool/call`, `tool/result` | - | The catalog enables the optional publisher with concurrency 3 and a non-executing provider to include backlink_publish. Omitting publisher exposes only the low-level backlinks tool. The backlink example supplies fixed child discipline and request budgets; runtime scheduling binds each item to its page and reconciles results before lease release. |
+| `@deepseek-ai/dsh-tool-browser` | `browser`, `browser_list` | `ctx.tools`, `ctx.browser`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | browser keeps provider selection and isolated persistent sessions behind ctx.browser so model-visible schemas stay stable across backend swaps. |
+| `@deepseek-ai/dsh-tool-backlinks` | `backlink_publish`, `backlink_publish_many`, `backlinks` | `ctx.tools`, `ctx.backlinks`, `ctx.systemPrompt`, `ctx.browser (publisher)`, `ctx.agents (publisher)`, `ctx.subagents (publisher)` | `tool/call`, `tool/result` | - | The catalog enables the optional publisher with concurrency 3 and a non-executing provider to include backlink_publish and backlink_publish_many. Omitting publisher exposes only the low-level backlinks tool. The backlink example supplies fixed child discipline and request budgets; runtime scheduling binds each item to its page and reconciles results before lease release. |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -2228,7 +2228,7 @@ web_search and web_fetch keep provider selection behind ctx.web so model-visible
 
 ### `browser`
 
-Drive one shared persistent real-browser session: navigate, read page text, click, fill forms, select options, press keys, upload files, screenshot, wait, and close tabs.
+Drive a selected persistent real-browser session: navigate, read page text, click, fill forms, select options, press keys, upload files, screenshot, wait, and close tabs.
 
 ```json
 {
@@ -2237,6 +2237,10 @@ Drive one shared persistent real-browser session: navigate, read page text, clic
     "action": {
       "type": "string",
       "description": "One of navigate, snapshot, click, fill, select, press, upload, screenshot, waitFor, closePage, bringToFront, newPage."
+    },
+    "browserId": {
+      "type": "string",
+      "description": "Configured browser id from browser_list. Keep it fixed throughout a website publication."
     },
     "page": {
       "type": "string",
@@ -2312,7 +2316,20 @@ Drive one shared persistent real-browser session: navigate, read page text, clic
 
 Source: [`packages/browser/tool-browser/src/index.ts`](../packages/browser/tool-browser/src/index.ts)
 
-browser keeps provider selection and the shared persistent session behind ctx.browser so model-visible schemas stay stable across backend swaps.
+### `browser_list`
+
+List configured browser ids and local availability without opening a browser. Use browserId to keep logins and tabs isolated.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/browser/tool-browser/src/index.ts`](../packages/browser/tool-browser/src/index.ts)
+
+browser keeps provider selection and isolated persistent sessions behind ctx.browser so model-visible schemas stay stable across backend swaps.
 
 <a id="deepseek-aidsh-tool-backlinks"></a>
 
@@ -2320,7 +2337,7 @@ browser keeps provider selection and the shared persistent session behind ctx.br
 
 ### `backlink_publish`
 
-Publish the user-confirmed batch scope using up to 3 rolling item workers, one per target host. The runtime claims and renews one lease, binds pages, verifies results, and releases the lease. This foreground call waits for completion; do not claim first or start separate subagents. Model, checkpoint or lease failures halt new starts; per-item budget stops reconcile the item and continue the queue. Resolve stoppedReason and attempted items still pending in the backend before continuing or completing the goal. No live or pending-review result is automatically resubmitted.
+Publish the user-confirmed batch scope using up to 3 rolling item workers, one per target host. The runtime claims and renews one lease, binds pages, verifies results, and releases the lease. This foreground call waits for completion; do not claim first or start separate subagents. Model, checkpoint, authentication or lease failures halt new starts. Per-item budget or reconciliation failures skip the affected item and continue the queue. unresolvedItemIds lists unconfirmed outcomes excluded from further dispatch; report them separately without resubmitting or changing their backend status to skipped. When remaining is zero and stoppedReason is null, finish the scope and list unresolved items for manual review.
 
 ```json
 {
@@ -2329,6 +2346,10 @@ Publish the user-confirmed batch scope using up to 3 rolling item workers, one p
     "batchId": {
       "type": "number",
       "description": "User-selected publish batch."
+    },
+    "browserId": {
+      "type": "string",
+      "description": "Explicit browser from browser_list; overrides the website binding. Omitted uses the saved website binding, then the default browser."
     },
     "scope": {
       "type": "string",
@@ -2357,6 +2378,65 @@ Publish the user-confirmed batch scope using up to 3 rolling item workers, one p
   },
   "required": [
     "batchId",
+    "scope",
+    "mode"
+  ]
+}
+```
+
+Source: [`packages/backlinks/tool-backlinks/src/publisher.ts`](../packages/backlinks/tool-backlinks/src/publisher.ts)
+
+### `backlink_publish_many`
+
+Publish user-selected batches across isolated browsers in one foreground call. Different browsers and promoted websites run concurrently; batches sharing either run in input order. Explicit browserId overrides saved website bindings. All browser selections are checked before pages or leases. A stopped batch halts new admissions and drains active work; never resubmit unknown outcomes.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "batches": {
+      "type": "array",
+      "description": "Confirmed batches in dispatch order, each with an optional explicit browser and item selection.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "batchId": {
+            "type": "number"
+          },
+          "browserId": {
+            "type": "string"
+          },
+          "itemIds": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "batchId"
+        ]
+      }
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "all",
+        "pending",
+        "retryable"
+      ]
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "smart",
+        "all"
+      ]
+    }
+  },
+  "required": [
+    "batches",
     "scope",
     "mode"
   ]
@@ -2510,4 +2590,4 @@ Run the publish-batch workflow: list/detail/claim batches, report per-item resul
 
 Source: [`packages/backlinks/tool-backlinks/src/backlinks.ts`](../packages/backlinks/tool-backlinks/src/backlinks.ts)
 
-The catalog enables the optional publisher with concurrency 3 and a non-executing provider to include backlink_publish. Omitting publisher exposes only the low-level backlinks tool. The backlink example supplies fixed child discipline and request budgets; runtime scheduling binds each item to its page and reconciles results before lease release.
+The catalog enables the optional publisher with concurrency 3 and a non-executing provider to include backlink_publish and backlink_publish_many. Omitting publisher exposes only the low-level backlinks tool. The backlink example supplies fixed child discipline and request budgets; runtime scheduling binds each item to its page and reconciles results before lease release.

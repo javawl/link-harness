@@ -6,9 +6,11 @@ The Web sidebar's Publish Batches tab reads batch summaries and details through 
 
 ## Selection and submission
 
-Batches sort by numeric id descending on every refresh. Each top-level row has a checkbox independent of its detail disclosure. Select visible applies to the current search results; hidden selections remain selected. Refresh removes selections whose batches disappeared. Expanded items display `executed` in green, `failed` in red, and other statuses in muted text.
+Batches sort by numeric id descending on every refresh. Rows show the batch id, website, status counts and a Publish button. Batch selection and Publish selected remain available in both modes. Enable Concurrent beside Add / connect browser to show browser assignment and binding controls. Turning it off hides only those controls while preserving selections and browser choices. Each selection checkbox is independent of its detail disclosure. Select visible applies to the current search results; hidden selections remain selected. Refresh removes selections whose batches disappeared. Expanded items display `executed` in green, `failed` in red, and other statuses in muted text.
 
 Publish selected sends one request containing the selected ids in descending order into the current session's workspace, falling back to the recent workspace. Submission awaits `connectWorkspace()` and sends to that returned blank session. All publish and selection controls are disabled until submission settles. Success opens the receiving session and clears the submitted selection; a failure retains the selection and displays the error. Single-row Publish uses the same submission path.
+
+The add/connect form persists a separate browser profile or an existing local Chrome/Edge debugging endpoint. Each batch offers a browser override; Bind website saves it as the default for all batches of that website, while Unbind clears the default. Overrides apply only to the submitted request. A single batch with a chosen browser includes its assignment and uses `backlink_publish`; multiple batches use `backlink_publish_many`, allowing different browsers to publish together. Removed bindings are shown as errors and never silently replaced by another browser.
 
 ## Model Experience
 
@@ -16,7 +18,7 @@ Publish selected sends one request containing the selected ids in descending ord
 
 #### What the model sees
 
-A single batch sends `/backlink-publish <id>`. Multiple batches send `/backlink-publish <ids>`, with unique space-separated ids in descending order, followed by a newline and `请按以上批次号顺序依次发布，仅处理这些批次。`. The conversation service submits this as one ordinary user message.
+A single batch sends `/backlink-publish <id>`. Multiple batches send `/backlink-publish <ids>`, with unique space-separated ids in descending order, followed by the selected browser assignments as JSON and instructions to use `backlink_publish_many`. The conversation service submits this as one ordinary user message.
 
 #### Token effect
 
@@ -28,6 +30,6 @@ Submission appends a user message to the receiving blank session without replaci
 
 ## Known Limitations and Deferred Work
 
-- Submission acknowledgment means Harness accepted the request, not that external publication completed. The publishing skill owns execution, confirmations, and result reporting. Selection is local to the current browser plugin instance.
+- Submission acknowledgment means Harness accepted the request, not that external publication completed. The publishing skill owns execution, confirmations, and result reporting. Concurrent mode and selection survive sidebar remounts within the current browser plugin instance.
 - Publishing starts a new session; it does not resume a blocked publishing session.
 - Batch refresh reads backend state rather than subscribing to item progress events.

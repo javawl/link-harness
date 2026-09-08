@@ -28,6 +28,8 @@ Service Definition for the backlinks capability seam (`ctx.backlinks`): two prov
 
 Configured id must be registered and `available()`; otherwise exactly one usable provider per registry. `$DSH_BACKLINKS_BATCH_SOURCE` / `$DSH_BACKLINKS_MAILBOX` equal the config fields.
 
+`websiteBrowsers` maps promoted website ids to default browser ids. `browserBindings()` reads those defaults; `bindBrowser(websiteId, browserId)` persists one preference through settings, with an empty id clearing it. Writes require persistent settings and do not alter running publications. The publisher resolves explicit selection before the website default; the console validates that the website and browser exist.
+
 ## Model Experience
 
 Indirectly, through `dsh-tool-backlinks`, which returns bounded batch/lease/mail summaries and the exact provider-selection failures while this registry contributes no prompt or schema itself.

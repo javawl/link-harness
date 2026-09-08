@@ -7,6 +7,7 @@ import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { BrowserError } from '@deepseek-ai/dsh-browser'
 import type { BacklinkBatchDetail, BacklinkBatchItem, BacklinkItemResult } from '@deepseek-ai/dsh-backlinks'
+import { BacklinksError } from '@deepseek-ai/dsh-backlinks'
 import { defineTool, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-subagent'
 import { pendingBatchItems, readItemIds } from './batch-view.ts'
@@ -16,7 +17,7 @@ import type { LeaseRenewals } from './leases.ts'
 export interface PublisherConfig {
   /** One-shot in-process provider with persona, tool-filter, and depth-limit support. */
   readonly provider: string
-  /** Maximum concurrently running items; each target hostname runs serially. */
+  /** Maximum concurrently running items per browser; each target hostname runs serially. */
   readonly concurrency: number
   /** Fixed instructions installed once as each child's persona. */
   readonly persona: string
@@ -37,6 +38,7 @@ interface Assignment {
   readonly detail: BacklinkBatchDetail
   readonly item: BacklinkBatchItem
   readonly page: string
+  readonly browserId: string
   readonly leaseId: number
   child?: Agent
   submission: 'unsubmitted' | 'unknown' | 'confirmed'
@@ -94,13 +96,15 @@ export function applyPublisher(
   const creating = new AsyncLocalStorage<Assignment>()
   const active = new Map<AbortController, Promise<unknown>>()
   const owners = new WeakSet<Agent>()
+  const busyBrowsers = new Set<string>()
+  const busyWebsites = new Set<number>()
   let closed = false
 
   async function capture(assignment: Assignment, format: 'text' | 'links', selector?: string) {
     const result = await browser.act({
       kind: 'snapshot', page: assignment.page, format,
       ...selector === undefined ? {} : { selector },
-    }, AbortSignal.timeout(timeoutMs))
+    }, AbortSignal.timeout(timeoutMs), assignment.browserId)
     if (result.kind !== 'page' || result.truncated) {
       throw new Error('Publication verification needs a complete page snapshot; narrow verificationSelector.')
     }
@@ -130,7 +134,7 @@ export function applyPublisher(
           || host === websiteHost(assignment.detail.website.siteUrl) || host === websiteHost(result.targetUrl)) {
           throw new Error('publicUrl must belong to the assigned publishing source, not the promoted website or link destination.')
         }
-        await browser.act({ kind: 'navigate', page: assignment.page, url: publicUrl.href }, AbortSignal.timeout(timeoutMs))
+        await browser.act({ kind: 'navigate', page: assignment.page, url: publicUrl.href }, AbortSignal.timeout(timeoutMs), assignment.browserId)
         const page = await capture(assignment, 'links', selector)
         if (!samePage(page.url, result.publicUrl)) throw new Error('Navigate the assigned page to publicUrl before reporting live.')
         const links = JSON.parse(page.text) as { links: { href: string; text: string }[] }
@@ -176,10 +180,14 @@ export function applyPublisher(
       description: `${browserTool.description} Your only page is assigned in the task; omitting page uses it. Every click or press requires submission: false for navigation/account work, true for the one final publication.`,
       parameters: {
         ...browserTool.parameters,
-        submission: { type: 'boolean', description: 'Required on click/press: true only for the final publication; false for navigation or account work. A final publication can be dispatched once.' },
+        properties: {
+          ...(browserTool.parameters.properties as Record<string, unknown>),
+          submission: { type: 'boolean', description: 'Required on click/press: true only for the final publication; false for navigation or account work. A final publication can be dispatched once.' },
+        },
       },
       async execute(raw, exec) {
         const args = raw as Record<string, unknown>
+        if (args.browserId !== undefined && args.browserId !== assignment.browserId) throw new Error(`Use only your assigned browser ${assignment.browserId}.`)
         if (args.page !== undefined && args.page !== assignment.page) throw new Error(`Use only your assigned page ${assignment.page}.`)
         if (args.action === 'newPage') throw new Error('This item already owns a reserved page; do not open another.')
         if (assignment.saved !== undefined
@@ -203,7 +211,7 @@ export function applyPublisher(
           throw new Error('submission is only valid on click or press.')
         }
         try {
-          const value = await browserTool.execute({ ...args, page: assignment.page }, exec)
+          const value = await browserTool.execute({ ...args, page: assignment.page, browserId: assignment.browserId }, exec)
           if (args.action === 'closePage') assignment.pageClosed = true
           return value
         } catch (error) {
@@ -217,8 +225,11 @@ export function applyPublisher(
       description: `${backlinksTool.description} Work only on the assigned item; batch and lease actions are owned by the publisher.`,
       parameters: {
         ...backlinksTool.parameters,
-        receipt: { type: 'string', description: 'submitted: exact visible site acknowledgement, checked against the assigned page.' },
-        verificationSelector: { type: 'string', description: 'Optional snapshot scope for public-link or receipt verification.' },
+        properties: {
+          ...(backlinksTool.parameters.properties as Record<string, unknown>),
+          receipt: { type: 'string', description: 'submitted: exact visible site acknowledgement, checked against the assigned page.' },
+          verificationSelector: { type: 'string', description: 'Optional snapshot scope for public-link or receipt verification.' },
+        },
       },
       async execute(raw, exec) {
         const args = raw as Record<string, unknown>
@@ -275,21 +286,23 @@ export function applyPublisher(
       || assignment.saved?.status === 'skipped'
       || assignment.saved?.status === 'failed')
     if (safeToClose && !assignment.pageClosed) {
-      await browser.act({ kind: 'closePage', page: assignment.page }, cleanupSignal)
+      await browser.act({ kind: 'closePage', page: assignment.page }, cleanupSignal, assignment.browserId)
       assignment.pageClosed = true
     }
   }
 
-  async function run(args: { batchId: number; scope: string; mode: string; itemIds?: number[] }, exec: ToolExecution, signal: AbortSignal) {
+  async function run(
+    args: { batchId: number; scope: string; mode: string; itemIds?: number[]; browserId?: string },
+    exec: ToolExecution, signal: AbortSignal, prepared?: BacklinkBatchDetail,
+  ) {
     const parent = exec.agent
     if (parent === undefined || parent.session.header.origin === 'subagent') throw new Error('backlink_publish requires the primary calling agent.')
-    if (owners.has(parent)) throw new Error('A publication call is already running for this agent.')
     const provider = subagents.getProvider(config.provider)
     if (provider === undefined || provider.inheritsParentContext || !provider.capabilities.persona
       || !provider.capabilities.toolFilter || !provider.capabilities.depthLimit) {
       throw new Error('backlink_publish requires a fresh one-shot provider supporting persona, toolFilter, and depthLimit.')
     }
-    owners.add(parent)
+    let reservation: { browserId: string; websiteId: number } | undefined
     let leaseId: number | undefined
     const assignments: Assignment[] = []
     const running = new Map<string, Promise<void>>()
@@ -300,6 +313,17 @@ export function applyPublisher(
     try {
       const selected = readItemIds(args.itemIds, Number.MAX_SAFE_INTEGER)
       const detail = await ctx.backlinks.getBatch(args.batchId, signal)
+      if (prepared !== undefined && detail.website.id !== prepared.website.id) {
+        throw new Error(`Batch ${args.batchId} changed websites after browser selection; refresh its assignment.`)
+      }
+      const boundBrowser = ctx.backlinks.browserBindings()[detail.website.id]
+      const browserId = browser.resolve(args.browserId ?? (boundBrowser || undefined))
+      if (busyBrowsers.has(browserId) || busyWebsites.has(detail.website.id)) {
+        throw new Error(`Browser ${browserId} or website ${detail.website.id} already has an active publication. Wait for it to finish.`)
+      }
+      reservation = { browserId, websiteId: detail.website.id }
+      busyBrowsers.add(browserId)
+      busyWebsites.add(detail.website.id)
       const attempted = attemptsFor(parent)
       if (selected?.some(id => !detail.items.some(item => item.id === id))) {
         throw new Error(`Selected itemIds must belong to batch ${args.batchId}.`)
@@ -309,27 +333,26 @@ export function applyPublisher(
         .map(item => item.sourceId))
       const publishedSources = new Set(detail.items.filter(item => item.publishedUrl
         || item.publishStatus === 'live' || item.publishStatus === 'submitted').map(item => item.sourceId))
-      const unresolved = args.scope === 'retryable' ? undefined : detail.items.find(item => attempted.has(item.id)
+      const unresolvedItemIds = (args.scope === 'retryable' ? [] : detail.items.filter(item => attempted.has(item.id)
         && item.status === 'pending' && selectedSources.has(item.sourceId) && !publishedSources.has(item.sourceId))
-      if (unresolved !== undefined) {
-        return { attempted: 0, attemptedItemIds: [], remaining: items.length, counts: {},
-          stoppedReason: `Item ${unresolved.id} was previously attempted but is still pending without a saved result. Reconcile it before publishing this scope or completing its goal; do not resubmit it.` }
-      }
+        .map(item => item.id)).sort((left, right) => left - right)
       for (const item of items) {
         const url = new URL(item.submitUrl ?? item.sourceUrl)
         if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error(`Item ${item.id} needs an http(s) website URL.`)
       }
       const remaining = [...items]
       const firstItem = remaining[0]
-      if (firstItem === undefined) return { attempted: 0, attemptedItemIds: [], remaining: 0, counts: {}, stoppedReason: null }
+      if (firstItem === undefined) {
+        return { attempted: 0, attemptedItemIds: [], unresolvedItemIds, remaining: 0, counts: {}, stoppedReason: null }
+      }
       if (detail.anchors.length === 0) {
-        return { attempted: 0, attemptedItemIds: [], remaining: remaining.length, counts: {},
+        return { attempted: 0, attemptedItemIds: [], unresolvedItemIds, remaining: remaining.length, counts: {},
           stoppedReason: `Website ${detail.website.id} needs a name and an absolute http(s) website URL, or a configured publication anchor. Update its website details before continuing; no items were claimed.` }
       }
       const pagePrefix = `publish-${randomUUID()}`
       // Reserve capacity before claiming work or starting a paid child.
       const firstPage = `${pagePrefix}-${firstItem.id}`
-      await browser.act({ kind: 'newPage', page: firstPage }, signal)
+      await browser.act({ kind: 'newPage', page: firstPage }, signal, browserId)
       unusedPages.add(firstPage)
       const claim = await ctx.backlinks.claim(args.batchId, items.map(item => item.id), signal)
       leaseId = claim.leaseId
@@ -346,7 +369,7 @@ export function applyPublisher(
           const page = `${pagePrefix}-${item.id}`
           if (!unusedPages.has(page)) {
             try {
-              await browser.act({ kind: 'newPage', page }, signal)
+              await browser.act({ kind: 'newPage', page }, signal, browserId)
               unusedPages.add(page)
             } catch (error) {
               if (!(error instanceof BrowserError) || error.code !== 'BROWSER_PAGE_LIMIT') throw error
@@ -357,7 +380,7 @@ export function applyPublisher(
           // Another child may stop while this page reservation is pending.
           if (!canStartChild()) break
           remaining.splice(index, 1)
-          const assignment: Assignment = { parent, detail, item, page, leaseId,
+          const assignment: Assignment = { parent, detail, item, page, browserId, leaseId,
             submission: 'unsubmitted', uncertain: false, pageClosed: false }
           unusedPages.delete(page)
           const host = new URL(item.submitUrl ?? item.sourceUrl).hostname
@@ -368,10 +391,10 @@ export function applyPublisher(
               const child = await creating.run(assignment, () => subagents.start(config.provider, {
                 parent, signal, label: `Publish item ${item.id}`, maxDepth: 1,
                 persona: config.persona, agentOptions: { maxTokens: config.maxTokens },
-                toolFilter: { allow: ['browser', 'backlinks', 'bash'] },
+                toolFilter: { allow: ['browser', 'backlinks'] },
                 prompt: [{ type: 'text', text: JSON.stringify({
                   item, website: detail.website, anchors: detail.anchors, leaseId,
-                  mode: args.mode, page,
+                  mode: args.mode, page, browserId,
                 }) }],
               }))
               started = true
@@ -408,12 +431,17 @@ export function applyPublisher(
                 if (started) {
                   await finish(assignment, reason)
                 } else {
-                  await browser.act({ kind: 'closePage', page }, AbortSignal.timeout(timeoutMs))
+                  await browser.act({ kind: 'closePage', page }, AbortSignal.timeout(timeoutMs), browserId)
                   assignment.pageClosed = true
                 }
                 if (assignment.pageClosed) admissionBlocked = false
               } catch (error) {
-                stoppedReason = `Item ${item.id} needs reconciliation: ${error instanceof Error ? error.message : String(error)}`
+                if (assignment.saved === undefined && assignment.submission !== 'confirmed') unresolvedItemIds.push(item.id)
+                const message = `Item ${item.id} needs reconciliation: ${error instanceof Error ? error.message : String(error)}`
+                ctx.logger.warn(message)
+                if (error instanceof BacklinksError && ![
+                  'BACKLINKS_TRANSPORT', 'BACKLINKS_TIMEOUT', 'BACKLINKS_API_ERROR', 'BACKLINKS_NOT_FOUND', 'BACKLINKS_INVALID_REQUEST',
+                ].includes(error.code)) stoppedReason ??= message
               }
             }
           })()
@@ -429,6 +457,7 @@ export function applyPublisher(
         counts[status] = (counts[status] ?? 0) + 1
       }
       return { attempted: assignments.length, attemptedItemIds: assignments.map(assignment => assignment.item.id),
+        unresolvedItemIds: unresolvedItemIds.sort((left, right) => left - right),
         remaining: remaining.length, counts,
         stoppedReason: stoppedReason ?? (signal.aborted ? 'cancelled'
           : admissionBlocked ? 'Browser page capacity is occupied by preserved work; review those pages before continuing.' : null) }
@@ -436,7 +465,7 @@ export function applyPublisher(
       try {
         await Promise.allSettled(running.values())
         const closedPages = await Promise.allSettled([...unusedPages].map(page =>
-          browser.act({ kind: 'closePage', page }, AbortSignal.timeout(timeoutMs))))
+          browser.act({ kind: 'closePage', page }, AbortSignal.timeout(timeoutMs), reservation?.browserId)))
         const failure = closedPages.find(result => result.status === 'rejected')
         if (failure?.status === 'rejected') throw failure.reason
       } finally {
@@ -446,17 +475,104 @@ export function applyPublisher(
             await ctx.backlinks.release(leaseId, AbortSignal.timeout(timeoutMs))
           }
         } finally {
-          owners.delete(parent)
+          if (reservation !== undefined) {
+            busyBrowsers.delete(reservation.browserId)
+            busyWebsites.delete(reservation.websiteId)
+          }
         }
       }
     }
   }
 
+  async function track<T>(exec: ToolExecution, start: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    if (closed) throw new Error('backlink_publish is disposed.')
+    const parent = exec.agent
+    if (parent === undefined || parent.session.header.origin === 'subagent') throw new Error('Publication requires the primary calling agent.')
+    if (owners.has(parent)) throw new Error('A publication call is already running for this agent.')
+    owners.add(parent)
+    const controller = new AbortController()
+    const work = Promise.resolve().then(() => start(AbortSignal.any([exec.signal, controller.signal])))
+    active.set(controller, work)
+    try {
+      return await work
+    } finally {
+      owners.delete(parent)
+      active.delete(controller)
+    }
+  }
+
+  ctx.tools.register(defineTool({
+    name: 'backlink_publish_many',
+    description: 'Publish user-selected batches across isolated browsers in one foreground call. Different browsers and promoted websites run concurrently; batches sharing either run in input order. Explicit browserId overrides saved website bindings. All browser selections are checked before pages or leases. A stopped batch halts new admissions and drains active work; never resubmit unknown outcomes.',
+    parameters: {
+      batches: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+        batchId: { type: 'number', required: true },
+        browserId: { type: 'string' },
+        itemIds: { type: 'array', items: { type: 'number' } },
+      } }, description: 'Confirmed batches in dispatch order, each with an optional explicit browser and item selection.' },
+      scope: { type: 'string', enum: ['all', 'pending', 'retryable'], required: true },
+      mode: { type: 'string', enum: ['smart', 'all'], required: true },
+    },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: {
+        results: { type: 'json', required: true },
+        pendingBatchIds: { type: 'array', items: { type: 'number' }, required: true },
+      } },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+    },
+    isConcurrencySafe: () => false,
+    async execute(args, exec) {
+      if (args.batches.length === 0 || new Set(args.batches.map(batch => batch.batchId)).size !== args.batches.length
+        || args.batches.some(batch => !Number.isSafeInteger(batch.batchId) || batch.batchId <= 0)) {
+        throw new Error('Select distinct positive batch ids for publication.')
+      }
+      return track(exec, async (signal) => {
+        const bindings = ctx.backlinks.browserBindings()
+        const pending = await Promise.all(args.batches.map(async (batch) => {
+          readItemIds(batch.itemIds, Number.MAX_SAFE_INTEGER)
+          const detail = await ctx.backlinks.getBatch(batch.batchId, signal)
+          return { ...batch, detail, browserId: browser.resolve(batch.browserId ?? (bindings[detail.website.id] || undefined)) }
+        }))
+        const browserTails = new Map<string, Promise<void>>()
+        const websiteTails = new Map<number, Promise<void>>()
+        const unstarted = new Set(pending.map(batch => batch.batchId))
+        const results: { batchId: number; browserId: string; result: Awaited<ReturnType<typeof run>> | null; error: string | null }[] = []
+        let stopped = false
+        const work = pending.map((batch) => {
+          const before = [browserTails.get(batch.browserId), websiteTails.get(batch.detail.website.id)]
+            .filter(value => value !== undefined)
+          const current = Promise.all(before).then(async () => {
+            if (stopped || signal.aborted) return
+            unstarted.delete(batch.batchId)
+            try {
+              const result = await run({ ...batch, scope: args.scope, mode: args.mode }, exec, signal, batch.detail)
+              results.push({ batchId: batch.batchId, browserId: batch.browserId, result, error: null })
+              if (result.stoppedReason !== null) stopped = true
+            } catch (error) {
+              results.push({ batchId: batch.batchId, browserId: batch.browserId, result: null,
+                error: error instanceof Error ? error.message : String(error) })
+              stopped = true
+            }
+          })
+          browserTails.set(batch.browserId, current)
+          websiteTails.set(batch.detail.website.id, current)
+          return current
+        })
+        await Promise.all(work)
+        results.sort((a, b) => args.batches.findIndex(batch => batch.batchId === a.batchId)
+          - args.batches.findIndex(batch => batch.batchId === b.batchId))
+        return { results, pendingBatchIds: [...unstarted] }
+      })
+    },
+    presentCall: args => ({ card: 'generic', title: `Publish ${args.batches.length} batches`, kind: 'execute' }),
+  }))
+
   ctx.tools.register(defineTool({
     name: 'backlink_publish',
-    description: `Publish the user-confirmed batch scope using up to ${config.concurrency} rolling item workers, one per target host. The runtime claims and renews one lease, binds pages, verifies results, and releases the lease. This foreground call waits for completion; do not claim first or start separate subagents. Model, checkpoint or lease failures halt new starts; per-item budget stops reconcile the item and continue the queue. Resolve stoppedReason and attempted items still pending in the backend before continuing or completing the goal. No live or pending-review result is automatically resubmitted.`,
+    description: `Publish the user-confirmed batch scope using up to ${config.concurrency} rolling item workers, one per target host. The runtime claims and renews one lease, binds pages, verifies results, and releases the lease. This foreground call waits for completion; do not claim first or start separate subagents. Model, checkpoint, authentication or lease failures halt new starts. Per-item budget or reconciliation failures skip the affected item and continue the queue. unresolvedItemIds lists unconfirmed outcomes excluded from further dispatch; report them separately without resubmitting or changing their backend status to skipped. When remaining is zero and stoppedReason is null, finish the scope and list unresolved items for manual review.`,
     parameters: {
       batchId: { type: 'number', required: true, description: 'User-selected publish batch.' },
+      browserId: { type: 'string', description: 'Explicit browser from browser_list; overrides the website binding. Omitted uses the saved website binding, then the default browser.' },
       scope: { type: 'string', enum: ['all', 'pending', 'retryable'], required: true, description: 'The confirmed work selection.' },
       mode: { type: 'string', enum: ['smart', 'all'], required: true, description: 'smart matches known playbooks; all attempts unknown site types too.' },
       itemIds: { type: 'array', items: { type: 'number' }, description: 'The exact user-selected subset, when scope is manually selected.' },
@@ -467,6 +583,7 @@ export function applyPublisher(
         properties: {
           attempted: { type: 'number', required: true },
           attemptedItemIds: { type: 'array', items: { type: 'number' }, required: true },
+          unresolvedItemIds: { type: 'array', items: { type: 'number' }, required: true },
           remaining: { type: 'number', required: true },
           counts: { type: 'json', required: true },
           stoppedReason: { type: 'json', required: true },
@@ -474,6 +591,7 @@ export function applyPublisher(
       },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify({
         attempted: value.attempted, remaining: value.remaining, counts: value.counts, stoppedReason: value.stoppedReason,
+        ...value.unresolvedItemIds.length > 0 ? { unresolvedItemIds: value.unresolvedItemIds } : {},
       }) }],
       presentationMeta: (_args, value) => ({ kind: 'backlinks', action: 'backlink_publish', attemptedItemIds: value.attemptedItemIds }),
     },
@@ -481,14 +599,7 @@ export function applyPublisher(
     async execute(args, exec) {
       if (closed) throw new Error('backlink_publish is disposed.')
       if (!Number.isSafeInteger(args.batchId) || args.batchId <= 0) throw new Error('batchId must be a positive integer.')
-      const controller = new AbortController()
-      const work = run(args, exec, AbortSignal.any([exec.signal, controller.signal]))
-      active.set(controller, work)
-      try {
-        return await work
-      } finally {
-        active.delete(controller)
-      }
+      return track(exec, signal => run(args, exec, signal))
     },
     presentCall: args => ({ card: 'generic', title: `Publish batch ${args.batchId}`, kind: 'execute' }),
   }))

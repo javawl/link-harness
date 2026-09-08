@@ -1,4 +1,4 @@
-# Agent Note：浏览器能力 seam — 一个会话、一个动词集
+# Agent Note：浏览器能力 seam — 持久状态、一个动词集
 
 状态：已实现
 
@@ -15,28 +15,30 @@
 
 ## 决策
 
+命名浏览器选择与独立会话生命周期由[隔离发布决策](../feature/2026-09-07-isolated-browser-publication.zh.md)负责；本说明保留能力划分与单 profile 顺序的理由。
+
 浏览器自动化是独立的能力 seam，而不是对 `ctx.web` 的加宽。web 的 Agent Note 早已把「提供方支持的页面交互」列为独立表面（`web_extract` 兄弟能力，而非 fetch 的一个分支）；驱动一个已登录、重 JavaScript 的站点则更进一步——它需要的是有状态的浏览器进程，而非请求/响应。本 seam 完全沿用 web 三件套的形态：执行期选择的提供方注册表、继承 `HarnessError` 的服务错误分类、面向模型的名称与 schema 只存在于 Consumer。
 
 与 web 不同的两个契约选择定义了这个 seam：
 
 1. **一条命令分发，而不是每个操作一个方法。** 浏览器是单一有状态表面：每个操作都落在同一会话的活动页上，且必须观察到前一操作的稳定状态。因此 Service Definition 只暴露一个 `act(command)`，参数是闭合的 `BrowserCommand` 联合（`navigate`/`snapshot`/`click`/`fill`/`select`/`press`/`upload`/`screenshot`/`waitFor`/`closePage`），返回闭合的 `BrowserResult` 联合（`page`/`acked`/`screenshot`）。Consumer 把同一集合镜像为单个 `browser` 工具的 `action` 字段——一个共享浏览器上的十个页面驱动动词，而不是十个 schema 会各自漂移的工具。
 
-2. **由 Service Definition 持有的单一共享惰性会话。** 会话在第一条命令时打开，存活到 `closeSession()` 或上下文销毁；命令在 Service Definition 内部经 promise 链串行化。这正是持久浏览器 profile 得以跨工具调用、跨运行存活的基础：Playwright 提供方在可配置的 `userDataDir` 上启动 `chromium.launchPersistentContext`，默认有头并使用真实 Chrome 渠道。该 profile 里的 cookie 登录态与人工解决过的 CAPTCHA，是消费本 seam 的外链发布工作流的运行基础。
+2. **由 Service Definition 持有惰性会话。** 每个已注册浏览器在第一条命令时打开，保留至显式关闭或释放。[隔离发布决策](../feature/2026-09-07-isolated-browser-publication.zh.md)负责命名会话路由，提供方负责同页命令顺序。持久 profile 让登录状态跨调用保留，无需每次操作都启动浏览器。
 
 ## 失败纪律
 
-提供方泄漏裸失败（非 `BrowserError`）即失去会话：Service Definition 丢弃它，下一条命令重新启动浏览器而不是复用未知状态。启动失败包装为 `BROWSER_LAUNCH_FAILED`；命令失败包装为 `BROWSER_ACTION_FAILED`；取消在分发前检查（`BROWSER_ABORTED`）。会话打开之后提供方注销不影响该会话——选择只发生在打开时，SD 测试明确固定了这一语义。
+提供方泄漏裸失败（非 `BrowserError`）即失去会话：Service Definition 丢弃它，下一条命令重新启动浏览器而不是复用未知状态。启动失败包装为 `BROWSER_LAUNCH_FAILED`；命令失败包装为 `BROWSER_ACTION_FAILED`；取消在分发前检查（`BROWSER_ABORTED`）。 提供方注销后关闭其会话，其他浏览器仍可操作。
 
 ## 遗留工作
 
-- 命名标签页寻址（命令始终驱动最近打开的页）；并行会话。
+
 - 整页截图；文本捕获之外的 DOM 级结构化快照（`page` 结果只携带 url/title/text）。
 - 观察面（页面生命周期事件）——有意缺席，与 web seam 放弃观察面的立场一致。
 
 ## 后果
 
 - `BrowserCommand` 与 `BrowserResult` 是 `dsh-browser` 持有的闭合联合；提供方与消费方 `switch` 到穷尽，新增 kind 或 outcome 是跨三包的编译期强制变更。
-- Service Definition 持有唯一的共享惰性会话并串行化每条命令；消费方无法打开并行会话，提供方泄漏裸失败即失去会话（下一条命令重新启动而不是复用未知状态）。
+- Service Definition 负责会话生命周期；提供方裸失败仅丢弃对应浏览器会话，同页执行顺序由提供方负责。
 - Playwright 提供方的持久上下文让浏览器状态（登录、已解决的挑战）跨运行持久；这一持久性从此成为其他能力可以依赖的运行属性。
 - 面向模型的动词只存在于 `dsh-tool-browser`，更换提供方不会改变模型驱动页面的方式。
 

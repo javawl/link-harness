@@ -10,7 +10,9 @@ Status: implemented
 
 ## Decision
 
-以标签页（而非会话）作为既有单一持久会话上的并发单元：
+命名浏览器选择与独立会话生命周期由[隔离发布决策](../feature/2026-09-07-isolated-browser-publication.zh.md)负责；本说明保留能力划分与单 profile 顺序的理由。
+
+每个已注册浏览器内部以标签页作为并发单元：
 
 1. 每条 `BrowserCommand` 增加可选 `page` 引用（`BrowserPageAddress`）。navigate 以调用者命名的新引用打开并绑定标签页；后续命令按引用寻址该页；命名未知或已关闭引用的命令响亮失败。不带引用的命令保持"最近标签页"旧契约，存量单页调用方不受影响。
 2. 服务定义去掉全局命令链：命令直接分发到惰性打开（单飞）的会话上；保序职责移入 Provider。
@@ -19,7 +21,7 @@ Status: implemented
 
 ## Consequences
 
-- cookie 状态保持共享且单一：一个谷歌会话、一套站点登录、磁盘上仍只有一个 profile。
+- cookie 状态在每个浏览器 profile 内共享，由用户选择哪些网站共用该登录状态。
 - 同站动作在构造上（每页一链）与技能规则上（条目按域名分组）都保持串行，保住按域名的节奏控制。
 - 闭合的 `BrowserCommand`/`BrowserResult` 联合只是加了字段而非成员；Provider 与消费方依旧按穷举 switch 编译。
 - 混用风格时，无引用的旧式命令会与按引用命令交错；契约规定并行调用方必须对一切命令使用引用，技能的子任务提示词强制执行。

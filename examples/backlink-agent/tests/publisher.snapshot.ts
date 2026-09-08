@@ -5,13 +5,14 @@ import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
+import { assertObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import { LOADER_SMOKE_TEST_TIMEOUT_MS, runLoaderSmoke } from '@deepseek-ai/dsh-loader-smoke'
 import { expect, it } from 'vitest'
 
 const chromeInstalled = existsSync(process.platform === 'darwin'
   ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : '/opt/google/chrome/chrome')
 
-it.skipIf(!chromeInstalled).each(['success', 'quota', 'unresolved', 'anchors', 'invalid-profile', 'budget'])('publishes with the selected model and preserves results after %s', async (scenario) => {
+it.skipIf(!chromeInstalled).each(['success', 'quota', 'unresolved', 'anchors', 'invalid-profile', 'budget', 'multi-browser', 'guarded-tools'])('publishes with the selected model and preserves results after %s', async (scenario) => {
   const configPath = fileURLToPath(new URL('../publisher.cordis.snapshot.yml', import.meta.url))
   const driver = fileURLToPath(new URL('../../headless-agent/tests/fixtures/headless-driver.ts', import.meta.url))
   const result = await runLoaderSmoke({
@@ -35,12 +36,30 @@ it.skipIf(!chromeInstalled).each(['success', 'quota', 'unresolved', 'anchors', '
       const errors = logs.flatMap(log => log.events.filter(event => event.type === 'tool/result')
         .flatMap(event => event.data.message.content.filter(block => block.isError)
           .flatMap(block => block.content.filter(block => block.type === 'text').map(block => block.text))))
-      expect(children, errors.join('\n')).toHaveLength(scenario === 'unresolved' || scenario === 'invalid-profile' ? 0 : scenario === 'quota' ? 1 : 2)
-      expect(parent.events.filter(event => event.type === 'backlinks/attempt').flatMap(event => event.data.itemIds))
-        .toEqual(scenario === 'invalid-profile' ? [] : scenario === 'quota' || scenario === 'unresolved' ? [1] : [1, 2])
+      expect(children, errors.join('\n')).toHaveLength(scenario === 'invalid-profile' ? 0 : scenario === 'quota' ? 1 : 2)
+      expect(parent.events.filter(event => event.type === 'backlinks/attempt').flatMap(event => event.data.itemIds).sort((a, b) => a - b))
+        .toEqual(scenario === 'invalid-profile' ? [] : scenario === 'quota' ? [1] : scenario === 'unresolved' ? [1, 2, 3] : [1, 2])
       expect(parent.events.filter(event => event.type === 'request/header').map(event => event.data.header.config.model)).toEqual(['mock', 'selected-model'])
       expect(children.flatMap(child => child.events.filter(event => event.type === 'request/header').map(event => event.data.header.config.model)))
         .toEqual(children.map(() => 'selected-model'))
+      for (const child of children) {
+        for (const event of child.events.filter(event => event.type === 'request/header')) {
+          const tools = event.data.header.tools!
+          expect(tools.map(tool => tool.name).sort()).toEqual(['backlinks', 'browser'])
+          for (const tool of tools) assertObjectJsonSchema(tool.parameters)
+          expect(tools.find(tool => tool.name === 'browser')?.parameters).toHaveProperty('properties.submission.type', 'boolean')
+          expect(tools.find(tool => tool.name === 'backlinks')?.parameters).toMatchObject({ properties: {
+            receipt: { type: 'string' }, verificationSelector: { type: 'string' },
+          } })
+        }
+      }
+      if (scenario === 'guarded-tools') {
+        expect(errors).toMatchInlineSnapshot(`
+          [
+            "Error: unknown tool "bash"",
+          ]
+        `)
+      }
       const resultText = (events: SessionEvent[]) => events.filter(event => event.type === 'tool/result')
         .flatMap(event => event.data.message.content.flatMap(block => block.content))
         .filter(block => block.type === 'text').map(block => block.text).join('\n')
@@ -55,9 +74,12 @@ it.skipIf(!chromeInstalled).each(['success', 'quota', 'unresolved', 'anchors', '
       }
       if (scenario === 'unresolved') {
         const publication = parent.events.find(event => event.type === 'tool/result' && event.data.message.source.callId === 'publish')!
-        expect(resultText([publication])).toMatchInlineSnapshot('"{"attempted":0,"remaining":2,"counts":{},"stoppedReason":"Item 1 was previously attempted but is still pending without a saved result. Reconcile it before publishing this scope or completing its goal; do not resubmit it."}"')
-        expect(parentText).toContain('"pending":3')
-        return
+        expect(resultText([publication])).toMatchInlineSnapshot('"{"attempted":2,"remaining":0,"counts":{"live":2},"stoppedReason":null,"unresolvedItemIds":[1]}"')
+        expect(parentText).toContain('"pending":1')
+        expect(children.map(child => child.events.filter(event => event.type === 'user/message')
+          .flatMap(event => event.data.content).find(block => block.type === 'text' && block.text.startsWith('{"item":')))
+          .map(block => block?.type === 'text' ? (JSON.parse(block.text) as { item: { id: number } }).item.id : undefined).sort())
+          .toEqual([2, 3])
       }
       if (scenario === 'quota') {
         const publication = parent.events.find(event => event.type === 'tool/result' && event.data.message.source.callId === 'publish')!
@@ -80,7 +102,15 @@ it.skipIf(!chromeInstalled).each(['success', 'quota', 'unresolved', 'anchors', '
           expect(input?.anchors).toEqual([{ anchorText: 'Site', targetUrl: 'https://site.test/' }])
         }
       }
-      expect(parentText).toContain('"counts":{"live":2}')
+      expect(parentText).toContain(scenario === 'multi-browser' ? '"counts":{"live":1}' : '"counts":{"live":2}')
+      if (scenario === 'multi-browser') {
+        const assignments = children.flatMap(child => child.events.filter(event => event.type === 'user/message')
+          .flatMap(event => event.data.content).filter(block => block.type === 'text' && block.text.startsWith('{"item":'))
+          .map(block => JSON.parse(block.type === 'text' ? block.text : '{}') as { browserId: string; website: { siteUrl: string } }))
+        expect(assignments.map(assignment => assignment.browserId).sort()).toEqual(['isolated', 'playwright'])
+        expect(assignments.map(assignment => assignment.website.siteUrl).sort()).toEqual(['https://second.test/', 'https://site.test/'])
+        expect(parentText).toContain('"pendingBatchIds":[]')
+      }
       const outcomes = children.map((child) => {
         const text = resultText(child.events)
         const formCalls = new Set(child.events.flatMap(event => event.type === 'tool/call'
@@ -114,6 +144,6 @@ it.skipIf(!chromeInstalled).each(['success', 'quota', 'unresolved', 'anchors', '
   })
   expect(result.stderr).toBe('')
   expect(result.stdout).toContain(scenario === 'budget' ? 'Both item budgets reached; both outcomes saved.' : scenario === 'invalid-profile' ? 'Complete the website name and URL; two items remain untouched.' : scenario === 'unresolved'
-    ? 'Publication requires reconciliation of item 1; three items remain pending.'
+    ? 'Item 1 skipped for manual review; two other listings verified.'
     : scenario === 'quota' ? 'Publication paused after QUOTA; two items remain pending.' : 'Two public fixture listings verified.')
 }, LOADER_SMOKE_TEST_TIMEOUT_MS)

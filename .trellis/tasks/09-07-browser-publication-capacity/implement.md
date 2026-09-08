@@ -34,3 +34,22 @@ DSH 从 PID 6211 重启为 83943；原 session-dbd256ff-e91f-4f23-9e3c-0470b38f2
 历史监督状态文件停在 08:34，记录的 PID 14342 已不存在；本次没有恢复监督进程或重启 12 小时窗口，也没有重发未知条目 22687。真实连续发布的成功率、耗时与 token 对照尚未完成，因此任务继续保持 in_progress。无代码提交或推送。
 
 本次完整证据：/tmp/codex-evidence/backlinks-fixes/，交付索引为 delivery.md。
+
+
+## 单项未决跳过交付（2026-09-07 17:43）
+
+用户要求单项问题直接跳过。publisher 在恢复及本轮核对失败时通过 unresolvedItemIds 保留未决条目，排除该来源并继续其他工作；不回写 skipped、不重发、不关闭未知提交页。全局模型、鉴权、检查点与租约错误仍停派。发布 skill/persona、Goal 完成条件、双语 README/Agent Note 与项目规范同步；remaining=0 且 stoppedReason=null 时可以完成所选执行，单列人工核对项。
+
+最终发布回归 38 项、编译后的真实 Chrome/双 SDK 回放 9 项、目标包类型和定向 lint 通过；源码 Chrome 快照 6 项、tool-backlinks 目录测试 60 项亦已执行通过。全局 doc-sync 完整执行为 24 通过/4 失败，来自并行多浏览器改动的 playwright 类型导入、Cordis/config 目录漂移和 backlink_publish_many 工具源码映射缺失；没有扩大本次实现去修复这些内容。
+
+全部会话与租约空闲后在原 Orca shell 重载服务，PID 35023 → 14625。三个相关会话日志哈希未变，原目标仍 blocked；未向会话发送继续指令、未写入发布后台。用户在原会话继续即可使用新策略。完整证据与备份说明见 /tmp/codex-evidence/backlinks-unresolved-isolation/DELIVERY.zh.md。历史 12 小时监督未恢复，任务不归档，代码未提交。
+
+## 并发操作展示（2026-09-08）
+
+已添加默认关闭的「并发」复选框；紧凑与展开列表共用现有批次和浏览器选择。实际窄屏验证发现侧栏重新挂载会重置组件状态，开关已移至现有 ConsoleViewState。主会话完成目标测试 10 项、真实 Web 只读回放 1 场景（桌面及窄屏、两种模式）、目标包类型与构建、定向 lint、完整 doc-sync 28 项。全量 GUI 为 4018 通过、1 跳过、1 失败；失败是未修改的 ui-primitives 代码高亮语法懒加载测试超出 5000ms，未扩大范围修复。
+
+当前服务 HTTP 200 返回与新构建完全一致的 client.js，刷新可见；未重启发布服务、未触发真实发布、未提交代码。证据：/tmp/codex-evidence/concurrent-toggle-20260908/delivery.md。
+
+## 普通模式发布入口（2026-09-08）
+
+按用户补充截图恢复普通模式的批次勾选、全选、批量发布和每行发布按钮；并发开关仅展开浏览器分配与绑定。主会话执行 11 项组件测试、实际 Web 只读回放（普通模式单项发布、批量请求、桌面与窄屏）、目标包类型/构建/lint、doc-sync 28 项，全部通过。当前服务返回与新构建相同的前端资源，刷新即可使用；未重启服务、未实际对外发布、未提交代码。未重跑上一轮有无关代码高亮超时的全量 GUI。证据：/tmp/codex-evidence/restore-publish-button-20260908/delivery.md。

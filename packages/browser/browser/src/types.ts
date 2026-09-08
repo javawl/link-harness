@@ -191,6 +191,8 @@ export interface BrowserSession {
 export interface BrowserAutomationProvider {
   /** Registry key and configured-selection id. */
   readonly id: string
+  /** Canonical profile or connection identity; duplicate resources cannot use different ids. */
+  readonly resourceKey?: string
   /** Cheap local usability check; must not launch a browser or make network calls. */
   available(): boolean
   /**

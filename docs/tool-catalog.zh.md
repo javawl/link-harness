@@ -45,8 +45,8 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
-| `@deepseek-ai/dsh-tool-browser` | `browser` | `ctx.tools`、`ctx.browser`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使模型可见 schema 在更换后端时保持稳定。 |
-| `@deepseek-ai/dsh-tool-backlinks` | `backlink_publish`, `backlinks` | `ctx.tools`, `ctx.backlinks`, `ctx.systemPrompt`, `ctx.browser (publisher)`, `ctx.agents (publisher)`, `ctx.subagents (publisher)` | `tool/call`, `tool/result` | - | 目录以并发数 3 和不执行任务的提供方启用可选 publisher，以纳入 backlink_publish。省略 publisher 时仅提供低层 backlinks 工具。外链示例提供固定子任务纪律与请求预算；运行时调度将条目绑定到专属页面，并在释放租约前核对结果。 |
+| `@deepseek-ai/dsh-tool-browser` | `browser`, `browser_list` | `ctx.tools`, `ctx.browser`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | browser keeps provider selection and isolated persistent sessions behind ctx.browser so model-visible schemas stay stable across backend swaps. |
+| `@deepseek-ai/dsh-tool-backlinks` | `backlink_publish`, `backlink_publish_many`, `backlinks` | `ctx.tools`, `ctx.backlinks`, `ctx.systemPrompt`, `ctx.browser (publisher)`, `ctx.agents (publisher)`, `ctx.subagents (publisher)` | `tool/call`, `tool/result` | - | The catalog enables the optional publisher with concurrency 3 and a non-executing provider to include backlink_publish and backlink_publish_many. Omitting publisher exposes only the low-level backlinks tool. The backlink example supplies fixed child discipline and request budgets; runtime scheduling binds each item to its page and reconciles results before lease release. |
 
 <a id="deepseek-aidsh-tool-ask-user"></a>
 
@@ -2236,7 +2236,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `browser`
 
-驱动一个共享的持久真实浏览器会话：导航、读取页面文本、点击、填写表单、选择选项、按键、上传文件、截图、等待与关闭标签页。
+Drive a selected persistent real-browser session: navigate, read page text, click, fill forms, select options, press keys, upload files, screenshot, wait, and close tabs.
 
 ```json
 {
@@ -2245,6 +2245,10 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     "action": {
       "type": "string",
       "description": "One of navigate, snapshot, click, fill, select, press, upload, screenshot, waitFor, closePage, bringToFront, newPage."
+    },
+    "browserId": {
+      "type": "string",
+      "description": "Configured browser id from browser_list. Keep it fixed throughout a website publication."
     },
     "page": {
       "type": "string",
@@ -2320,7 +2324,20 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 Source: [`packages/browser/tool-browser/src/index.ts`](../packages/browser/tool-browser/src/index.ts)
 
-browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使模型可见 schema 在更换后端时保持稳定。
+### `browser_list`
+
+List configured browser ids and local availability without opening a browser. Use browserId to keep logins and tabs isolated.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/browser/tool-browser/src/index.ts`](../packages/browser/tool-browser/src/index.ts)
+
+browser keeps provider selection and isolated persistent sessions behind ctx.browser so model-visible schemas stay stable across backend swaps.
 
 <a id="deepseek-aidsh-tool-backlinks"></a>
 
@@ -2328,7 +2345,7 @@ browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使�
 
 ### `backlink_publish`
 
-按用户确认的批次范围发布，最多三个条目任务滚动执行，同一目标主机串行。运行时认领并续期一个租约、绑定页面、核验结果并释放租约。该前台调用等待完成；不要提前认领或另开子任务。子任务异常终止会停止新派发。继续执行或完成目标前，须解决 stoppedReason，并核对已尝试但后台仍待处理的条目。已上线或待审核结果不会自动重新提交。
+Publish the user-confirmed batch scope using up to 3 rolling item workers, one per target host. The runtime claims and renews one lease, binds pages, verifies results, and releases the lease. This foreground call waits for completion; do not claim first or start separate subagents. Model, checkpoint, authentication or lease failures halt new starts. Per-item budget or reconciliation failures skip the affected item and continue the queue. unresolvedItemIds lists unconfirmed outcomes excluded from further dispatch; report them separately without resubmitting or changing their backend status to skipped. When remaining is zero and stoppedReason is null, finish the scope and list unresolved items for manual review.
 
 ```json
 {
@@ -2337,6 +2354,10 @@ browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使�
     "batchId": {
       "type": "number",
       "description": "User-selected publish batch."
+    },
+    "browserId": {
+      "type": "string",
+      "description": "Explicit browser from browser_list; overrides the website binding. Omitted uses the saved website binding, then the default browser."
     },
     "scope": {
       "type": "string",
@@ -2371,11 +2392,70 @@ browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使�
 }
 ```
 
-来源： [`packages/backlinks/tool-backlinks/src/publisher.ts`](../packages/backlinks/tool-backlinks/src/publisher.ts)
+Source: [`packages/backlinks/tool-backlinks/src/publisher.ts`](../packages/backlinks/tool-backlinks/src/publisher.ts)
+
+### `backlink_publish_many`
+
+Publish user-selected batches across isolated browsers in one foreground call. Different browsers and promoted websites run concurrently; batches sharing either run in input order. Explicit browserId overrides saved website bindings. All browser selections are checked before pages or leases. A stopped batch halts new admissions and drains active work; never resubmit unknown outcomes.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "batches": {
+      "type": "array",
+      "description": "Confirmed batches in dispatch order, each with an optional explicit browser and item selection.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "batchId": {
+            "type": "number"
+          },
+          "browserId": {
+            "type": "string"
+          },
+          "itemIds": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "batchId"
+        ]
+      }
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "all",
+        "pending",
+        "retryable"
+      ]
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "smart",
+        "all"
+      ]
+    }
+  },
+  "required": [
+    "batches",
+    "scope",
+    "mode"
+  ]
+}
+```
+
+Source: [`packages/backlinks/tool-backlinks/src/publisher.ts`](../packages/backlinks/tool-backlinks/src/publisher.ts)
 
 ### `backlinks`
 
-运行批次发布工作流：列出/查看/认领批次、逐条回写结果、创建验证邮箱、等待验证邮件、添加互惠徽标。已认领租约自动续期；发布时不要调用 lease_heartbeat。
+Run the publish-batch workflow: list/detail/claim batches, report per-item results, create verification mailboxes, wait for verification mail, and add reciprocal badges. Claimed leases renew automatically; do not call lease_heartbeat while publishing.
 
 ```json
 {
@@ -2516,6 +2596,6 @@ browser 将提供方选择与共享持久会话置于 ctx.browser 之后，使�
 }
 ```
 
-来源： [`packages/backlinks/tool-backlinks/src/backlinks.ts`](../packages/backlinks/tool-backlinks/src/backlinks.ts)
+Source: [`packages/backlinks/tool-backlinks/src/backlinks.ts`](../packages/backlinks/tool-backlinks/src/backlinks.ts)
 
-目录以并发数 3 和不执行任务的提供方启用可选 publisher，以纳入 backlink_publish。省略 publisher 时仅提供低层 backlinks 工具。外链示例提供固定子任务纪律与请求预算；运行时调度将条目绑定到专属页面，并在释放租约前核对结果。
+The catalog enables the optional publisher with concurrency 3 and a non-executing provider to include backlink_publish and backlink_publish_many. Omitting publisher exposes only the low-level backlinks tool. The backlink example supplies fixed child discipline and request budgets; runtime scheduling binds each item to its page and reconciles results before lease release.

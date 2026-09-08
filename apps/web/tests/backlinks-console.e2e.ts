@@ -73,6 +73,15 @@ describe('web: publish batch selection', () => {
       name: '@deepseek-ai/dsh-backlinks'
     - id: backlinks-console
       name: '@deepseek-ai/dsh-backlinks-console'
+    - id: browser
+      name: '@deepseek-ai/dsh-browser'
+      config:
+        provider: playwright
+    - id: browser-playwright
+      name: '${new URL('../../../packages/browser/browser-playwright/lib/index.js', import.meta.url).href}'
+      config:
+        userDataDir: ${join(scratch, 'browser-default')}
+        headless: true
     - id: backlinks-supermanager
       name: '${new URL('../../../packages/backlinks/backlinks-supermanager/lib/index.js', import.meta.url).href}'
       config:
@@ -87,7 +96,7 @@ describe('web: publish batch selection', () => {
     await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
     await connectFreshWorkspaceZh(page, scaffold.workspaceCwd)
     await page.getByRole('tab', { name: '发布批次', exact: true }).click()
-    await page.getByRole('checkbox', { name: '选择批次 #389 389.example' }).waitFor()
+    await page.getByRole('button', { name: /#389 389.example/ }).waitFor()
   }, 120_000)
 
   afterAll(async () => {
@@ -108,28 +117,70 @@ describe('web: publish batch selection', () => {
       await writeFile(join(SHOTS, 'failure.txt'), `${requests.join('\n')}\n${await page.locator('body').ariaSnapshot()}`)
       await page.screenshot({ path: join(SHOTS, 'failure.png') })
     })
+    const panel = page.getByRole('region', { name: '外链发布控制台' })
+    const concurrent = panel.getByRole('checkbox', { name: '并发', exact: true })
+    expect(await concurrent.isChecked()).toBe(false)
+    expect(await panel.getByRole('checkbox').count()).toBe(5)
+    expect(await panel.getByRole('combobox', { name: /^本次浏览器/ }).count()).toBe(0)
+    expect(await panel.getByRole('button', { name: '发布', exact: true }).count()).toBe(3)
+    await compareOrRefreshGolden(join(SNAPSHOTS, 'compact.expected.md'),
+      await captureStableAria(page, '[role="region"][aria-label="外链发布控制台"]', scaffold.workspaceCwd), webSnapshotMode())
+    await mkdir(SHOTS, { recursive: true })
+    await panel.screenshot({ path: join(SHOTS, '00-compact.png') })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.getByRole('button', { name: '打开侧边栏', exact: true }).click()
+    await panel.screenshot({ path: join(SHOTS, '00-compact-narrow.png'), animations: 'disabled' })
+    expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    await page.setViewportSize({ width: 1100, height: 850 })
+    await concurrent.check()
+    expect(await page.locator('details[open]').count()).toBe(0)
     const rowLabels = await page.getByRole('checkbox', { name: /^选择批次/ }).evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')))
     expect(rowLabels).toEqual(['选择批次 #389 389.example', '选择批次 #100 100.example', '选择批次 #99 99.example'])
+    await page.getByText('添加 / 绑定浏览器', { exact: true }).click()
+    await page.getByLabel('浏览器名称', { exact: true }).fill('site-a')
+    await page.getByLabel('独立登录目录', { exact: true }).fill(join(scratch, 'browser-a'))
+    await page.getByRole('button', { name: '保存浏览器', exact: true }).click()
+    await page.getByRole('combobox', { name: '本次浏览器 #389' }).selectOption('site-a')
+    await page.getByRole('button', { name: '绑定网站', exact: true }).first().click()
+    await page.getByRole('button', { name: '解除绑定', exact: true }).waitFor()
+    await page.getByText('添加 / 绑定浏览器', { exact: true }).click()
+    await page.getByRole('combobox', { name: '本次浏览器 #99' }).selectOption('playwright')
+    expect(scaffold.ctx.backlinks.browserBindings()[389]).toBe('site-a')
     await page.getByRole('button', { name: /#389 389.example/ }).click()
     const executed = page.getByText('executed', { exact: true })
     await executed.waitFor({ timeout: 5000 })
     expect(await executed.evaluate(element => getComputedStyle(element).color)).toBe('rgb(5, 150, 105)')
     expect(await executed.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
     expect(await page.getByText('failed', { exact: true }).evaluate(element => getComputedStyle(element).color)).toBe('rgb(220, 38, 38)')
-    const panel = page.getByRole('region', { name: '外链发布控制台' })
     await mkdir(SHOTS, { recursive: true })
     await panel.screenshot({ path: join(SHOTS, '01-status.png') })
     await page.getByRole('checkbox', { name: '选择批次 #389 389.example' }).check()
     await page.getByRole('checkbox', { name: '选择批次 #99 99.example' }).check()
+    await concurrent.uncheck()
+    expect(await panel.getByRole('checkbox').count()).toBe(5)
+    expect(await panel.getByRole('combobox', { name: /^本次浏览器/ }).count()).toBe(0)
+    await concurrent.check()
+    expect(await page.getByRole('checkbox', { name: '选择批次 #389 389.example' }).isChecked()).toBe(true)
+    expect(await page.getByRole('combobox', { name: '本次浏览器 #389' }).inputValue()).toBe('site-a')
     await compareOrRefreshGolden(join(SNAPSHOTS, 'selected.expected.md'),
       await captureStableAria(page, '[role="region"][aria-label="外链发布控制台"]', scaffold.workspaceCwd), webSnapshotMode())
     await panel.screenshot({ path: join(SHOTS, '02-selected.png') })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.getByRole('button', { name: '打开侧边栏', exact: true }).click()
+    expect(await concurrent.isChecked()).toBe(true)
+    await panel.screenshot({ path: join(SHOTS, '03-narrow.png'), animations: 'disabled' })
+    expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    await page.setViewportSize({ width: 1100, height: 850 })
     await page.getByRole('button', { name: '批量发布 (2)', exact: true }).click()
     const submitted = () => events.flatMap(event => event.type === 'user/message' && event.data.source.kind === 'user'
       ? event.data.content.flatMap(block => block.type === 'text' ? [block.text] : []) : [])
-    await expect.poll(submitted).toEqual(['/backlink-publish 389 99\n请按以上批次号顺序依次发布，仅处理这些批次。'])
+    await expect.poll(submitted).toEqual(['/backlink-publish 389 99\n浏览器分配：[{"batchId":389,"browserId":"site-a"},{"batchId":99,"browserId":"playwright"}]。仅处理这些批次，保留指定的 browserId。使用 backlink_publish_many 并行发布；同一浏览器或网站的批次由运行时排队。'])
     await page.getByRole('button', { name: '批量发布 (0)', exact: true }).waitFor()
     expect(requests.every(request => request.startsWith('GET '))).toBe(true)
     await compareOrRefreshGolden(join(SNAPSHOTS, 'submitted.expected.md'), submitted().join('\n'), webSnapshotMode())
+    await concurrent.uncheck()
+    await panel.getByRole('button', { name: '发布', exact: true }).nth(1).click()
+    await expect.poll(() => submitted().at(-1)).toBe('/backlink-publish 100')
+    expect(submitted()).toHaveLength(2)
   })
 })

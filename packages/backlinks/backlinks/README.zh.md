@@ -28,6 +28,8 @@
 
 配置的 id 必须已注册且 `available()`；未配置时每个注册表要求恰好一个可用提供方。`$DSH_BACKLINKS_BATCH_SOURCE` / `$DSH_BACKLINKS_MAILBOX` 等价于配置字段。
 
+`websiteBrowsers` 将推广网站 id 映射到默认浏览器 id。`browserBindings()` 读取默认绑定；`bindBrowser(websiteId, browserId)` 通过 settings 持久化单个绑定，空 id 清除绑定。写入要求持久化 settings，不影响在途发布。发布器优先使用显式选择，再使用网站默认绑定；控制台核对网站和浏览器是否存在。
+
 ## 模型体验
 
 间接经由 `dsh-tool-backlinks`：由它返回有界的批次/租约/邮件摘要与精确的提供方选择失败；本注册表自身不产出提示词或 schema。

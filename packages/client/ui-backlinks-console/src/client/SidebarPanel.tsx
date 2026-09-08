@@ -50,7 +50,12 @@ function BatchRow(props: SidebarConsolePanelProps & { batch: BacklinkBatchSummar
     () => store.store.getSnapshot(),
   )
   const detail = state.details[batch.id]
+  const { concurrent } = state
   const publishing = state.publishing?.includes(batch.id) === true
+  const boundBrowser = state.browserBindings[batch.websiteId]
+  const selectedBrowser = state.browserOverrides[batch.id] ?? ''
+  const unavailableBrowser = selectedBrowser || boundBrowser
+  const missingBrowser = unavailableBrowser && !state.browsers.some(browser => browser.id === unavailableBrowser)
   return (
     <div className={css.row} data-selected={state.selectedBatchIds.includes(batch.id)}>
       <div className={css.rowHeader}>
@@ -91,6 +96,27 @@ function BatchRow(props: SidebarConsolePanelProps & { batch: BacklinkBatchSummar
           </div>
         )
         : null}
+      {concurrent ? <div className={css.browserRow}>
+        <label className={css.browserLabel}>
+          {t('browser.select')}
+          <select className={css.search} aria-label={`${t('browser.select')} #${String(batch.id)}`}
+            value={selectedBrowser} disabled={state.publishing !== null}
+            onChange={(event) => { store.selectBrowser(batch.id, event.target.value) }}>
+            <option value="">{boundBrowser ? `${t('browser.bound')}: ${boundBrowser}` : t('browser.default')}</option>
+            {missingBrowser && selectedBrowser ? <option value={selectedBrowser}>{selectedBrowser} ({t('browser.unavailable')})</option> : null}
+            {state.browsers.map(browser => <option key={browser.id} value={browser.id} disabled={!browser.available}>
+              {browser.id}{browser.available ? '' : ` (${t('browser.unavailable')})`}
+            </option>)}
+          </select>
+        </label>
+        <button type="button" className={css.toolButton}
+          disabled={!selectedBrowser || !!missingBrowser || state.savingBrowser || state.publishing !== null}
+          onClick={() => { void store.bindBrowser(batch.websiteId, selectedBrowser) }}>{t('browser.bind')}</button>
+        {boundBrowser ? <button type="button" className={css.toolButton}
+          disabled={state.savingBrowser || state.publishing !== null}
+          onClick={() => { void store.bindBrowser(batch.websiteId, '') }}>{t('browser.unbind')}</button> : null}
+      </div> : null}
+      {missingBrowser ? <p className={css.error} role="alert">{t('browser.missing')}: {unavailableBrowser}</p> : null}
       <div className={css.rowActions}>
         <button
           type="button"
@@ -117,6 +143,10 @@ export function SidebarConsolePanel(props: SidebarConsolePanelProps) {
     () => store.store.getSnapshot(),
   )
   const [query, setQuery] = useState('')
+  const { concurrent } = state
+  const [browserName, setBrowserName] = useState('')
+  const [browserKind, setBrowserKind] = useState<'profile' | 'cdp'>('profile')
+  const [browserLocation, setBrowserLocation] = useState('')
 
   useEffect(() => {
     void store.refresh()
@@ -146,6 +176,36 @@ export function SidebarConsolePanel(props: SidebarConsolePanelProps) {
           {t('refresh')}
         </button>
       </div>
+      <div className={css.browserToolbar}>
+        <details className={css.browserSetup}>
+          <summary>{t('browser.add')}</summary>
+          <form className={css.browserForm} onSubmit={(event) => {
+            event.preventDefault()
+            void store.addBrowser(browserName.trim(), browserKind, browserLocation.trim())
+          }}>
+            <label>{t('browser.name')}<input className={css.search} required pattern="[a-zA-Z0-9][a-zA-Z0-9_-]*"
+              value={browserName} onChange={(event) => { setBrowserName(event.target.value) }} placeholder="site-a" /></label>
+            <label>{t('browser.kind')}<select className={css.search} value={browserKind}
+              onChange={(event) => { setBrowserKind(event.target.value as 'profile' | 'cdp'); setBrowserLocation('') }}>
+              <option value="profile">{t('browser.profile')}</option><option value="cdp">{t('browser.cdp')}</option>
+            </select></label>
+            <label>{browserKind === 'profile' ? t('browser.directory') : t('browser.endpoint')}
+              <input className={css.search} required value={browserLocation}
+                onChange={(event) => { setBrowserLocation(event.target.value) }}
+                placeholder={browserKind === 'profile' ? './.browser-site-a' : 'http://127.0.0.1:9222'} /></label>
+            <p className={css.note}>{browserKind === 'profile' ? t('browser.profileHelp') : t('browser.cdpHelp')}</p>
+            <button type="submit" className={css.publishButton} disabled={state.savingBrowser || state.publishing !== null}>
+              {state.savingBrowser ? t('browser.saving') : t('browser.save')}
+            </button>
+          </form>
+        </details>
+        <label className={css.selectAll}>
+          <input type="checkbox" className={css.checkbox} checked={concurrent}
+            onChange={(event) => { store.setConcurrent(event.target.checked) }} />
+          {t('browser.concurrent')}
+        </label>
+      </div>
+      {concurrent ? <p className={css.note}>{t('browser.parallel')}</p> : null}
       <div className={css.selectionBar}>
         <label className={css.selectAll}>
           <input

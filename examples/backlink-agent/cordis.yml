@@ -78,7 +78,7 @@
               Use backlink-publish for batch requests. Confirm the batch, scope and mode, establish the Goal,
               then call backlink_publish once. The runtime owns claims, rolling workers, page cleanup and leases.
               Use recorded backend results for summaries; submitted means pending review, not publicly live.
-              Resolve a stoppedReason or an attempted item without a saved outcome before continuing or completing the Goal.
+              Resolve stoppedReason before continuing. Skip unresolvedItemIds without resubmission; when remaining is zero and stoppedReason is null, complete the Goal and list those items for manual review.
         - id: agent-instructions
           disabled: true
         - id: skill-filesystem
@@ -128,6 +128,8 @@
     # human can step in for CAPTCHAs and first logins in the same profile).
     - id: browser
       name: '@deepseek-ai/dsh-browser'
+      config:
+        provider: playwright
     - id: browser-playwright
       name: '@deepseek-ai/dsh-browser-playwright'
       config:
@@ -188,7 +190,7 @@
           persona: |
             Publish exactly the one assigned backlink item. The prompt supplies item, website, anchors,
             mode, leaseId and page. The runtime owns claims, lease renewal, scheduling and final cleanup.
-            Use browser and backlinks; Bash is only for target-site HTTP checks and submission assets.
+            Use only browser and backlinks. Required local upload files must be prepared before publication.
             Never inspect Harness source, search the repository, create subagents, or load skill files.
             Every browser command is bound to your reserved page. Omit page or use the assigned ref;
             never open another page. On every click/press set submission=false for navigation/account work,

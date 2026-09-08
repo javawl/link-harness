@@ -1,16 +1,38 @@
 - region "外链发布控制台":
   - textbox "搜索批次号或网站域名"
   - button "刷新"
+  - group: 添加 / 绑定浏览器
+  - checkbox "并发" [checked]
+  - text: 并发
+  - paragraph: 不同浏览器并行发布；同一浏览器或网站的批次自动排队。
   - checkbox "全选当前列表" [checked=mixed]
   - text: 全选当前列表
   - button "批量发布 (2)"
   - 'checkbox "选择批次 #389 389.example" [checked]'
   - button "#389 389.example 待 1 成 1 败 1" [expanded]
-  - text: executed.example executed failed.example failed skipped.example skipped
+  - text: executed.example executed failed.example failed skipped.example skipped 本次浏览器
+  - 'combobox "本次浏览器 #389"':
+    - 'option "网站已绑定: site-a"'
+    - option "playwright"
+    - option "site-a" [selected]
+  - button "绑定网站"
+  - button "解除绑定"
   - button "发布"
   - 'checkbox "选择批次 #100 100.example"'
   - button "#100 100.example 待 1 成 1 败 1"
+  - text: 本次浏览器
+  - 'combobox "本次浏览器 #100"':
+    - option "默认浏览器" [selected]
+    - option "playwright"
+    - option "site-a"
+  - button "绑定网站" [disabled]
   - button "发布"
   - 'checkbox "选择批次 #99 99.example" [checked]'
   - button "#99 99.example 待 1 成 1 败 1"
+  - text: 本次浏览器
+  - 'combobox "本次浏览器 #99"':
+    - option "默认浏览器"
+    - option "playwright" [selected]
+    - option "site-a"
+  - button "绑定网站"
   - button "发布"

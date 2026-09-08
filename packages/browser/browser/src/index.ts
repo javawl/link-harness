@@ -1,6 +1,6 @@
 /**
  * Service Definition for the browser automation capability seam (`ctx.browser`): a provider registry and
- * a one-session command dispatch ordered per addressed tab. Duplicate provider ids are rejected. The
+ * independent browser sessions with dispatch ordered per addressed tab. Duplicate provider ids are rejected. Each
  * session opens lazily on the first command (single-flight) and is reused until `closeSession()` or
  * context disposal, so a persistent browser profile outlives individual tool calls. Commands naming the
  * same tab serialize; commands naming different tabs run concurrently inside the provider. Provider
@@ -80,136 +80,138 @@ export class BrowserRuntime extends Service {
 
   private providers = new Map<string, BrowserAutomationProvider>()
   private readonly providerId: string | undefined
-  private session: BrowserSession | undefined
-  private sessionDisposer: (() => void) | undefined
-  private opening: Promise<BrowserSession> | undefined
+  private readonly sessions = new Map<string, {
+    opening: Promise<BrowserSession>
+    closing?: Promise<void>
+  }>()
+  private closed = false
 
   constructor(ctx: Context, config: BrowserRuntimeConfig = {}) {
     super(ctx, 'browser')
     this.providerId = config.provider ?? process.env.DSH_BROWSER_PROVIDER
+    ctx.effect(() => async () => {
+      this.closed = true
+      await Promise.allSettled([...this.sessions.keys()].map(id => this.closeSession(id)))
+    })
   }
 
   /**
-   * Register a browser automation provider. Throws {@link BrowserError}
-   * `BROWSER_DUPLICATE_PROVIDER` if its id is already registered. Returns a
-   * disposer; disposed with the calling fiber.
-   * @param provider - the provider; its `id` is the registry key.
-   * @returns the disposer that unregisters the provider.
+   * Register one independently addressable browser. A resource cannot have two ids.
+   * @param provider - backend owning this browser's login state and tabs.
+   * @returns disposer that unregisters and closes only this browser.
    */
   registerProvider(provider: BrowserAutomationProvider): () => void {
-    if (this.providers.has(provider.id)) {
-      throw new BrowserError(`a browser provider with id "${provider.id}" is already registered`, 'BROWSER_DUPLICATE_PROVIDER')
+    if (this.providers.has(provider.id) || (provider.resourceKey !== undefined
+      && [...this.providers.values()].some(value => value.resourceKey === provider.resourceKey))) {
+      throw new BrowserError(`browser id or resource "${provider.id}" is already registered`, 'BROWSER_DUPLICATE_PROVIDER')
     }
     const store = this.providers
+    const close = () => this.closeSession(provider.id)
     const dispose = this.ctx.effect(function* () {
       store.set(provider.id, provider)
-      yield () => store.delete(provider.id)
+      yield async () => {
+        store.delete(provider.id)
+        await close()
+      }
     }, 'browser.registerProvider()')
-    // ctx.effect's disposer returns Promise<void>; our disposer API is
-    // synchronous fire-and-forget — discard the (always-resolved) promise.
     return () => void dispose()
   }
 
   /**
-   * Perform one command on the shared session, opening it lazily (and
-   * single-flight) through the selected provider on first use. Ordering is
-   * per addressed tab: same-tab commands serialize in dispatch order while
-   * different-tab commands may overlap. Provider selection and session open
-   * throw {@link BrowserError} before any page work runs.
-   * @param command - the closed-union command to execute.
-   * @param signal - optional cancellation signal checked before dispatch.
-   * @returns the closed-union outcome for the command kind.
+   * List configured browser ids without launching or connecting to them.
+   * @returns browser ids and their local availability; no credentials or page contents.
    */
-  act(command: BrowserCommand, signal?: AbortSignal): Promise<BrowserResult> {
-    const run = async (): Promise<BrowserResult> => {
-      const session = await this.ensureSession(signal)
-      if (signal?.aborted) throw new BrowserError('browser command aborted before dispatch', 'BROWSER_ABORTED')
-      try {
-        return await session.act(command, signal)
-      } catch (error) {
-        if (error instanceof BrowserError) {
-          if (error.code === 'BROWSER_SESSION_CLOSED' && this.session === session) {
-            await this.discardSession()
-          }
-          throw error
-        }
-        // A provider that leaks a raw failure loses the session: its browser
-        // state is unknown and the next command must relaunch, not reuse it.
-        if (this.session === session) await this.discardSession()
-        throw new BrowserError(
-          `browser command "${command.kind}" failed: ${String(error instanceof Error ? error.message : error)}`,
-          'BROWSER_ACTION_FAILED',
-          { cause: error },
-        )
-      }
-    }
-    return run()
+  list(): { id: string; available: boolean }[] {
+    return [...this.providers.values()].map(provider => ({ id: provider.id, available: provider.available() }))
   }
 
   /**
-   * Close the shared session (and its browser). Safe when no session is open;
-   * the next `act()` opens a fresh one.
-   * @returns when the session is closed or none existed.
+   * Resolve an explicit browser or the configured default before starting work.
+   * @param browserId - registered id; omitted uses the service's provider selection.
+   * @returns selected browser id; an unknown or ambiguous selection throws before launch.
    */
-  async closeSession(): Promise<void> {
-    await this.opening
-    await this.discardSession()
+  resolve(browserId?: string): string {
+    const configuredId = browserId ?? this.providerId
+    return resolveProvider({ providers: this.providers,
+      ...configuredId === undefined ? {} : { configuredId } }).id
   }
 
-  private ensureSession(signal?: AbortSignal): Promise<BrowserSession> {
-    if (this.session) return Promise.resolve(this.session)
-    this.opening ??= this.launchSession(signal).then(
-      (session) => {
-        this.opening = undefined
-        return session
-      },
-      (error: unknown) => {
-        this.opening = undefined
-        throw error
-      },
-    )
-    return this.opening
+  /**
+   * Check whether a browser has a live or opening session.
+   * @param browserId - registered browser id.
+   * @returns whether changing its configuration would affect retained pages.
+   */
+  hasSession(browserId: string): boolean {
+    return this.sessions.has(browserId)
   }
 
-  private async launchSession(signal?: AbortSignal): Promise<BrowserSession> {
-    const provider = resolveProvider({
-      providers: this.providers,
-      ...this.providerId !== undefined ? { configuredId: this.providerId } : {},
-    })
-    if (signal?.aborted) throw new BrowserError('browser launch aborted', 'BROWSER_ABORTED')
-    let session: BrowserSession
+  /**
+   * Execute in the selected browser's lazy session. Tab refs are local to that browser.
+   * @param command - closed-union command; parallel callers must address a page.
+   * @param signal - cancellation forwarded to the provider.
+   * @param browserId - explicit browser; omitted uses the configured default.
+   * @returns the command outcome. Failure discards only the affected browser session.
+   */
+  async act(command: BrowserCommand, signal?: AbortSignal, browserId?: string): Promise<BrowserResult> {
+    if (this.closed) throw new BrowserError('browser service is closed', 'BROWSER_SESSION_CLOSED')
+    const id = this.resolve(browserId)
+    if (signal?.aborted) throw new BrowserError('browser command aborted before dispatch', 'BROWSER_ABORTED')
+    let entry = this.sessions.get(id)
+    if (entry?.closing !== undefined) {
+      await entry.closing
+      return this.act(command, signal, id)
+    }
+    if (entry === undefined) {
+      const provider = resolveProvider({ providers: this.providers, configuredId: id })
+      const opening = Promise.resolve().then(async () => {
+        try {
+          return await provider.open(signal)
+        } catch (error) {
+          if (error instanceof BrowserError) throw error
+          throw new BrowserError(`browser "${id}" failed to open: ${String(error instanceof Error ? error.message : error)}`,
+            'BROWSER_LAUNCH_FAILED', { cause: error })
+        }
+      })
+      entry = { opening }
+      this.sessions.set(id, entry)
+      void opening.catch(() => { if (this.sessions.get(id) === entry) this.sessions.delete(id) })
+    }
+    const session = await entry.opening
+    if (!this.providers.has(id) || this.sessions.get(id)?.closing !== undefined) throw new BrowserError('browser session is closing', 'BROWSER_SESSION_CLOSED')
+    if (signal?.aborted) throw new BrowserError('browser command aborted before dispatch', 'BROWSER_ABORTED')
     try {
-      session = await provider.open(signal)
+      return await session.act(command, signal)
     } catch (error) {
-      if (error instanceof BrowserError) throw error
-      throw new BrowserError(
-        `browser provider "${provider.id}" failed to open a session: ${String(error instanceof Error ? error.message : error)}`,
-        'BROWSER_LAUNCH_FAILED',
-        { cause: error },
-      )
-    }
-    const dispose = this.ctx.effect(function* () {
-      yield () => {
-        void session.close().catch(() => undefined)
+      if (!(error instanceof BrowserError) || error.code === 'BROWSER_SESSION_CLOSED') {
+        if (this.sessions.get(id) === entry) await this.closeSession(id)
       }
-    }, 'browser.session')
-    this.session = session
-    this.sessionDisposer = () => void dispose()
-    return session
+      if (error instanceof BrowserError) throw error
+      throw new BrowserError(`browser command "${command.kind}" failed: ${String(error instanceof Error ? error.message : error)}`,
+        'BROWSER_ACTION_FAILED', { cause: error })
+    }
   }
 
-  private async discardSession(): Promise<void> {
-    this.sessionDisposer?.()
-    this.sessionDisposer = undefined
-    const session = this.session
-    this.session = undefined
-    // Close errors must not break the relaunch path; the browser process is
-    // provider-owned and a failed close surfaces on the next open at worst.
-    try {
-      await session?.close()
-    } catch {
-      // swallow: closing an already-dead browser
-    }
+  /**
+   * Close one selected browser, awaiting a pending launch. Other browsers remain usable.
+   * @param browserId - explicit id; omitted closes the configured default, if any session exists.
+   * @returns when its provider cleanup settles; a dead browser's close error is ignored.
+   */
+  async closeSession(browserId?: string): Promise<void> {
+    if (this.sessions.size === 0) return
+    const id = browserId ?? this.resolve()
+    const entry = this.sessions.get(id)
+    if (entry === undefined) return
+    entry.closing ??= (async () => {
+      try {
+        const session = await entry.opening
+        await session.close()
+      } catch {
+        // Failed launches and dead-browser close failures leave no reusable session.
+      } finally {
+        if (this.sessions.get(id) === entry) this.sessions.delete(id)
+      }
+    })()
+    await entry.closing
   }
 }
 

@@ -22,6 +22,7 @@ type BrowserAction = typeof ACTIONS[number]
 export interface BrowserToolInput {
   readonly action: BrowserAction
   readonly page?: string
+  readonly browserId?: string
   readonly url?: string
   readonly selector?: string
   readonly value?: string
@@ -301,7 +302,7 @@ export function applyBrowserTool(ctx: Context, timeoutMs: number, maxOutputChars
     name: 'tool:browser',
     order: 112,
     text: [
-      'Use the browser tool to drive one shared, persistent real-browser session across tabs.',
+      'Use browser_list to discover configured browsers. browserId selects an isolated persistent browser; omit it only to use the configured default. Preserve both browserId and page on every command.',
       'Tabs: navigate returns a page ref like p2; pass that page on every later command for the tab you are working. Work several sites in parallel by giving each its own ref. Omit page only for single-tab serial work.',
       'newPage reserves a blank tab under a new page ref without visiting a website; it fails if the ref exists or page capacity is exhausted.',
       'Selectors address semantically first: role:<role>|<name> (for example role:button|Submit), label:<text>, placeholder:<text>, text:<text>, or bare CSS as fallback; prefix frame(<iframe css>)>> to reach inside an iframe; click also takes xy:<x>,<y> viewport coordinates from a screenshot.',
@@ -314,14 +315,29 @@ export function applyBrowserTool(ctx: Context, timeoutMs: number, maxOutputChars
   })
 
   ctx.tools.register(defineTool({
+    name: 'browser_list',
+    description: 'List configured browser ids and local availability without opening a browser. Use browserId to keep logins and tabs isolated.',
+    parameters: {},
+    output: {
+      schema: { type: 'object', additionalProperties: false,
+        properties: { browsers: { type: 'json', required: true } } },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+    },
+    isConcurrencySafe: () => true,
+    execute: () => Promise.resolve({ browsers: ctx.browser.list() }),
+    presentCall: () => ({ card: 'generic', title: 'List browsers', kind: 'read' }),
+  }))
+
+  ctx.tools.register(defineTool({
     name: 'browser',
-    description: 'Drive one shared persistent real-browser session: navigate, read page text, click, fill forms, select options, press keys, upload files, screenshot, wait, and close tabs.',
+    description: 'Drive a selected persistent real-browser session: navigate, read page text, click, fill forms, select options, press keys, upload files, screenshot, wait, and close tabs.',
     parameters: {
       action: {
         type: 'string',
         required: true,
         description: `One of ${ACTIONS.join(', ')}.`,
       },
+      browserId: { type: 'string', description: 'Configured browser id from browser_list. Keep it fixed throughout a website publication.' },
       page: {
         type: 'string',
         description: 'Tab ref from a navigate result. Pass it on EVERY command while working a tab: navigate with a new ref opens that tab, later commands address it. Omit only for single-tab serial work.',
@@ -425,7 +441,8 @@ export function applyBrowserTool(ctx: Context, timeoutMs: number, maxOutputChars
       const bounded: BrowserCommand = command.kind === 'navigate' || command.kind === 'snapshot'
         ? { ...command, maxChars: maxOutputChars }
         : command
-      const result = await ctx.browser.act(bounded, exec.signal)
+      const browserId = readNonEmpty(args.browserId, 'browserId')
+      const result = await ctx.browser.act(bounded, exec.signal, browserId)
       return { action: String(args.action), result }
     },
     presentCall: presentBrowserCall,

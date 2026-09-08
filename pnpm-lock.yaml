@@ -772,6 +772,10 @@ importers:
       '@deepseek-ai/dsh-workflow-worker-thread':
         specifier: workspace:*
         version: link:../packages/workflow/workflow-worker-thread
+    devDependencies:
+      playwright-core:
+        specifier: ^1.50.0
+        version: 1.61.1
 
   native/landlock-run:
     devDependencies:
@@ -979,6 +983,9 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: workspace:^
         version: link:../../llm/llm
+      '@deepseek-ai/dsh-settings':
+        specifier: workspace:^
+        version: link:../../settings/settings
 
   packages/backlinks/backlinks-cloud-mail:
     dependencies:
@@ -1042,9 +1049,21 @@ importers:
       '@deepseek-ai/dsh-backlinks':
         specifier: workspace:^
         version: link:../backlinks
+      '@deepseek-ai/dsh-browser':
+        specifier: workspace:^
+        version: link:../../browser/browser
+      '@deepseek-ai/dsh-browser-playwright':
+        specifier: workspace:^
+        version: link:../../browser/browser-playwright
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-settings':
+        specifier: workspace:^
+        version: link:../../settings/settings
+      '@deepseek-ai/dsh-settings-file':
+        specifier: workspace:^
+        version: link:../../settings/settings-file
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:^
         version: link:../../typert/protocol
@@ -1193,6 +1212,9 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: workspace:^
         version: link:../../llm/llm
+      '@deepseek-ai/dsh-settings':
+        specifier: workspace:^
+        version: link:../../settings/settings
 
   packages/browser/tool-browser:
     dependencies:

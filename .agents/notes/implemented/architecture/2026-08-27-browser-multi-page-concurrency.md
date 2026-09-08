@@ -10,7 +10,9 @@ Backlink batches publish one item at a time because every browser command lands 
 
 ## Decision
 
-Tabs, not sessions, are the unit of parallelism over the existing single persistent session:
+Named-browser selection and independent session lifetime are owned by the [isolated publication decision](../feature/2026-09-07-isolated-browser-publication.md); this note retains the capability and per-profile ordering rationale.
+
+Within each registered browser, tabs are the unit of parallelism:
 
 1. Every `BrowserCommand` gains an optional `page` ref (`BrowserPageAddress`). A navigate naming an unused ref opens a new tab bound to that caller-chosen name; every later command addresses its tab by that ref; a command naming an unknown or closed ref fails loudly. Commands without a ref keep the legacy most-recent-tab contract, so existing single-tab callers are unchanged.
 2. The seam drops its global command chain: dispatch is immediate over the lazily-opened (single-flight) session; ordering moves into the provider.
@@ -19,7 +21,7 @@ Tabs, not sessions, are the unit of parallelism over the existing single persist
 
 ## Consequences
 
-- Cookie state stays shared and singular: one Google session, one set of site logins, one profile on disk.
+- Cookie state is shared within each browser profile; the user chooses which websites share it.
 - Same-site actions remain serial by construction (one chain per tab) and by skill rule (items grouped per host), keeping per-domain pacing.
 - The closed `BrowserCommand`/`BrowserResult` unions grew a field, not a member; providers and consumers still switch to exhaustiveness.
 - Legacy no-ref commands on a shared session can interleave with ref-addressed ones when a caller mixes styles; the contract says parallel callers must use refs for everything, and the skill's child prompts enforce it.

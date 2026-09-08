@@ -16,7 +16,7 @@ A saved item result blocks further browser input and navigation. Closing a page 
 
 Supermanager uses explicit anchors when present. Otherwise, saved website name and siteUrl provide the default text and URL, with no fabricated backend anchor id or website write. This replaces mandatory separate-anchor setup in [page retention and preflight](2026-09-07-backlinks-retained-pages.md). Invalid explicit anchors still fail; absent usable defaults still stop before pages, claims or model calls.
 
-The native driver reports per-run exhaustion as budget-exhausted. The publisher reconciles local budget and output-token stops, then continues unrelated items; unknown submissions remain manual_required and retain their pages. Terminal model errors, checkpoint failures, lost leases and failed reconciliation stop new admissions. Request-time budget checks include retries without replacing a terminal provider error with a local budget diagnostic.
+The native driver reports per-run exhaustion as budget-exhausted. The publisher reconciles local budget and output-token stops, then continues unrelated items. A previously attempted source without a saved result, or an item whose reconciliation fails, is excluded from dispatch and reported in unresolvedItemIds without rewriting its backend status. Unknown submissions retain their pages. Empty remaining work with no stoppedReason finishes the selected execution; unresolved items are listed for manual review. Terminal model errors, checkpoint failures, lost leases and backend authorization failures stop new admissions. Request-time budget checks include retries without replacing a terminal provider error with a local budget diagnostic.
 
 ## Alternatives considered
 
@@ -26,7 +26,7 @@ The native driver reports per-run exhaustion as budget-exhausted. The publisher 
 
 **Require an extra anchor row for every website.** The user-approved website profile already supplies the default name and URL. Reusing that authoritative data avoids duplicate setup; inventing text from page copy or silently replacing invalid explicit anchors remains disallowed.
 
-**Stop every batch at any child budget.** An item-scoped limit is not evidence that another site is unavailable. Safe item reconciliation permits the queue to continue, while global resource and storage errors retain their stop behavior.
+**Stop every batch at any child budget or unresolved item.** A local limit or missing result cannot establish that another source is unavailable. Persistent attempt exclusion prevents resubmission without blocking unrelated sources. Backend skipped is reserved for a conclusive skip outcome; unresolvedItemIds preserves uncertainty separately. Global resource and storage errors retain their stop behavior.
 
 ## Consequences
 
