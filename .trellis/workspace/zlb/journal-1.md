@@ -43,3 +43,40 @@
 ### Next Steps
 
 - 正常推送并核对远端 HEAD；原 browser-publication-capacity 的实际发布和运行观察仍未完成，保持 in_progress，不归档。
+
+
+## Session 2: Commit isolated browser publication and child tool guards
+<!-- trellis-session: v=2 fp=db1dde3ba012bc1e -->
+
+**Date**: 2026-09-08
+**Task**: Commit isolated browser publication and child tool guards
+**Branch**: `master`
+
+### Summary
+
+Committed all source, docs and snapshots requested by the user. Chrome profile data stays locally excluded; the broader publication task remains in progress.
+
+### Main Changes
+
+- Persist browser and website bindings, queue shared resources, retain unresolved outcomes, repair child schemas and tool permissions, and preserve compact and concurrent console controls.
+- Remove seven unsupported ByRoleOptions fields from console tests and align the feature note with publication tool restrictions.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2308c1c6b20eaecc41085a0cf2ecc798f1dd7765` | feat(backlinks): 支持独立浏览器并发发布与控制台分配 |
+
+### Testing
+
+- [OK] 244 targeted tests passed; console recheck passed 11 tests. Full build, lint, all 28 doc-sync stages and nine relevant hygiene leaves passed.
+- [OK] Real Web replay passed for desktop and narrow views. Built Chrome capacity and isolation passed independently with the original timeout.
+- [WARN] Full GUI: 4014 passed, six timeouts, one skipped. Serial recheck of all five failed files passed 99 tests without relaxing timeouts.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Keep the broader task in_progress. Service was not restarted, historical publication items were not retried, and monitors were not re-enabled.
