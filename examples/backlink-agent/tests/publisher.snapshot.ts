@@ -12,7 +12,7 @@ import { expect, it } from 'vitest'
 const chromeInstalled = existsSync(process.platform === 'darwin'
   ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : '/opt/google/chrome/chrome')
 
-it.skipIf(!chromeInstalled).each(['success', 'quota', 'unresolved', 'anchors', 'invalid-profile', 'budget', 'multi-browser', 'guarded-tools'])('publishes with the selected model and preserves results after %s', async (scenario) => {
+it.skipIf(!chromeInstalled).each(['success', 'quota', 'unresolved', 'anchors', 'invalid-profile', 'budget', 'multi-browser', 'guarded-tools', 'manual-required'])('publishes with the selected model and preserves results after %s', async (scenario) => {
   const configPath = fileURLToPath(new URL('../publisher.cordis.snapshot.yml', import.meta.url))
   const driver = fileURLToPath(new URL('../../headless-agent/tests/fixtures/headless-driver.ts', import.meta.url))
   const result = await runLoaderSmoke({
@@ -57,6 +57,7 @@ it.skipIf(!chromeInstalled).each(['success', 'quota', 'unresolved', 'anchors', '
         expect(errors).toMatchInlineSnapshot(`
           [
             "Error: unknown tool "bash"",
+            "Error: Publication cannot activate browser windows. Report manual_required and let the operator open the retained page.",
           ]
         `)
       }
@@ -92,6 +93,36 @@ it.skipIf(!chromeInstalled).each(['success', 'quota', 'unresolved', 'anchors', '
       if (scenario === 'budget') {
         const publication = parent.events.find(event => event.type === 'tool/result' && event.data.message.source.callId === 'publish')!
         expect(resultText([publication])).toMatchInlineSnapshot('"{"attempted":2,"remaining":0,"counts":{"failed":2},"stoppedReason":null}"')
+        return
+      }
+      if (scenario === 'manual-required') {
+        const publication = parent.events.find(event => event.type === 'tool/result' && event.data.message.source.callId === 'publish')!
+        const output = JSON.parse(resultText([publication])) as { manualRequired: { page: string }[] }
+        expect(output).toMatchObject({ attempted: 2, remaining: 0, counts: { failed: 1, live: 1 }, stoppedReason: null,
+          manualRequired: [{ itemId: 1, browserId: 'playwright', reason: 'Complete login manually.' }] })
+        expect(output.manualRequired[0]!.page).toMatch(/^publish-.*-1$/)
+        expect({ ...output, manualRequired: output.manualRequired.map(item => ({ ...item, page: '<page>' })) }).toMatchInlineSnapshot(`
+          {
+            "attempted": 2,
+            "counts": {
+              "failed": 1,
+              "live": 1,
+            },
+            "manualRequired": [
+              {
+                "browserId": "playwright",
+                "itemId": 1,
+                "page": "<page>",
+                "reason": "Complete login manually.",
+              },
+            ],
+            "remaining": 0,
+            "stoppedReason": null,
+          }
+        `)
+        const retained = parent.events.find(event => event.type === 'tool/result' && event.data.message.source.callId === 'retained-page')!
+        expect(resultText([retained])).toContain('Complete login manually.')
+        expect(errors).toEqual([])
         return
       }
       if (scenario === 'anchors') {
@@ -143,7 +174,7 @@ it.skipIf(!chromeInstalled).each(['success', 'quota', 'unresolved', 'anchors', '
     },
   })
   expect(result.stderr).toBe('')
-  expect(result.stdout).toContain(scenario === 'budget' ? 'Both item budgets reached; both outcomes saved.' : scenario === 'invalid-profile' ? 'Complete the website name and URL; two items remain untouched.' : scenario === 'unresolved'
+  expect(result.stdout).toContain(scenario === 'manual-required' ? 'Item 1 needs manual login in its retained page; item 2 is published.' : scenario === 'budget' ? 'Both item budgets reached; both outcomes saved.' : scenario === 'invalid-profile' ? 'Complete the website name and URL; two items remain untouched.' : scenario === 'unresolved'
     ? 'Item 1 skipped for manual review; two other listings verified.'
     : scenario === 'quota' ? 'Publication paused after QUOTA; two items remain pending.' : 'Two public fixture listings verified.')
 }, LOADER_SMOKE_TEST_TIMEOUT_MS)

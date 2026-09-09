@@ -1,0 +1,160 @@
+- region "外链发布控制台":
+  - textbox "搜索批次号或网站域名"
+  - button "刷新"
+  - group: 添加 / 绑定浏览器
+  - checkbox "并发"
+  - text: 并发
+  - checkbox "全选当前列表"
+  - text: 全选当前列表
+  - button "批量发布 (0)" [disabled]
+  - 'checkbox "选择批次 #1125 1125.example"'
+  - button "#1125 1125.example 待 99 成 0 败 0 执行中": "#1125 1125.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1124 1124.example"'
+  - button "#1124 1124.example 待 99 成 0 败 0 执行中": "#1124 1124.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1123 1123.example"'
+  - button "#1123 1123.example 待 99 成 0 败 0 执行中": "#1123 1123.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1122 1122.example"'
+  - button "#1122 1122.example 待 99 成 0 败 0 执行中": "#1122 1122.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1121 1121.example"'
+  - button "#1121 1121.example 待 99 成 0 败 0 执行中": "#1121 1121.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1120 1120.example"'
+  - button "#1120 1120.example 待 99 成 0 败 0 执行中": "#1120 1120.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1119 1119.example"'
+  - button "#1119 1119.example 待 99 成 0 败 0 执行中": "#1119 1119.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1118 1118.example"'
+  - button "#1118 1118.example 待 99 成 0 败 0 执行中": "#1118 1118.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1117 1117.example"'
+  - button "#1117 1117.example 待 99 成 0 败 0 执行中": "#1117 1117.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1116 1116.example"'
+  - button "#1116 1116.example 待 99 成 0 败 0 执行中": "#1116 1116.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1115 1115.example"'
+  - button "#1115 1115.example 待 99 成 0 败 0 执行中": "#1115 1115.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1114 1114.example"'
+  - button "#1114 1114.example 待 99 成 0 败 0 执行中": "#1114 1114.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1113 1113.example"'
+  - button "#1113 1113.example 待 99 成 0 败 0 执行中": "#1113 1113.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1112 1112.example"'
+  - button "#1112 1112.example 待 99 成 0 败 0 执行中": "#1112 1112.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1111 1111.example"'
+  - button "#1111 1111.example 待 99 成 0 败 0 执行中": "#1111 1111.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1110 1110.example"'
+  - button "#1110 1110.example 待 99 成 0 败 0 执行中": "#1110 1110.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1109 1109.example"'
+  - button "#1109 1109.example 待 99 成 0 败 0 执行中": "#1109 1109.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1108 1108.example"'
+  - button "#1108 1108.example 待 99 成 0 败 0 执行中": "#1108 1108.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1107 1107.example"'
+  - button "#1107 1107.example 待 99 成 0 败 0 执行中": "#1107 1107.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1106 1106.example"'
+  - button "#1106 1106.example 待 99 成 0 败 0 执行中": "#1106 1106.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1105 1105.example"'
+  - button "#1105 1105.example 待 99 成 0 败 0 执行中": "#1105 1105.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1104 1104.example"'
+  - button "#1104 1104.example 待 99 成 0 败 0 执行中": "#1104 1104.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1103 1103.example"'
+  - button "#1103 1103.example 待 99 成 0 败 0 执行中": "#1103 1103.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1102 1102.example"'
+  - button "#1102 1102.example 待 99 成 0 败 0 执行中": "#1102 1102.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1101 1101.example"'
+  - button "#1101 1101.example 待 99 成 0 败 0 执行中": "#1101 1101.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1100 1100.example"'
+  - button "#1100 1100.example 待 99 成 0 败 0 执行中": "#1100 1100.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1099 1099.example"'
+  - button "#1099 1099.example 待 99 成 0 败 0 执行中": "#1099 1099.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1098 1098.example"'
+  - button "#1098 1098.example 待 99 成 0 败 0 执行中": "#1098 1098.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1097 1097.example"'
+  - button "#1097 1097.example 待 99 成 0 败 0 执行中": "#1097 1097.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1096 1096.example"'
+  - button "#1096 1096.example 待 99 成 0 败 0 执行中": "#1096 1096.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1095 1095.example"'
+  - button "#1095 1095.example 待 99 成 0 败 0 执行中": "#1095 1095.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1094 1094.example"'
+  - button "#1094 1094.example 待 99 成 0 败 0 执行中": "#1094 1094.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1093 1093.example"'
+  - button "#1093 1093.example 待 99 成 0 败 0 执行中": "#1093 1093.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1092 1092.example"'
+  - button "#1092 1092.example 待 99 成 0 败 0 执行中": "#1092 1092.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1091 1091.example"'
+  - button "#1091 1091.example 待 99 成 0 败 0 执行中": "#1091 1091.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1090 1090.example"'
+  - button "#1090 1090.example 待 99 成 0 败 0 执行中": "#1090 1090.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1089 1089.example"'
+  - button "#1089 1089.example 待 99 成 0 败 0 执行中": "#1089 1089.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1088 1088.example"'
+  - button "#1088 1088.example 待 99 成 0 败 0 执行中": "#1088 1088.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1087 1087.example"'
+  - button "#1087 1087.example 待 99 成 0 败 0 执行中": "#1087 1087.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1086 1086.example"'
+  - button "#1086 1086.example 待 99 成 0 败 0 执行中": "#1086 1086.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1085 1085.example"'
+  - button "#1085 1085.example 待 99 成 0 败 0 执行中": "#1085 1085.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1084 1084.example"'
+  - button "#1084 1084.example 待 99 成 0 败 0 执行中": "#1084 1084.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1083 1083.example"'
+  - button "#1083 1083.example 待 99 成 0 败 0 执行中": "#1083 1083.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1082 1082.example"'
+  - button "#1082 1082.example 待 99 成 0 败 0 执行中": "#1082 1082.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1081 1081.example"'
+  - button "#1081 1081.example 待 99 成 0 败 0 执行中": "#1081 1081.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1080 1080.example"'
+  - button "#1080 1080.example 待 99 成 0 败 0 执行中": "#1080 1080.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1079 1079.example"'
+  - button "#1079 1079.example 待 99 成 0 败 0 执行中": "#1079 1079.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1078 1078.example"'
+  - button "#1078 1078.example 待 99 成 0 败 0 执行中": "#1078 1078.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1077 1077.example"'
+  - button "#1077 1077.example 待 99 成 0 败 0 执行中": "#1077 1077.example 待 99 成 0 败 0"
+  - button "发布"
+  - 'checkbox "选择批次 #1076 1076.example"'
+  - button "#1076 1076.example 待 99 成 0 败 0 执行中": "#1076 1076.example 待 99 成 0 败 0"
+  - button "发布"
+  - button "加载更多（50 批）"

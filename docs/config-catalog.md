@@ -515,9 +515,8 @@ export interface Config {
   /** Extra Chromium launch arguments (proxy, window size, …). */
   readonly launchArgs?: string[]
   /**
-   * Initial window position `x,y` for Chrome. Offscreen values (for example
-   * `-32000,-32000`) keep the headed browser invisible while a human can still
-   * surface a tab with the `bringToFront` browser action.
+   * Initial window position `x,y` for Chrome; the window manager may adjust it.
+   * New pages open in the background independently of this positioning hint.
    */
   readonly windowPosition?: string
   /**

@@ -5,6 +5,7 @@
  */
 
 import { realpathSync } from 'node:fs'
+import { on, type EventEmitter } from 'node:events'
 import { dirname, basename, resolve } from 'node:path'
 import { chromium } from 'playwright-core'
 import type { BrowserContext, Locator, Page } from 'playwright-core'
@@ -52,10 +53,8 @@ export interface ResolvedPlaywrightConfig {
    */
   readonly ignoreDefaultArgs: readonly string[]
   /**
-   * Initial window position as `x,y` passed to Chrome. Heading the browser
-   * offscreen (for example `-32000,-32000`) keeps a real headed fingerprint
-   * while the window never covers the operator's desktop; the `bringToFront`
-   * command surfaces a tab when a human must step in.
+   * Initial window position as `x,y` passed to Chrome; the window manager may
+   * adjust it. Page creation preserves focus independently of this hint.
    */
   readonly windowPosition: string | undefined
 }
@@ -514,7 +513,39 @@ class PlaywrightSession implements BrowserSession {
     }
     this.pendingPageCreations++
     try {
-      return await this.context.newPage()
+      const browser = this.context.browser()
+      if (browser === null) throw new Error('The persistent Chromium context has no browser connection.')
+      const client = await browser.newBrowserCDPSession()
+      // Playwright exposes typed events but omits the full Node EventEmitter interface.
+      const pages = on(this.context as unknown as EventEmitter, 'page', { close: ['close'] }) as AsyncIterableIterator<[Page]>
+      const expired = Promise.withResolvers<never>()
+      const timer = setTimeout(() => {
+        expired.reject(new Error(`browser page creation exceeded ${this.defaultTimeoutMs}ms`))
+      }, this.defaultTimeoutMs)
+      try {
+        const create = async (): Promise<Page> => {
+          const { targetId } = await client.send('Target.createTarget', { url: 'about:blank', background: true })
+          for await (const [page] of pages) {
+            try {
+              const pageClient = await this.context.newCDPSession(page)
+              try {
+                const { targetInfo } = await pageClient.send('Target.getTargetInfo')
+                if (targetInfo.targetId === targetId) return page
+              } finally {
+                await pageClient.detach()
+              }
+            } catch (error) {
+              if (!page.isClosed()) throw error
+            }
+          }
+          throw new Error('browser closed before the created page became available')
+        }
+        return await Promise.race([create(), expired.promise])
+      } finally {
+        clearTimeout(timer)
+        await pages.return?.()
+        await client.detach()
+      }
     } finally {
       this.pendingPageCreations--
     }

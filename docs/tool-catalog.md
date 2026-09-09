@@ -2337,7 +2337,7 @@ browser keeps provider selection and isolated persistent sessions behind ctx.bro
 
 ### `backlink_publish`
 
-Publish the user-confirmed batch scope using up to 3 rolling item workers, one per target host. The runtime claims and renews one lease, binds pages, verifies results, and releases the lease. This foreground call waits for completion; do not claim first or start separate subagents. Model, checkpoint, authentication or lease failures halt new starts. Per-item budget or reconciliation failures skip the affected item and continue the queue. unresolvedItemIds lists unconfirmed outcomes excluded from further dispatch; report them separately without resubmitting or changing their backend status to skipped. When remaining is zero and stoppedReason is null, finish the scope and list unresolved items for manual review.
+Publish the user-confirmed batch scope using up to 3 rolling item workers, one per target host. The runtime claims and renews one lease, binds pages, verifies results, and releases the lease. This foreground call waits for completion; do not claim first or start separate subagents. Model, checkpoint, authentication or lease failures halt new starts. Per-item budget or reconciliation failures skip the affected item and continue the queue. unresolvedItemIds lists unconfirmed outcomes excluded from further dispatch; report them separately without resubmitting or changing their backend status to skipped. When remaining is zero and stoppedReason is null, finish the scope and list unresolved items for manual review. Report manualRequired entries with their reason and browser/page; let the operator open those pages manually without activating windows.
 
 ```json
 {

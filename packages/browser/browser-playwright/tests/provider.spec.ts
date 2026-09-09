@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { EventEmitter } from 'node:events'
 import type { Page } from 'playwright-core'
 
 const { launchPersistentContext } = vi.hoisted(() => ({ launchPersistentContext: vi.fn() }))
@@ -116,6 +117,8 @@ function fakePage(overrides: { innerText?: (selector: string) => Promise<string>
 
 function fakeContext(pages: Page[]) {
   const allPages = [...pages]
+  const events = new EventEmitter()
+  const targets = new Map<Page, string>()
   const closePage = (page: Page): void => {
     vi.spyOn(page, 'close').mockImplementation(async () => {
       const index = allPages.indexOf(page)
@@ -124,21 +127,30 @@ function fakeContext(pages: Page[]) {
   }
   for (const page of allPages) closePage(page)
   const created: ReturnType<typeof fakePage>[] = []
-  const newPage = vi.fn(async () => {
+  const createTarget = vi.fn(async (_args: { url: string; background: boolean }) => {
     const fresh = fakePage()
     created.push(fresh)
     allPages.push(fresh.page)
+    const targetId = `target-${created.length}`
+    targets.set(fresh.page, targetId)
     closePage(fresh.page)
-    return fresh.page
+    events.emit('page', fresh.page)
+    return { targetId }
   })
+  const detach = vi.fn(async () => undefined)
   const context = {
     pages: () => allPages,
-    newPage,
+    newPage: vi.fn(async () => { throw new Error('foreground page creation') }),
+    browser: () => ({ newBrowserCDPSession: async () => ({
+      send: async (_method: string, args: { url: string; background: boolean }) => createTarget(args), detach,
+    }) }),
+    newCDPSession: async (page: Page) => ({ send: async () => ({ targetInfo: { targetId: targets.get(page) } }), detach }),
     setDefaultTimeout: vi.fn(),
-    close: vi.fn(async () => undefined),
-    on: vi.fn(),
+    close: vi.fn(async () => { events.emit('close') }),
+    on: vi.fn((event: string, listener: (...args: unknown[]) => void) => events.on(event, listener)),
+    removeListener: (event: string, listener: (...args: unknown[]) => void) => events.removeListener(event, listener),
   }
-  return { context, mocks: { newPage, created } }
+  return { context, mocks: { createTarget, created, detach, events } }
 }
 
 beforeEach(() => {
@@ -509,7 +521,7 @@ describe('PlaywrightSession command dispatch', () => {
     const { session, mocks } = await mount([])
 
     await expect(session.act({ kind: 'snapshot' })).resolves.toMatchObject({ kind: 'page' })
-    expect(mocks.newPage).toHaveBeenCalled()
+    expect(mocks.createTarget).toHaveBeenCalled()
   })
 
   it('rejects an unknown command kind through the closed-union default', async () => {
@@ -588,7 +600,7 @@ describe('PlaywrightSession command dispatch', () => {
     await session.act({ kind: 'closePage' })
     await expect(session.act({ kind: 'navigate', page: 'replacement', url: 'https://a.test/' }))
       .resolves.toMatchObject({ kind: 'page', page: 'replacement' })
-    expect(mocks.newPage).toHaveBeenCalledTimes(1)
+    expect(mocks.createTarget).toHaveBeenCalledTimes(1)
   })
 
   it('reserves page capacity across parallel callers', async () => {
@@ -600,7 +612,7 @@ describe('PlaywrightSession command dispatch', () => {
     expect(results.filter(result => result.status === 'rejected')).toMatchObject([
       { reason: { code: 'BROWSER_PAGE_LIMIT' } },
     ])
-    expect(mocks.newPage).toHaveBeenCalledTimes(1)
+    expect(mocks.createTarget).toHaveBeenCalledTimes(1)
   })
 
   it('opens more than six pages without closing existing work when the ceiling is disabled', async () => {
@@ -610,7 +622,7 @@ describe('PlaywrightSession command dispatch', () => {
       kind: 'newPage', page: `work-${index}`,
     })))
     expect(results).toHaveLength(7)
-    expect(mocks.newPage).toHaveBeenCalledTimes(7)
+    expect(mocks.createTarget).toHaveBeenCalledTimes(7)
     expect(existing.mocks.close).not.toHaveBeenCalled()
     await expect(session.act({ kind: 'snapshot', page: 'p1' })).resolves.toMatchObject({ kind: 'page' })
   })
@@ -623,9 +635,86 @@ describe('PlaywrightSession command dispatch', () => {
 
   it('releases a reservation when Chromium cannot create the page', async () => {
     const { session, mocks } = await mount([], { maxOpenPages: 1 })
-    mocks.newPage.mockRejectedValueOnce(new Error('creation failed'))
+    mocks.createTarget.mockRejectedValueOnce(new Error('creation failed'))
     await expect(session.act({ kind: 'navigate', page: 'a', url: 'https://a.test/' })).rejects.toThrow('creation failed')
+    expect(mocks.events.listenerCount('page')).toBe(0)
     await expect(session.act({ kind: 'navigate', page: 'b', url: 'https://b.test/' })).resolves.toMatchObject({ kind: 'page' })
+  })
+
+  it('creates background targets and matches concurrent pages to their target ids', async () => {
+    const { session, mocks, context } = await mount([])
+    const create = mocks.createTarget.getMockImplementation()!
+    const secondCreated = Promise.withResolvers<undefined>()
+    mocks.createTarget.mockImplementationOnce(async (args) => {
+      const target = await create(args)
+      await secondCreated.promise
+      return target
+    }).mockImplementationOnce(async (args) => {
+      const target = await create(args)
+      secondCreated.resolve(undefined)
+      return target
+    })
+    await Promise.all([
+      session.act({ kind: 'navigate', page: 'a', url: 'https://a.test/' }),
+      session.act({ kind: 'navigate', page: 'b', url: 'https://b.test/' }),
+    ])
+    expect(mocks.createTarget.mock.calls).toEqual([
+      [{ url: 'about:blank', background: true }], [{ url: 'about:blank', background: true }],
+    ])
+    expect(context.newPage).not.toHaveBeenCalled()
+    expect(mocks.created[0]!.mocks.goto).toHaveBeenCalledWith('https://a.test/', expect.anything())
+    expect(mocks.created[1]!.mocks.goto).toHaveBeenCalledWith('https://b.test/', expect.anything())
+    expect(mocks.events.listenerCount('page')).toBe(0)
+  })
+
+  it('times out missing page events and releases their listeners and reservation', async () => {
+    const { session, mocks } = await mount([], { defaultTimeoutMs: 20, maxOpenPages: 1 })
+    mocks.createTarget.mockResolvedValueOnce({ targetId: 'missing' })
+    await expect(session.act({ kind: 'newPage', page: 'a' })).rejects.toThrow('page creation exceeded 20ms')
+    expect(mocks.events.listenerCount('page')).toBe(0)
+    expect(mocks.detach).toHaveBeenCalledTimes(1)
+    await expect(session.act({ kind: 'newPage', page: 'b' })).resolves.toMatchObject({ page: 'b' })
+  })
+
+  it('ignores an unrelated page closing while a background target is matched', async () => {
+    const { session, mocks, context } = await mount([])
+    const other = fakePage()
+    const create = mocks.createTarget.getMockImplementation()!
+    mocks.createTarget.mockImplementationOnce(async (args) => {
+      mocks.events.emit('page', other.page)
+      return create(args)
+    })
+    vi.spyOn(context, 'newCDPSession').mockImplementationOnce(async (page) => {
+      expect(page).toBe(other.page)
+      vi.spyOn(page, 'isClosed').mockReturnValue(true)
+      throw new Error('target closed')
+    })
+    await expect(session.act({ kind: 'newPage', page: 'work' })).resolves.toMatchObject({ page: 'work' })
+    expect(mocks.events.listenerCount('page')).toBe(0)
+  })
+
+  it('reports page inspection failures and releases the listener', async () => {
+    const { session, mocks, context } = await mount([])
+    vi.spyOn(context, 'newCDPSession').mockRejectedValueOnce(new Error('inspection failed'))
+    await expect(session.act({ kind: 'newPage', page: 'work' })).rejects.toThrow('inspection failed')
+    expect(mocks.events.listenerCount('page')).toBe(0)
+  })
+
+  it('rejects a context without a Chromium browser connection', async () => {
+    const { context } = fakeContext([])
+    launchPersistentContext.mockResolvedValueOnce({ ...context, browser: () => null })
+    const session = await new PlaywrightBrowserProvider(resolvedConfig()).open()
+    await expect(session.act({ kind: 'newPage', page: 'work' })).rejects.toThrow('has no browser connection')
+  })
+
+  it('stops waiting for a page when its context closes', async () => {
+    const { session, mocks } = await mount([])
+    mocks.createTarget.mockImplementationOnce(async () => {
+      mocks.events.emit('close')
+      return { targetId: 'missing' }
+    })
+    await expect(session.act({ kind: 'newPage', page: 'a' })).rejects.toThrow('browser closed before the created page became available')
+    expect(mocks.events.listenerCount('page')).toBe(0)
   })
 
   it('uses the deployment navigation settings unless the command overrides readiness', async () => {
@@ -643,12 +732,12 @@ describe('PlaywrightSession command dispatch', () => {
 
     const opened = await session.act({ kind: 'navigate', page: 'work', url: 'https://a.test/' })
     expect(opened).toMatchObject({ kind: 'page', page: 'work' })
-    expect(mocks.newPage).toHaveBeenCalledTimes(1)
+    expect(mocks.createTarget).toHaveBeenCalledTimes(1)
     expect(first.mocks.goto).not.toHaveBeenCalled()
 
     const again = await session.act({ kind: 'navigate', page: 'work', url: 'https://a.test/2' })
     expect(again).toMatchObject({ kind: 'page', page: 'work' })
-    expect(mocks.newPage).toHaveBeenCalledTimes(1)
+    expect(mocks.createTarget).toHaveBeenCalledTimes(1)
     expect(mocks.created[0]?.mocks.goto).toHaveBeenCalledWith('https://a.test/2', expect.anything())
   })
 

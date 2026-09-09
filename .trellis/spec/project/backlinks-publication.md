@@ -12,13 +12,13 @@ Browser routing uses `browser.act(command, signal?, browserId?)` and `closeSessi
 
 ## Contracts
 
-The [publication sidebar](../../../packages/client/ui-backlinks-console/README.md) starts with compact batch rows that retain batch selection and single/bulk publication. Concurrent reveals only browser assignment and binding controls; its value survives sidebar remounts within the client plugin instance. Toggling preserves selected batches and browser overrides without submitting a request. The console component test and assembled Web snapshot cover both modes and responsive remounts.
+The [publication sidebar](../../../packages/client/ui-backlinks-console/README.md) starts with compact batch rows that retain batch selection and single/bulk publication. Concurrent reveals only browser assignment and binding controls; its value survives sidebar remounts within the client plugin instance. Toggling preserves selected batches and browser overrides without submitting a request. The console component test and assembled Web snapshot cover both modes and responsive remounts. Each panel opening or search change renders the newest 50 matches; Load more adds 50, and Select visible includes only rendered matches. Search still examines all fetched summaries. Automatic refresh reuses successful reads younger than 30 seconds and runs only in visible tabs; return refreshes stale data, manual refresh bypasses freshness, and concurrent callers share one read. The upstream API remains unpaginated.
 
 Explicit anchors take precedence. An empty list uses the saved website name and absolute HTTP(S) siteUrl; other submission-pack fields remain unchanged. Invalid explicit anchors fail, and unusable defaults leave an empty list for preflight to stop without pages, leases or model calls.
 
 Attempt history comes from the append-only parent log, including records outside the current model surface. A saved result prevents further browser input and navigation. Unknown submissions cannot be closed or retried. live/submitted require a declared final submission; live also requires an assigned publishing hostname, a different target hostname and an observed matching href. Source-wide published exclusions cover the full batch even during manual selection.
 
-Publication children expose only browser and backlinks. Other tools, including Bash, are denied by the executor before their bodies run. Required local upload files are prepared outside publication. Scoped ToolDefinition parameters are JSON Schema: submission, receipt and verificationSelector belong inside properties, preserving inherited properties and leaving the global definitions unchanged. submission remains a boolean; strings such as "True" and "False" are rejected before browser input.
+Publication children expose only browser and backlinks. Other tools, including Bash, are denied by the executor before their bodies run. Required local upload files are prepared outside publication. bringToFront is rejected by the scoped executor before browser dispatch, even after a result is saved. Page input stays in Playwright/CDP; shell and system input tools remain unavailable. Manual-required failures preserve their page and window state; manualRequired returns itemId, browserId, page and reason for notification. Only retryable failures with no final submission or uncertain input release their pages. Scoped ToolDefinition parameters are JSON Schema: submission, receipt and verificationSelector belong inside properties, preserving inherited properties and leaving the global definitions unchanged. submission remains a boolean; strings such as "True" and "False" are rejected before browser input.
 
 Local budget or output-token stops reconcile the item and continue unrelated work. Earlier pending attempts and item reconciliation failures are excluded from further dispatch and listed in unresolvedItemIds without rewriting backend outcomes. remaining=0 with stoppedReason=null finishes the selected execution and reports these items for manual review. Model, checkpoint, lease and backend authorization failures stop admissions and drain active work. A terminal provider error must not be replaced by a local budget diagnostic.
 
@@ -42,6 +42,8 @@ Local budget or output-token stops reconcile the item and continue unrelated wor
 | Competing profile additions from the same revision | Reject stale settings write; do not lose the first addition |
 | Child names another browser | Reject before dispatch |
 | Child calls Bash | UNKNOWN_TOOL before shell execution |
+| Child calls bringToFront | Reject before browser dispatch, including after a saved result |
+| Saved manual_required failure | Retain original page; report manualRequired; continue other items |
 | Model request contains publication fields | Valid object schema with fields under properties |
 | click/press uses a string submission flag | Reject before browser dispatch |
 | Batches share a browser or website | Wait for all earlier batches sharing either resource |
@@ -56,7 +58,7 @@ Base: an omitted browser uses the saved website binding, then the deployment def
 
 Use the existing provider/publisher specs and backlink Loader snapshots. Verify model requests remain at zero while checkpoint flushing is pending or failed, then prove cancellation/replay preserves attempt ids. Exercise terminal writes, live-origin rejection, selected duplicates, local budget continuation and terminal quota preservation through the real tool executor. Both SDK snapshots must retain backlinks/attempt payloads. Generated known event types and bilingual catalogs must stay synchronized.
 
-Inspect the actual child request/header tool schemas, including inherited fields, boolean submission and string receipt/verificationSelector. Test a fabricated Bash call against a registered global shell, and assert the shell body never runs. The guarded-tools Chrome scenario records that denial and still verifies local form publication through the allowed browser tool.
+Inspect the actual child request/header tool schemas, including inherited fields, boolean submission and string receipt/verificationSelector. Test a fabricated Bash call against a registered global shell, and assert the shell body never runs. The guarded-tools Chrome scenario records shell and window-activation denial and still verifies local form publication through the allowed browser tool. The manual-required scenario reads the retained Chrome page after publication returns, verifies the notification fields, and checks that another item completes.
 
 ## Wrong vs Correct
 
@@ -67,6 +69,8 @@ Wrong: check only currently running resources and let a later batch bypass an ea
 Wrong: spread a resolved ToolDefinition.parameters and append submission beside type/properties. Correct: copy the existing properties and add submission there; validate the schema captured from a real child request.
 
 ## Browser assignment
+
+Playwright page creation uses Target.createTarget with background=true; context.newPage defaults to foreground creation and can restore minimized windows. Match page events by target id across concurrent reservations, clean up listeners on failure/timeout, and retain the existing page ceiling. The macOS headed Loader snapshot must keep one minimized window through concurrent page creation and page input; headless snapshots alone cannot prove this behavior. windowPosition is only a placement hint, not focus policy.
 
 Browser ids name configured independent resources. `browser.resolve(id?)` rejects unavailable explicit selections; `browser.act(command, signal?, browserId?)` and `closeSession(browserId?)` operate on that browser only. Playwright named profiles persist in its settings section; browser ids, normalized directories and local CDP origins must be distinct. Open profiles cannot be reconfigured; attached sessions disconnect without closing operator tabs.
 

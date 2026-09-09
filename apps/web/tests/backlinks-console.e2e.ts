@@ -37,6 +37,8 @@ describe('web: publish batch selection', () => {
   let scaffold: WebScaffold
   let browser: Browser
   let page: Page
+  let zeroCounts = false
+  let largeList = false
   const requests: string[] = []
   const events: SessionEvent[] = []
 
@@ -45,7 +47,10 @@ describe('web: publish batch selection', () => {
       requests.push(`${request.method ?? ''} ${request.url ?? ''}`)
       response.setHeader('content-type', 'application/json')
       if (request.method === 'GET' && request.url === '/api/agent/batches') {
-        response.end(JSON.stringify({ batches: [batch(99), batch(389), batch(100)] }))
+        const summaries = largeList ? Array.from({ length: 125 }, (_, id) => batch(1001 + id)) : [batch(99), batch(389), batch(100)]
+        response.end(JSON.stringify({ batches: summaries.map(value => zeroCounts ? {
+          ...value, executing: true, counts: { pending: 99, executed: 0, failed: 0, skipped: 0, total: 99 },
+        } : value) }))
       } else if (request.method === 'GET' && request.url === '/api/agent/batches/389') {
         response.end(JSON.stringify({
           batch: batch(389), website: { id: 389, name: 'Site 389', siteUrl: 'https://389.example', siteHost: '389.example' },
@@ -182,5 +187,64 @@ describe('web: publish batch selection', () => {
     await panel.getByRole('button', { name: '发布', exact: true }).nth(1).click()
     await expect.poll(() => submitted().at(-1)).toBe('/backlink-publish 100')
     expect(submitted()).toHaveLength(2)
+  })
+
+  it('keeps zero success and failure visible during publication at desktop and narrow widths', async () => {
+    zeroCounts = true
+    const panel = page.getByRole('region', { name: '外链发布控制台' })
+    await panel.getByRole('button', { name: '刷新', exact: true }).click()
+    const row = panel.getByRole('button', { name: /#389 389.example/ })
+    await expect.poll(() => row.textContent()).toContain('待 99成 0败 0')
+    for (const width of [1100, 390]) {
+      await page.setViewportSize({ width, height: 850 })
+      if (width === 390) await page.getByRole('button', { name: '打开侧边栏', exact: true }).click()
+      for (const text of ['待 99', '成 0', '败 0']) {
+        expect(await row.getByText(text, { exact: true }).isVisible()).toBe(true)
+      }
+      expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+      await panel.screenshot({ path: join(SHOTS, `zero-counts-${String(width)}.png`), animations: 'disabled' })
+    }
+  })
+
+  it('pages 50 batches at a time and reopens fresh results without fetching again', async () => {
+    largeList = true
+    await page.setViewportSize({ width: 1100, height: 850 })
+    const panel = page.getByRole('region', { name: '外链发布控制台' })
+    const rows = panel.getByRole('checkbox', { name: /^选择批次/ })
+    const more = panel.getByRole('button', { name: '加载更多（50 批）', exact: true })
+    await panel.getByRole('button', { name: '刷新', exact: true }).click()
+    await rows.first().filter({ visible: true }).waitFor()
+    await expect.poll(() => rows.count()).toBe(50)
+    expect(await rows.first().getAttribute('aria-label')).toBe('选择批次 #1125 1125.example')
+    expect(await rows.last().getAttribute('aria-label')).toBe('选择批次 #1076 1076.example')
+    await more.scrollIntoViewIfNeeded()
+    await panel.screenshot({ path: join(SHOTS, 'pagination-50-desktop.png') })
+    await compareOrRefreshGolden(join(SNAPSHOTS, 'pagination.expected.md'),
+      await captureStableAria(page, '[role="region"][aria-label="外链发布控制台"]', scaffold.workspaceCwd), webSnapshotMode())
+    const readCount = requests.filter(request => request === 'GET /api/agent/batches').length
+    await more.click()
+    expect(await rows.count()).toBe(100)
+    await more.click()
+    expect(await rows.count()).toBe(125)
+    expect(await more.count()).toBe(0)
+    const search = panel.getByPlaceholder('搜索批次号或网站域名')
+    await search.fill('1001')
+    expect(await rows.count()).toBe(1)
+    expect(await rows.first().getAttribute('aria-label')).toBe('选择批次 #1001 1001.example')
+    await search.fill('')
+    expect(await rows.count()).toBe(50)
+    await page.getByRole('tab', { name: '会话', exact: true }).click()
+    await page.getByRole('tab', { name: '发布批次', exact: true }).click()
+    await rows.first().waitFor()
+    expect(await rows.count()).toBe(50)
+    expect(requests.filter(request => request === 'GET /api/agent/batches')).toHaveLength(readCount)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.getByRole('button', { name: '打开侧边栏', exact: true }).click()
+    await more.scrollIntoViewIfNeeded()
+    await panel.screenshot({ path: join(SHOTS, 'pagination-50-narrow.png'), animations: 'disabled' })
+    expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    await more.click()
+    expect(await rows.count()).toBe(100)
+    expect(requests.filter(request => request === 'GET /api/agent/batches')).toHaveLength(readCount)
   })
 })

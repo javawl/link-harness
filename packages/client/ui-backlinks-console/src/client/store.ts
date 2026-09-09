@@ -36,7 +36,12 @@ export interface ConsoleStore {
   readonly store: SnapshotStore<ConsoleViewState>
   open(): void
   close(): void
-  refresh(): Promise<void>
+  /**
+   * Refresh batch summaries and browser choices, sharing any in-flight read.
+   * @param maxAgeMs - reuse successful data younger than this age; defaults to 0 for a forced refresh.
+   * @returns after the read settles or fresh data is reused; errors stay in view state.
+   */
+  refresh(maxAgeMs?: number): Promise<void>
   toggleDetail(batchId: number): Promise<void>
   /**
    * Keep the browser-control visibility choice across sidebar remounts.
@@ -70,6 +75,8 @@ export interface ConsoleStore {
  * @returns the store handle the sidebar components consume.
  */
 export function createConsoleStore(ctx: ClientContext): ConsoleStore {
+  let refreshedAt: number | undefined
+  let refreshing: Promise<void> | undefined
   const store = createSnapshotStore<ConsoleViewState>({
     open: false,
     concurrent: false,
@@ -144,24 +151,32 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
     close(): void {
       store.update((state) => { state.open = false })
     },
-    async refresh(): Promise<void> {
-      store.update((state) => { state.status = 'loading'; state.error = null })
-      try {
-        const [batches, browserResult] = await Promise.all([readBatches(), ctx.remote.backlinksConsole.browsers()])
-        if (!browserResult.ok) throw new Error(`${browserResult.error.code}: ${browserResult.error.message}`)
-        store.update((state) => {
-          state.batches = batches
-          state.browsers = browserResult.value.browsers
-          state.browserBindings = browserResult.value.bindings
-          state.selectedBatchIds = state.selectedBatchIds.filter(id => batches.some(batch => batch.id === id))
-          state.status = 'ready'
-        })
-      } catch (error) {
-        store.update((state) => {
-          state.status = 'error'
-          state.error = error instanceof Error ? error.message : String(error)
-        })
+    refresh(maxAgeMs = 0): Promise<void> {
+      if (refreshing !== undefined) return refreshing
+      if (store.getSnapshot().status === 'ready' && refreshedAt !== undefined && Date.now() - refreshedAt < maxAgeMs) {
+        return Promise.resolve()
       }
+      refreshing = Promise.resolve().then(async () => {
+        store.update((state) => { state.status = 'loading'; state.error = null })
+        try {
+          const [batches, browserResult] = await Promise.all([readBatches(), ctx.remote.backlinksConsole.browsers()])
+          if (!browserResult.ok) throw new Error(`${browserResult.error.code}: ${browserResult.error.message}`)
+          refreshedAt = Date.now()
+          store.update((state) => {
+            state.batches = batches
+            state.browsers = browserResult.value.browsers
+            state.browserBindings = browserResult.value.bindings
+            state.selectedBatchIds = state.selectedBatchIds.filter(id => batches.some(batch => batch.id === id))
+            state.status = 'ready'
+          })
+        } catch (error) {
+          store.update((state) => {
+            state.status = 'error'
+            state.error = error instanceof Error ? error.message : String(error)
+          })
+        }
+      }).finally(() => { refreshing = undefined })
+      return refreshing
     },
     async toggleDetail(batchId: number): Promise<void> {
       if (store.getSnapshot().details[batchId] !== undefined) {

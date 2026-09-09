@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { Context } from '@deepseek-ai/cordis'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BacklinkBatchSummary } from '@deepseek-ai/dsh-backlinks/types'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
@@ -53,9 +53,106 @@ function bench() {
   return { store, batches, detail, send, open, connectWorkspace, scope, workspaceState, browsers, bindBrowser, addBrowser, t: locale.bind('backlinksConsole') }
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 
 describe('publish batch console', () => {
+  it('shows the latest 50 batches and reveals 50 more per click without another request', async () => {
+    const b = bench()
+    b.batches.mockResolvedValue({ ok: true, value: Array.from({ length: 125 }, (_, id) => batch(id + 1)) })
+    render(<SidebarConsolePanel store={b.store} t={b.t} />)
+    await screen.findByRole('checkbox', { name: '选择批次 #125 125.example' })
+    expect(screen.getAllByRole('checkbox', { name: /^选择批次/ })).toHaveLength(50)
+    expect(screen.queryByRole('checkbox', { name: '选择批次 #75 75.example' })).toBeNull()
+    fireEvent.click(screen.getByRole('checkbox', { name: '全选当前列表' }))
+    expect(b.store.store.getSnapshot().selectedBatchIds).toEqual(Array.from({ length: 50 }, (_, i) => 125 - i))
+    fireEvent.click(screen.getByRole('button', { name: '加载更多（50 批）' }))
+    expect(screen.getAllByRole('checkbox', { name: /^选择批次/ })).toHaveLength(100)
+    expect(screen.getByRole<HTMLInputElement>('checkbox', { name: '全选当前列表' }).indeterminate).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: '加载更多（50 批）' }))
+    expect(screen.getAllByRole('checkbox', { name: /^选择批次/ })).toHaveLength(125)
+    expect(screen.queryByRole('button', { name: '加载更多（50 批）' })).toBeNull()
+    expect(b.batches).toHaveBeenCalledTimes(1)
+    fireEvent.change(screen.getByPlaceholderText('搜索批次号或网站域名'), { target: { value: '1.example' } })
+    expect(screen.getByRole('checkbox', { name: '选择批次 #1 1.example' })).toBeTruthy()
+    fireEvent.change(screen.getByPlaceholderText('搜索批次号或网站域名'), { target: { value: '' } })
+    expect(screen.getAllByRole('checkbox', { name: /^选择批次/ })).toHaveLength(50)
+    expect(b.store.store.getSnapshot().selectedBatchIds).toHaveLength(50)
+    expect(b.send).not.toHaveBeenCalled()
+  })
+
+  it.each([0, 49, 50])('omits load more for %i batches', async (count) => {
+    const b = bench()
+    b.batches.mockResolvedValue({ ok: true, value: Array.from({ length: count }, (_, id) => batch(id + 1)) })
+    await b.store.refresh()
+    render(<SidebarConsolePanel store={b.store} t={b.t} />)
+    expect(screen.queryAllByRole('checkbox', { name: /^选择批次/ })).toHaveLength(count)
+    expect(screen.queryByRole('button', { name: '加载更多（50 批）' })).toBeNull()
+  })
+
+  it('shares overlapping refreshes, reuses fresh data and permits forced refresh and retry', async () => {
+    vi.useFakeTimers()
+    const b = bench()
+    let finish!: (value: Awaited<ReturnType<typeof b.batches>>) => void
+    b.batches.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    const first = b.store.refresh()
+    const overlapping = b.store.refresh()
+    finish({ ok: true, value: [batch(424)] })
+    await Promise.all([first, overlapping])
+    expect(b.batches).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(29_999)
+    await b.store.refresh(30_000)
+    expect(b.batches).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    await b.store.refresh(30_000)
+    expect(b.batches).toHaveBeenCalledTimes(2)
+    b.batches.mockRejectedValueOnce(new Error('offline'))
+    await b.store.refresh()
+    expect(b.store.store.getSnapshot()).toMatchObject({ status: 'error', error: 'offline' })
+    expect(b.store.store.getSnapshot().batches).toHaveLength(3)
+    await b.store.refresh(30_000)
+    expect(b.batches).toHaveBeenCalledTimes(4)
+    expect(b.store.store.getSnapshot()).toMatchObject({ status: 'ready', error: null })
+  })
+
+  it('pauses hidden polling, refreshes stale data on return and cleans up on unmount', async () => {
+    vi.useFakeTimers()
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    const b = bench()
+    await b.store.refresh()
+    const view = render(<SidebarConsolePanel store={b.store} t={b.t} />)
+    visibility.mockReturnValue('hidden')
+    fireEvent(document, new Event('visibilitychange'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    expect(b.batches).toHaveBeenCalledTimes(1)
+    visibility.mockReturnValue('visible')
+    await act(async () => { fireEvent(document, new Event('visibilitychange')) })
+    expect(b.batches).toHaveBeenCalledTimes(2)
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+    expect(b.batches).toHaveBeenCalledTimes(3)
+    view.unmount()
+    await vi.advanceTimersByTimeAsync(30_000)
+    fireEvent(document, new Event('visibilitychange'))
+    expect(b.batches).toHaveBeenCalledTimes(3)
+    render(<SidebarConsolePanel store={b.store} t={b.t} />)
+    await act(async () => { await Promise.resolve() })
+    expect(b.batches).toHaveBeenCalledTimes(4)
+  })
+
+  it.each([false, true])('shows all three zero counts with executing=%s', async (executing) => {
+    const b = bench()
+    b.batches.mockResolvedValue({ ok: true, value: [{
+      ...batch(424), executing,
+      counts: { pending: 0, executed: 0, failed: 0, skipped: 0, total: 0 },
+    }] })
+    render(<SidebarConsolePanel store={b.store} t={b.t} />)
+    const row = await screen.findByRole('button', { name: /#424 424.example/ })
+    expect(row.textContent).toContain('待 0成 0败 0')
+  })
+
   it('sorts numeric ids on every refresh and drops only removed selections', async () => {
     const b = bench()
     await b.store.refresh()

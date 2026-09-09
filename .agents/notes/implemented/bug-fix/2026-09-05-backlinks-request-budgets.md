@@ -32,7 +32,7 @@ Model or infrastructure errors stop further admission and drain active work befo
 
 The [publisher snapshot](../../../../examples/backlink-agent/tests/publisher.snapshot.ts) exercises model selection, quota stop and unrecorded prior attempts through the Loader and native driver. Provider failures leave unstarted backend items pending, and reconciliation does not issue a second website submission.
 
-The [retained-page decision](2026-09-07-backlinks-retained-pages.md) extends this policy with an opt-out ceiling and cleanup of saved failures before submission. Native execution budgets and uncertain-input retention remain required.
+The [retained-page decision](2026-09-07-backlinks-retained-pages.md) extends this policy with an opt-out ceiling and cleanup of saved retryable failures before submission. Native execution budgets and uncertain-input retention remain required.
 
 ## Alternatives considered
 

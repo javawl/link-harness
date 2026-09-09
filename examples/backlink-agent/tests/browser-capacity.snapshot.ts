@@ -37,3 +37,21 @@ it.skipIf(!chromeInstalled)('bounds real browser pages, snapshot waits and stuck
     }
   `)
 }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+
+it.skipIf(!chromeInstalled || process.platform !== 'darwin')('keeps headed Chrome minimized while opening and using background pages', async () => {
+  const configPath = fileURLToPath(new URL('../browser-capacity.cordis.snapshot.yml', import.meta.url))
+  const driver = fileURLToPath(new URL('./fixtures/browser-background-driver.ts', import.meta.url))
+  const result = await runLoaderSmoke({
+    label: 'background Chrome snapshot', tempDirPrefix: 'dsh-browser-background-',
+    binScript: driver, libBinScript: driver, configPath, binArgs: [configPath],
+    tsconfigPath: fileURLToPath(new URL('../../../tsconfig.json', import.meta.url)),
+  })
+  expect(result.stderr).toBe('')
+  expect(JSON.parse(result.stdout.trim())).toMatchInlineSnapshot(`
+    {
+      "backgroundPages": 3,
+      "minimizedAfterInput": true,
+      "sameWindow": true,
+    }
+  `)
+}, LOADER_SMOKE_TEST_TIMEOUT_MS)

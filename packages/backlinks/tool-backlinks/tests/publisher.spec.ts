@@ -186,7 +186,7 @@ describe('foreground publication through the native child and tool executors', (
 
   it('rejects a child shell call without executing the registered global tool', async () => {
     const made = await setup({ script: (prompt, step) => {
-      if (step === 0) return toolCallResponse('shell', 'bash', { command: 'curl -X POST https://directory-1.test/' })
+      if (step === 0) return toolCallResponse('shell', 'bash', { command: 'osascript -e \'tell application "Google Chrome" to activate\'' })
       if (step === 1) return toolCallResponse('save', 'backlinks', {
         action: 'item_result', itemId: prompt.item.id, leaseId: prompt.leaseId,
         status: 'skipped', skipReason: 'No browser submission.',
@@ -230,17 +230,48 @@ describe('foreground publication through the native child and tool executors', (
     expect(made.results).toEqual([])
   })
 
-  it('reuses capacity after recorded manual-required failures before any final submission', async () => {
+  it('reuses capacity after recorded retryable failures before any final submission', async () => {
     const made = await setup({ items: [item(1), item(2), item(3)], capacity: 2,
       script: (prompt, step) => step === 0
         ? toolCallResponse(`failed-${prompt.item.id}`, 'backlinks', { action: 'item_result', itemId: prompt.item.id,
-          leaseId: prompt.leaseId, status: 'failed', failureMode: 'manual_required', failureReason: 'Site requires an operator login.' })
+          leaseId: prompt.leaseId, status: 'failed', failureMode: 'retryable', failureReason: 'Site is temporarily unavailable.' })
         : textResponse('Failure recorded without submitting.'),
     })
     const result = await made.publish()
     expect(result.value).toMatchObject({ attempted: 3, remaining: 0, counts: { failed: 3 }, stoppedReason: null })
     expect(made.starts).toEqual([1, 2, 3])
     expect([...made.pages.keys()]).toEqual(['operator-page'])
+  })
+
+  it('rejects window activation and retains a manual-required page while other items finish', async () => {
+    const made = await setup({ items: [item(1), item(2)], script: (prompt, step) => {
+      if (step === 0) return toolCallResponse('navigate', 'browser', { action: 'navigate', url: prompt.item.sourceUrl })
+      if (prompt.item.id === 1) {
+        if (step === 1 || step === 3) return toolCallResponse(`focus-${step}`, 'browser', { action: 'bringToFront' })
+        if (step === 2) return toolCallResponse('manual', 'backlinks', {
+          action: 'item_result', itemId: prompt.item.id, leaseId: prompt.leaseId,
+          status: 'failed', failureMode: 'manual_required', failureReason: 'Complete login manually in the retained page.',
+        })
+      } else if (step === 1) return toolCallResponse('skip', 'backlinks', {
+        action: 'item_result', itemId: prompt.item.id, leaseId: prompt.leaseId,
+        status: 'skipped', skipReason: 'Listing already exists.',
+      })
+      return textResponse('Results saved; item 1 needs manual login.')
+    } })
+    const result = await made.publish()
+    expect(result.value).toMatchObject({ attempted: 2, remaining: 0, counts: { failed: 1, skipped: 1 }, stoppedReason: null })
+    expect(result.value).toMatchObject({ manualRequired: [{
+      itemId: 1, browserId: 'fixture',
+      reason: 'Complete login manually in the retained page.',
+    }] })
+    expect(result.value).toHaveProperty('manualRequired.0.page', [...made.pages.keys()].find(page => page.endsWith('-1')))
+    expect(JSON.stringify(result.content)).toContain('Complete login manually in the retained page.')
+    expect(made.received.filter(command => command.kind === 'bringToFront')).toEqual([])
+    expect([...made.pages.values()]).toEqual(['https://operator.test/unfinished', 'https://directory-1.test/'])
+    expect(made.results).toContainEqual({ itemId: 1, result: {
+      status: 'failed', failureMode: 'manual_required', failureReason: 'Complete login manually in the retained page.',
+    } })
+    expect(JSON.stringify(made.adapter.requests)).toContain('Publication cannot activate browser windows.')
   })
 
   it('rechecks admission after a page reservation races a model failure', async () => {

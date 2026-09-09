@@ -19,6 +19,8 @@ export type SidebarConsolePanelProps = PropsLocale<'backlinksConsole'> & {
 
 /** The panel's fixed registration id; the tab and the body share it. */
 const PANEL_ID = 'backlinks-console'
+const PAGE_SIZE = 50
+const REFRESH_INTERVAL_MS = 30_000
 
 /**
  * Render the console's tab button in the sidebar strip.
@@ -77,9 +79,9 @@ function BatchRow(props: SidebarConsolePanelProps & { batch: BacklinkBatchSummar
             #{String(batch.id)} {batch.websiteHost}
           </span>
           <span className={css.rowChips}>
-            {batch.counts.pending > 0 ? <span className={css.pending}>待 {String(batch.counts.pending)}</span> : null}
-            {batch.counts.executed > 0 ? <span className={css.done}>成 {String(batch.counts.executed)}</span> : null}
-            {batch.counts.failed > 0 ? <span className={css.failed}>败 {String(batch.counts.failed)}</span> : null}
+            <span className={css.pending}>待 {String(batch.counts.pending)}</span>
+            <span className={css.done}>成 {String(batch.counts.executed)}</span>
+            <span className={css.failed}>败 {String(batch.counts.failed)}</span>
             {batch.executing ? <span className={css.pulseDot} aria-label={t('executing')} /> : null}
           </span>
         </button>
@@ -143,24 +145,33 @@ export function SidebarConsolePanel(props: SidebarConsolePanelProps) {
     () => store.store.getSnapshot(),
   )
   const [query, setQuery] = useState('')
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const { concurrent } = state
   const [browserName, setBrowserName] = useState('')
   const [browserKind, setBrowserKind] = useState<'profile' | 'cdp'>('profile')
   const [browserLocation, setBrowserLocation] = useState('')
 
   useEffect(() => {
-    void store.refresh()
-    const timer = setInterval(() => { void store.refresh() }, 30_000)
-    return () => { clearInterval(timer) }
+    const refreshVisible = (): void => {
+      if (document.visibilityState === 'visible') void store.refresh(REFRESH_INTERVAL_MS)
+    }
+    refreshVisible()
+    const timer = setInterval(refreshVisible, REFRESH_INTERVAL_MS)
+    document.addEventListener('visibilitychange', refreshVisible)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', refreshVisible)
+    }
   }, [store])
 
   const needle = query.trim().toLowerCase()
-  const batches = needle === ''
+  const matches = needle === ''
     ? state.batches
     : state.batches.filter(batch =>
       batch.websiteHost.toLowerCase().includes(needle)
       || String(batch.id).includes(needle)
       || batch.websiteName.toLowerCase().includes(needle))
+  const batches = matches.slice(0, visibleCount)
   const selectedVisible = batches.filter(batch => state.selectedBatchIds.includes(batch.id)).length
 
   return (
@@ -170,7 +181,7 @@ export function SidebarConsolePanel(props: SidebarConsolePanelProps) {
           className={css.search}
           placeholder={t('search.placeholder')}
           value={query}
-          onChange={(e) => { setQuery(e.target.value) }}
+          onChange={(e) => { setQuery(e.target.value); setVisibleCount(PAGE_SIZE) }}
         />
         <button type="button" className={css.toolButton} onClick={() => { void store.refresh() }}>
           {t('refresh')}
@@ -238,6 +249,11 @@ export function SidebarConsolePanel(props: SidebarConsolePanelProps) {
         : null}
       <div className={css.list}>
         {batches.map(batch => <BatchRow key={batch.id} {...props} batch={batch} />)}
+        {matches.length > batches.length ? <button
+          type="button"
+          className={css.toolButton}
+          onClick={() => { setVisibleCount(count => count + PAGE_SIZE) }}
+        >{t('loadMore')}</button> : null}
       </div>
     </div>
   )

@@ -64,7 +64,7 @@ function websiteHost(url: string): string {
 /**
  * Register the opt-in batch publisher beside the low-level backlinks tool.
  * @param ctx - owning plugin context; browser, agents, and subagents must be present.
- * @param config - resolved child policy.
+ * @param config - resolved child policy; publication cannot activate browser windows or use system input tools.
  * @param renewals - the backlinks tool's existing lease lifecycle owner.
  * @param timeoutMs - bound on reconciliation and release after cancellation.
  * @param parseResult - the existing backlinks JSON result validator.
@@ -177,7 +177,7 @@ export function applyPublisher(
     }
     agent.ctx.tools.register({
       ...browserTool,
-      description: `${browserTool.description} Your only page is assigned in the task; omitting page uses it. Every click or press requires submission: false for navigation/account work, true for the one final publication.`,
+      description: `${browserTool.description} Your only page is assigned in the task; omitting page uses it. Publication stays in the background: bringToFront is forbidden. Report human intervention as failed/manual_required with the reason and assigned browser/page; the operator opens it manually. Every click or press requires submission: false for navigation/account work, true for the one final publication.`,
       parameters: {
         ...browserTool.parameters,
         properties: {
@@ -190,8 +190,9 @@ export function applyPublisher(
         if (args.browserId !== undefined && args.browserId !== assignment.browserId) throw new Error(`Use only your assigned browser ${assignment.browserId}.`)
         if (args.page !== undefined && args.page !== assignment.page) throw new Error(`Use only your assigned page ${assignment.page}.`)
         if (args.action === 'newPage') throw new Error('This item already owns a reserved page; do not open another.')
+        if (args.action === 'bringToFront') throw new Error('Publication cannot activate browser windows. Report manual_required and let the operator open the retained page.')
         if (assignment.saved !== undefined
-          && !['snapshot', 'screenshot', 'waitFor', 'bringToFront', 'closePage'].includes(String(args.action))) {
+          && !['snapshot', 'screenshot', 'waitFor', 'closePage'].includes(String(args.action))) {
           throw new Error('This item already has a saved result; no further browser input or navigation is allowed.')
         }
         if (args.action === 'closePage') {
@@ -201,7 +202,7 @@ export function applyPublisher(
           }
         }
         if (assignment.submission !== 'unsubmitted'
-          && !['snapshot', 'screenshot', 'waitFor', 'navigate', 'bringToFront', 'closePage'].includes(String(args.action))) {
+          && !['snapshot', 'screenshot', 'waitFor', 'navigate', 'closePage'].includes(String(args.action))) {
           throw new Error('A final publication was dispatched. Verify it without further input; never submit again.')
         }
         if (args.action === 'click' || args.action === 'press') {
@@ -284,7 +285,7 @@ export function applyPublisher(
     }
     const safeToClose = !assignment.uncertain && assignment.submission !== 'unknown' && (assignment.submission === 'confirmed'
       || assignment.saved?.status === 'skipped'
-      || assignment.saved?.status === 'failed')
+      || (assignment.saved?.status === 'failed' && assignment.saved.failureMode === 'retryable'))
     if (safeToClose && !assignment.pageClosed) {
       await browser.act({ kind: 'closePage', page: assignment.page }, cleanupSignal, assignment.browserId)
       assignment.pageClosed = true
@@ -343,10 +344,10 @@ export function applyPublisher(
       const remaining = [...items]
       const firstItem = remaining[0]
       if (firstItem === undefined) {
-        return { attempted: 0, attemptedItemIds: [], unresolvedItemIds, remaining: 0, counts: {}, stoppedReason: null }
+        return { attempted: 0, attemptedItemIds: [], unresolvedItemIds, manualRequired: [], remaining: 0, counts: {}, stoppedReason: null }
       }
       if (detail.anchors.length === 0) {
-        return { attempted: 0, attemptedItemIds: [], unresolvedItemIds, remaining: remaining.length, counts: {},
+        return { attempted: 0, attemptedItemIds: [], unresolvedItemIds, manualRequired: [], remaining: remaining.length, counts: {},
           stoppedReason: `Website ${detail.website.id} needs a name and an absolute http(s) website URL, or a configured publication anchor. Update its website details before continuing; no items were claimed.` }
       }
       const pagePrefix = `publish-${randomUUID()}`
@@ -456,9 +457,14 @@ export function applyPublisher(
         const status = assignment.saved?.status ?? assignment.recordedStatus ?? (assignment.submission === 'confirmed' ? 'recorded' : 'unresolved')
         counts[status] = (counts[status] ?? 0) + 1
       }
+      const manualRequired = assignments.flatMap(assignment => assignment.saved?.status === 'failed'
+        && assignment.saved.failureMode === 'manual_required' ? [{
+          itemId: assignment.item.id, browserId: assignment.browserId, page: assignment.page,
+          reason: assignment.saved.failureReason,
+        }] : [])
       return { attempted: assignments.length, attemptedItemIds: assignments.map(assignment => assignment.item.id),
         unresolvedItemIds: unresolvedItemIds.sort((left, right) => left - right),
-        remaining: remaining.length, counts,
+        manualRequired, remaining: remaining.length, counts,
         stoppedReason: stoppedReason ?? (signal.aborted ? 'cancelled'
           : admissionBlocked ? 'Browser page capacity is occupied by preserved work; review those pages before continuing.' : null) }
     } finally {
@@ -569,7 +575,7 @@ export function applyPublisher(
 
   ctx.tools.register(defineTool({
     name: 'backlink_publish',
-    description: `Publish the user-confirmed batch scope using up to ${config.concurrency} rolling item workers, one per target host. The runtime claims and renews one lease, binds pages, verifies results, and releases the lease. This foreground call waits for completion; do not claim first or start separate subagents. Model, checkpoint, authentication or lease failures halt new starts. Per-item budget or reconciliation failures skip the affected item and continue the queue. unresolvedItemIds lists unconfirmed outcomes excluded from further dispatch; report them separately without resubmitting or changing their backend status to skipped. When remaining is zero and stoppedReason is null, finish the scope and list unresolved items for manual review.`,
+    description: `Publish the user-confirmed batch scope using up to ${config.concurrency} rolling item workers, one per target host. The runtime claims and renews one lease, binds pages, verifies results, and releases the lease. This foreground call waits for completion; do not claim first or start separate subagents. Model, checkpoint, authentication or lease failures halt new starts. Per-item budget or reconciliation failures skip the affected item and continue the queue. unresolvedItemIds lists unconfirmed outcomes excluded from further dispatch; report them separately without resubmitting or changing their backend status to skipped. When remaining is zero and stoppedReason is null, finish the scope and list unresolved items for manual review. Report manualRequired entries with their reason and browser/page; let the operator open those pages manually without activating windows.`,
     parameters: {
       batchId: { type: 'number', required: true, description: 'User-selected publish batch.' },
       browserId: { type: 'string', description: 'Explicit browser from browser_list; overrides the website binding. Omitted uses the saved website binding, then the default browser.' },
@@ -584,6 +590,10 @@ export function applyPublisher(
           attempted: { type: 'number', required: true },
           attemptedItemIds: { type: 'array', items: { type: 'number' }, required: true },
           unresolvedItemIds: { type: 'array', items: { type: 'number' }, required: true },
+          manualRequired: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+            itemId: { type: 'number', required: true }, browserId: { type: 'string', required: true },
+            page: { type: 'string', required: true }, reason: { type: 'string', required: true },
+          } } },
           remaining: { type: 'number', required: true },
           counts: { type: 'json', required: true },
           stoppedReason: { type: 'json', required: true },
@@ -592,6 +602,7 @@ export function applyPublisher(
       render: (_args, value) => [{ type: 'text', text: JSON.stringify({
         attempted: value.attempted, remaining: value.remaining, counts: value.counts, stoppedReason: value.stoppedReason,
         ...value.unresolvedItemIds.length > 0 ? { unresolvedItemIds: value.unresolvedItemIds } : {},
+        ...value.manualRequired.length > 0 ? { manualRequired: value.manualRequired } : {},
       }) }],
       presentationMeta: (_args, value) => ({ kind: 'backlinks', action: 'backlink_publish', attemptedItemIds: value.attemptedItemIds }),
     },

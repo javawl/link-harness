@@ -32,7 +32,7 @@ token-meter 投影把终态 finish 分片分隔的流计为不同尝试，包括
 
 [发布快照](../../../../examples/backlink-agent/tests/publisher.snapshot.ts)通过 Loader 和原生驱动器覆盖模型选择、额度停派和之前未回写的尝试。提供方失败会使后台未启动条目保持待处理，核对过程不再次提交网站。
 
-[保留页面决策](2026-09-07-backlinks-retained-pages.zh.md)扩展此策略：允许关闭总页数上限，并回收提交前已保存失败的页面。原生执行预算及不确定输入保留要求继续有效。
+[保留页面决策](2026-09-07-backlinks-retained-pages.zh.md)扩展此策略：允许关闭总页数上限，并回收提交前已保存 retryable 失败的页面。原生执行预算及不确定输入保留要求继续有效。
 
 ## Alternatives considered
 

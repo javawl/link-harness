@@ -15,3 +15,9 @@ Supermanager 的数据解析统一将相对 anchor.targetUrl 相对 website.site
 Supermanager 将没有独立锚点的网站资料解析成无后台锚点 id 的默认锚点。tool-backlinks 在父会话写入并刷写 backlinks/attempt，恢复从该日志记录排除已尝试条目；首次模型请求等待检查点，取消不依赖最终工具结果。publisher 限制已保存终态的后续输入，核验 live 的来源主机和提交声明，在手选范围内去重。原生 driver 用 budget-exhausted 区分单项预算，publisher 安全收尾后继续队列；模型、存储和租约故障仍停派。
 
 改动集中在 backlinks 提供方与消费方、subagent 结果分类及其回归/组装快照；文档生成器只补已发现的 console 映射，补缺失 UI README 并压缩新增 Trellis 指令。同步各自的 README、Agent Note、类型说明、SDK 投影证据与生成目录。
+
+## 后台发布
+
+在 publisher 的专属 browser 执行器拒绝 bringToFront，复用现有工具白名单禁止系统输入。manual_required 终态保留页面，manualRequired 返回 itemId、browserId、page、reason；父任务只报告，由用户打开窗口。通用 browser 提示仅在用户明确要求时允许置前。聚焦执行器回归和 Loader/Chrome 快照覆盖拦截、页面保留、通知及继续队列，不新增窗口控制或自动重启。
+
+Playwright 默认 context.newPage 发送 Target.createTarget 时不带 background，仍会选择新标签并恢复窗口。共享 createPage 改为 background=true，创建前收集页面事件，并按返回 targetId 关联页面；超时、失败、上下文关闭清理临时监听及 CDP 会话。新页分配保留原容量预留规则，网站自行开的弹窗不改写。macOS 有头 Loader 场景使用独立、初始最小化的测试窗口，验证三页并发创建、导航、填写、点击和截图后仍为同一最小化窗口。

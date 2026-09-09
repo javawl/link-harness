@@ -23,11 +23,13 @@
 | `maxOpenPages` | `16` | 已打开页数上限，包含并发创建预留；`0` 表示不设上限 |
 | `launchArgs` | `[]` | 额外的 Chromium 启动参数（代理、窗口尺寸……） |
 | `ignoreDefaultArgs` | `[]` | 按精确标志省略的 Playwright 默认启动参数；去掉 `--enable-automation` 可避免对自动化敏感的页面（尤其是 Google 账号登录）把浏览器判定为不安全 |
-| `windowPosition` | 不设 | 初始窗口位置 `x,y`；屏幕外取值（如 `-32000,-32000`）让有头浏览器静默运行——需要人工介入时用 `bringToFront` 命令召回标签页 |
+| `windowPosition` | 不设 | 初始窗口位置 `x,y`；窗口管理器可能调整此提示位置。后台建页独立保持焦点 |
 
 每条命令分发把服务定义的闭合 `BrowserCommand` 联合映射到其寻址的标签页：命名 `page` 引用（由 navigate 绑定、此后复用），省略时为最近打开的标签页。同一标签页的命令在页内链上保序，不同标签页的命令可并行；Playwright 的裸失败包装为 `BROWSER_ACTION_FAILED`，启动失败包装为 `BROWSER_LAUNCH_FAILED`。
 
 容量已满时开新页会抛出 `BROWSER_PAGE_LIMIT`；已有页面仍可操作，显式 `closePage` 后释放容量。子 agent 结束不会关闭共享浏览器中的页面，调用方须关闭已确认完成的页面并保留未知提交。快照定位器等待使用 `defaultTimeoutMs`；DOM 就绪不要求所有图片或广告都加载完成。
+
+工具创建页面时使用 Chromium 的 `Target.createTarget` 并设置 `background: true`，保持当前选中的标签页和既有窗口的最小化状态。并发建页按返回的 target id 匹配各自的 Playwright 页面。建页等待使用 `defaultTimeoutMs`，结束时清理临时事件监听器和 CDP 会话。此行为适用于持久 profile 和通过 CDP 连接的默认上下文；网站自行创建的弹窗仍由 Chromium 控制。[有头 Chrome 快照](../../../examples/backlink-agent/tests/browser-capacity.snapshot.ts)通过真实建页及输入检查 macOS 最小化状态的保持。
 
 原始按键与坐标点击最多等待 `defaultTimeoutMs`，并响应执行中的取消信号。Playwright 没有这些输入的取消 API，因此中断返回 `BROWSER_ACTION_UNCERTAIN`，不表示操作已回滚。会话保留在途操作，直至其结束，并在关闭浏览器时等待清理完成。即使输入随后完成，该实际页面在本会话内仍保持锁定，只允许 `bringToFront` 和显式 `closePage`。其他页面仍可用；调用方须保留该页交人工核验，绝不重新提交未知结果的发布。普通定位器等待仍使用 Playwright 原生超时行为。
 

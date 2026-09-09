@@ -23,6 +23,7 @@ export async function apply(ctx: Context): Promise<void> {
   const budget = process.env.DSH_PUBLISHER_SCENARIO === 'budget'
   const multiBrowser = process.env.DSH_PUBLISHER_SCENARIO === 'multi-browser'
   const guardedTools = process.env.DSH_PUBLISHER_SCENARIO === 'guarded-tools'
+  const manualRequired = process.env.DSH_PUBLISHER_SCENARIO === 'manual-required'
   const posted = new Map<number, URLSearchParams>()
   const serve = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const path = request.url ?? '/'
@@ -58,7 +59,9 @@ export async function apply(ctx: Context): Promise<void> {
       return
     }
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
-    if (path === '/item/2') {
+    if (manualRequired && path === '/item/1') {
+      response.end('<title>Manual login</title><h1>Complete login manually.</h1>')
+    } else if (path === '/item/2') {
       response.end('<title>Nested listing</title><iframe id="outer" src="/outer/2"></iframe>')
     } else if (path === '/outer/2') {
       response.end('<iframe id="inner" src="/form/2"></iframe>')
@@ -122,7 +125,9 @@ export async function apply(ctx: Context): Promise<void> {
       }
     },
     reportItemResult: async (id, result) => {
-      if ((quota || budget) && result.status === 'failed' && result.failureMode === 'retryable') {
+      if (result.status === 'failed' && (((quota || budget) && result.failureMode === 'retryable')
+        || (manualRequired && id === 1 && result.failureMode === 'manual_required'))) {
+        if (posted.has(id)) throw new Error('A failed fixture item must not submit its form.')
         items = items.map(item => item.id === id ? { ...item, status: 'failed', failureMode: result.failureMode, failureReason: result.failureReason } : item)
         return { itemStatus: 'failed', publishRecordId: null }
       }
@@ -147,6 +152,7 @@ export async function apply(ctx: Context): Promise<void> {
   }))
   ctx.skills.register({ name: 'publish-fixture', description: 'Publish fixture items.', source: 'runtime', content: 'FIXTURE_PUBLICATION_INSTRUCTIONS' })
   let parentStep = 0
+  let manualPage: { page: string; browserId: string } | undefined
   const childSteps = new Map<number, number>()
   const response = (request: GenerateOptions): StreamChunk[] => {
     const block = request.messages.flatMap(message => message.content).find(block => block.type === 'text' && block.text.startsWith('{"item":'))
@@ -161,6 +167,8 @@ export async function apply(ctx: Context): Promise<void> {
       })
       if (step === 3 + (unresolved ? 2 : 0)) return toolCallResponse('publish', 'backlink_publish', { batchId: 176, scope: 'pending', mode: 'all' })
       if (step === 4 + (unresolved ? 2 : 0)) return toolCallResponse('summary', 'backlinks', { action: 'batch_get', batchId: 176 })
+      if (manualRequired && step === 5) return toolCallResponse('retained-page', 'browser', { action: 'snapshot', ...manualPage })
+      if (manualRequired) return textResponse('Item 1 needs manual login in its retained page; item 2 is published.')
       if (unresolved) return textResponse('Item 1 skipped for manual review; two other listings verified.')
       if (invalidProfile) return textResponse('Complete the website name and URL; two items remain untouched.')
       if (budget) return textResponse('Both item budgets reached; both outcomes saved.')
@@ -168,7 +176,13 @@ export async function apply(ctx: Context): Promise<void> {
     }
     if (request.provider !== 'mock-selected' || request.model !== 'selected-model') throw new Error('Publication inherited the stale model.')
     if (quota) return [{ type: 'finish', reason: { kind: 'error', failure: { code: 'QUOTA', message: 'private provider payload' } } }]
-    const prompt = JSON.parse(block.text) as { item: BacklinkBatchItem; leaseId: number; anchors: { targetUrl: string }[] }
+    const prompt = JSON.parse(block.text) as {
+      item: BacklinkBatchItem
+      leaseId: number
+      anchors: { targetUrl: string }[]
+      page: string
+      browserId: string
+    }
     const { item, leaseId } = prompt
     if (budget) return toolCallResponse(`budget-${item.id}`, 'backlinks', {
       action: 'item_result', itemId: item.id, leaseId, status: 'failed', failureMode: 'retryable', failureReason: 'Fixture site unavailable.',
@@ -177,9 +191,17 @@ export async function apply(ctx: Context): Promise<void> {
     childSteps.set(item.id, step + 1)
     const frame = item.id === 2 ? 'frame(#outer)>>frame(#inner)>>' : ''
     const call = (name: string, args: object) => toolCallResponse(`item-${item.id}-${step}`, name, args)
+    if (manualRequired && item.id === 1) {
+      manualPage = { page: prompt.page, browserId: prompt.browserId }
+      if (step === 0) return call('browser', { action: 'navigate', url: item.sourceUrl })
+      if (step === 1) return call('backlinks', { action: 'item_result', itemId: item.id, leaseId,
+        status: 'failed', failureMode: 'manual_required', failureReason: 'Complete login manually.' })
+      return textResponse('Manual login required; page retained.')
+    }
     const shellProbe = guardedTools && item.id === 1
-    if (shellProbe && step === 0) return call('bash', { command: `curl -X POST ${item.sourceUrl}` })
-    switch (step - (shellProbe ? 1 : 0)) {
+    if (shellProbe && step === 0) return call('bash', { command: 'osascript -e \'tell application "Google Chrome" to activate\'' })
+    if (shellProbe && step === 1) return call('browser', { action: 'bringToFront' })
+    switch (step - (shellProbe ? 2 : 0)) {
       case 0: return call('browser', { action: 'navigate', url: item.sourceUrl })
       case 1: return call('browser', { action: 'snapshot', format: 'aria', selector: `${frame}role:form|Publish` })
       case 2: return call('browser', { action: 'fill', fields: [

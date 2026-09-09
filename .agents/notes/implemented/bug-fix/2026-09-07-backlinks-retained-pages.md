@@ -10,7 +10,7 @@ Completed manual-required failures occupy browser slots even when no final submi
 
 ## Decision
 
-Page retention follows submission certainty. A saved failure releases its owned page only when no final publication was declared and no input became uncertain. Unknown submissions retain both their review status and page. Foreign pages are never reclaimed.
+Page retention follows submission certainty and [manual browser control](2026-09-09-background-publication.md). A saved retryable failure releases its owned page only when no final publication was declared and no input became uncertain. Manual-required failures and unknown submissions retain both their review status and page. Foreign pages are never reclaimed.
 
 The backlink deployment uses `maxOpenPages: 0`, which disables the browser's total-page ceiling; three active publisher slots and per-host serialization still bound active work. Positive browser ceilings remain available to other deployments. This extends the page policy in [request budgets](2026-09-05-backlinks-request-budgets.md); its native budgets, request accounting and verification requirements remain active.
 

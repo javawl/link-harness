@@ -141,9 +141,8 @@
         navigationTimeoutMs: 20000
         navigationWaitUntil: domcontentloaded
         maxOpenPages: 0
-        # Silent run: render the headed window offscreen so publishing never
-        # covers the operator's desktop. The agent calls bringToFront when a
-        # human must step in (CAPTCHA, login).
+        # The operator controls window visibility; publication never surfaces
+        # a window for CAPTCHA or login. Manual-required pages stay available.
         windowPosition: -32000,-32000
         # Google account login rejects Playwright's default --enable-automation
         # flag ("This browser or app may not be secure"); omit it and mask the
@@ -218,7 +217,11 @@
             A login wall with email signup is a normal registration flow: mailbox_create needs localPart
             and domain=screwdom.org, then mail_wait gets a verification code/link. Return to publish after
             registration. CAPTCHA, rejected registration, or Google-only login without a seeded session
-            requires manual_required and bringToFront; never request credentials or bypass verification.
+            requires manual_required with the reason and assigned browserId/page. Preserve that page and
+            notify the user; never call bringToFront, activate or restore a window, or move it between desktops.
+            Use only browser page actions for clicks, keyboard input and screenshots; never use system mouse,
+            keyboard, window-control tools or shell commands. The operator opens or minimizes Chrome manually.
+            Never request credentials or bypass verification.
             If a reciprocal badge is mandatory, badge_add uses the assigned websiteId. Trigger the configured
             site refresh callback and confirm the badge in the public homepage before submitting.
             Report item_result immediately with the assigned itemId and leaseId. live requires a declared final submission and publicUrl on the assigned source or submission host, excluding the promoted host, plus

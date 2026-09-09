@@ -33,11 +33,11 @@
 
 子任务的模型或基础设施错误停止新派发，等待在途子任务结束并释放租约；未启动条目保持待处理。单项预算、结果核对或页面清理失败时，跳过受影响工作并继续队列。已尝试但仍 pending 且没有发布记录的来源排除后续派发，列入 unresolvedItemIds；这不会回写 skipped 状态，也不允许重新提交。额度、鉴权、检查点和租约错误仍停止整批，stoppedReason 保留其诊断。remaining 为零且 stoppedReason 为 null 时，本次范围执行结束，未决条目单独列出交人工核对。
 
-子任务工具执行器强制使用专属页面及 itemId/leaseId，限制 source_tags 和 badge_add 的目标，并拒绝批次和租约操作。省略 page 使用专属页；其他页会被拒绝。click/press 必须声明 submission：false 为导航或账户操作，true 为唯一最终发布。已派发最终发布后只允许核验、导航、召回及安全关闭。结果保存后禁止继续输入或导航；即使已有更早的结果，未知提交页也不能关闭。用途声明不能识别网站脚本的隐式提交。子任务仅提供 browser 和 backlinks，shell 调用在执行前被拒绝。所需本地上传文件须在发布前准备好。
+子任务工具执行器强制使用专属页面及 itemId/leaseId，限制 source_tags 和 badge_add 的目标，并拒绝批次和租约操作。省略 page 使用专属页；其他页会被拒绝。click/press 必须声明 submission：false 为导航或账户操作，true 为唯一最终发布。已派发最终发布后只允许核验、导航及安全关闭。发布期间包括结果保存后，bringToFront 均在浏览器执行前被拒绝。结果保存后禁止继续输入或导航；即使已有更早的结果，未知提交页也不能关闭。用途声明不能识别网站脚本的隐式提交。子任务仅提供 browser 和 backlinks，shell 及系统输入工具在执行前被拒绝。页面输入通过 Playwright/CDP 完成，不控制系统指针或前台应用。所需本地上传文件须在发布前准备好。
 
 live 和 submitted 都要求已声明最终提交；预先存在的外链记为 skipped。live 回写重新访问 HTTP(S) publicUrl，主机必须属于所分配的 sourceUrl 或 submitUrl，仅忽略开头的 www，并检查真实目标 href。发布页面不能位于推广网站或目标地址的主机。verificationSelector 可缩小页面范围。submitted 要求当前页面包含 receipt 原文；该检查确认文字存在，不判定其含义或匿名可访问性。已派发但未确认的提交保持 manual_required。回写响应丢失时先读取后台，再决定是否写入兜底结果。
 
-取消后等待子任务结束并核对结果。未声明最终提交且无不确定输入的中断可记 retryable；未知提交和不确定输入保留页面。最终提交前已保存的失败会释放本条页面，即使后台仍需人工复核。仅关闭已有明确结果的自有页面及尚未分配的空白预留页，随后停止续租并释放租约。该长调用不使用低层工具的单次超时；子任务仍受提供方预算约束。返回 attempted、remaining、counts、stoppedReason 和 unresolvedItemIds；模型文本省略空的未决列表。live、submitted 与未决状态分别统计。
+取消后等待子任务结束并核对结果。未声明最终提交且无不确定输入的中断可记 retryable；未知提交和不确定输入保留页面。最终提交前已保存的 retryable 失败释放本条页面；manual_required 失败保留页面供人工处理。仅关闭已有明确结果的自有页面及尚未分配的空白预留页，随后停止续租并释放租约。该长调用不使用低层工具的单次超时；子任务仍受提供方预算约束。返回 attempted、remaining、counts、stoppedReason、unresolvedItemIds 和 manualRequired。每条 manualRequired 包含 itemId、browserId、page 和 reason，用于通知人工处理；模型文本省略空列表。live、submitted 与未决状态分别统计。
 
 `backlink_publish_many(batches, scope, mode)` 接收有序的 `{batchId, browserId?, itemIds?}` 分配。浏览器按显式 id、网站已保存绑定、部署默认值的顺序选择；开页或认领前核对所有浏览器 id。不同浏览器和网站组合并行，共享其中任何一项的批次按传入顺序执行。每个浏览器最多执行 `concurrency` 条，总并发可达到该值乘以所选浏览器数。在途发布跨调用占用浏览器与网站。一个批次停止后不再启动其他批次，并等待在途工作结束。结果标识各批次及浏览器；`pendingBatchIds` 记录尚未启动批次。子任务同时受浏览器和页面限制，结果核验与清理也使用相同分配。
 
