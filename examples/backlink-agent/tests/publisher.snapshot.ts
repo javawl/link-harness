@@ -64,6 +64,14 @@ it.skipIf(!chromeInstalled).each(['success', 'quota', 'unresolved', 'anchors', '
       const resultText = (events: SessionEvent[]) => events.filter(event => event.type === 'tool/result')
         .flatMap(event => event.data.message.content.flatMap(block => block.content))
         .filter(block => block.type === 'text').map(block => block.text).join('\n')
+      const judgedCategories = children.flatMap(child => child.events
+        .filter(event => event.type === 'tool/call')
+        .filter(event => event.data.name === 'backlinks')
+        .flatMap((event) => {
+          const args = JSON.parse(event.data.arguments) as { action?: string; category?: string }
+          return args.action === 'item_result' && args.category !== undefined ? [args.category] : []
+        }))
+      expect(judgedCategories).toEqual(['success', 'anchors', 'multi-browser', 'guarded-tools'].includes(scenario) ? ['导航站'] : [])
       const parentText = resultText(parent.events)
       expect(parentText.split('FIXTURE_PUBLICATION_INSTRUCTIONS')).toHaveLength(2)
       expect(parentText).toContain('already loaded in the current context')

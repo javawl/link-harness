@@ -219,6 +219,41 @@ describe('foreground publication through the native child and tool executors', (
     expect(made.results).toMatchObject([{ itemId: 1, result: { status: 'submitted' } }])
   })
 
+  it('forwards a judged category on a successful result for an uncategorized item', async () => {
+    const made = await setup({ items: [{ ...item(1), category: null }], script: (prompt, step) => {
+      if (step === 0) return toolCallResponse('submit', 'browser', { action: 'press', key: 'Enter', submission: true })
+      if (step === 1) return toolCallResponse('save', 'backlinks', {
+        action: 'item_result', itemId: prompt.item.id, leaseId: prompt.leaseId,
+        status: 'submitted', anchorText: 'Site', targetUrl: 'https://site.test/', evidence: 'Awaiting review.',
+        receipt: 'Your submission is awaiting review.', category: '论坛',
+      })
+      return textResponse('Done.')
+    } })
+    await made.publish()
+    expect(made.results).toMatchObject([{ itemId: 1, result: { status: 'submitted', category: '论坛' } }])
+  })
+
+  it('rejects a category on an already-categorized item and accepts the retry without it', async () => {
+    const made = await setup({ script: (prompt, step) => {
+      if (step === 0) return toolCallResponse('submit', 'browser', { action: 'press', key: 'Enter', submission: true })
+      if (step === 1) return toolCallResponse('save-category', 'backlinks', {
+        action: 'item_result', itemId: prompt.item.id, leaseId: prompt.leaseId,
+        status: 'submitted', anchorText: 'Site', targetUrl: 'https://site.test/', evidence: 'Awaiting review.',
+        receipt: 'Your submission is awaiting review.', category: '论坛',
+      })
+      if (step === 2) return toolCallResponse('save', 'backlinks', {
+        action: 'item_result', itemId: prompt.item.id, leaseId: prompt.leaseId,
+        status: 'submitted', anchorText: 'Site', targetUrl: 'https://site.test/', evidence: 'Awaiting review.',
+        receipt: 'Your submission is awaiting review.',
+      })
+      return textResponse('Done.')
+    } })
+    await made.publish()
+    expect(JSON.stringify(made.adapter.requests)).toContain('category is only reported while the assigned item has no category')
+    expect(made.results).toMatchObject([{ itemId: 1, result: { status: 'submitted' } }])
+    expect(made.results[0]!.result).not.toHaveProperty('category')
+  })
+
   it('leaves a batch untouched when its website has no publication anchors', async () => {
     const made = await setup({ anchors: [] })
     const result = await made.publish()

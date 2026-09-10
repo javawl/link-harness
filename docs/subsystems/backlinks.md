@@ -12,7 +12,7 @@ Batch execution and verification mail share no request schema, but they are deli
 
 ## Item-result vocabulary
 
-`BacklinkItemResult` is a CLOSED union owned here — `live` (verified public URL + anchor snapshot), `submitted`, `failed` (with `retryable`/`manual_required` mode), `skipped` — mirroring the backend's write-back contract. The consumer `switch`es to exhaustiveness; the rule "never re-submit an item whose outcome is unknown" lives in the tool's prompt guidance and maps to `failed + manual_required`, and so does the duplicate guard: an item already carrying a `submitted`/`live` publish record (its `publishStatus`/`publishedUrl` in the batch detail), a source with such a record elsewhere in the batch, or a target site already listing the promoted website is reported `skipped`, never re-submitted.
+`BacklinkItemResult` is a CLOSED union owned here — `live` (verified public URL + anchor snapshot), `submitted`, `failed` (with `retryable`/`manual_required` mode), `skipped` — mirroring the backend's write-back contract. On `live`/`submitted`, an optional `category` carries the site category judged while publishing, sent only when the item's own `category` is null; backends fill the source's empty category and never overwrite a saved value. The consumer `switch`es to exhaustiveness; the rule "never re-submit an item whose outcome is unknown" lives in the tool's prompt guidance and maps to `failed + manual_required`, and so does the duplicate guard: an item already carrying a `submitted`/`live` publish record (its `publishStatus`/`publishedUrl` in the batch detail), a source with such a record elsewhere in the batch, or a target site already listing the promoted website is reported `skipped`, never re-submitted.
 
 ## Vocabulary
 

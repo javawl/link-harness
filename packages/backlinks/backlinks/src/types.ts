@@ -94,10 +94,15 @@ export interface BacklinkHeartbeat {
   readonly leaseExpiresAt: string
 }
 
-/** Agent-reported item outcome. The union is CLOSED and owned here. */
+/**
+ * Agent-reported item outcome. The union is CLOSED and owned here. On live/submitted,
+ * `category` carries the site category judged while publishing; report it only when
+ * the item's own `category` is null — backends fill the source's empty category and
+ * never overwrite a saved value.
+ */
 export type BacklinkItemResult =
-  | { readonly status: 'live'; readonly publicUrl: string; readonly anchorText: string; readonly targetUrl: string; readonly evidence?: string }
-  | { readonly status: 'submitted'; readonly publicUrl?: string; readonly anchorText: string; readonly targetUrl: string; readonly evidence?: string }
+  | { readonly status: 'live'; readonly publicUrl: string; readonly anchorText: string; readonly targetUrl: string; readonly evidence?: string; readonly category?: string }
+  | { readonly status: 'submitted'; readonly publicUrl?: string; readonly anchorText: string; readonly targetUrl: string; readonly evidence?: string; readonly category?: string }
   | { readonly status: 'failed'; readonly failureMode: 'retryable' | 'manual_required'; readonly failureReason: string; readonly evidence?: string }
   | { readonly status: 'skipped'; readonly skipReason: string }
 

@@ -101,7 +101,7 @@ export async function apply(ctx: Context): Promise<void> {
   const site = `http://127.0.0.1:${address.port}`
   let items: BacklinkBatchItem[] = (quota || unresolved ? [1, 2, 3] : [1, 2]).map(id => ({
     id, sourceId: id, sourceName: `Listing ${id}`, sourceHost: '127.0.0.1', sourceUrl: `${site}/item/${id}`,
-    submitUrl: null, sourceNotes: null, category: 'directory', tags: [], paymentType: 'free', linkType: 'dofollow',
+    submitUrl: null, sourceNotes: null, category: id === 1 ? null : 'directory', tags: [], paymentType: 'free', linkType: 'dofollow',
     status: 'pending', failureMode: null, failureReason: null, publishStatus: null, publishedUrl: null, plannedAt: 't',
   }))
   const detail = (batchId = 176): BacklinkBatchDetail => ({
@@ -132,6 +132,13 @@ export async function apply(ctx: Context): Promise<void> {
         return { itemStatus: 'failed', publishRecordId: null }
       }
       if (result.status !== 'live') throw new Error(`Fixture item ${id} was not verified live: ${JSON.stringify(result)}`)
+      const current = items.find(item => item.id === id)
+      if (current?.category === null && result.category !== '导航站') {
+        throw new Error(`Fixture item ${id} must report its judged category: ${JSON.stringify(result)}`)
+      }
+      if (current?.category != null && result.category !== undefined) {
+        throw new Error(`Fixture item ${id} is already categorized; no category may be reported: ${JSON.stringify(result)}`)
+      }
       const form = posted.get(id)
       if (form?.get('name') !== ' Example ' || form.get('comment')?.replaceAll('\r\n', '\n') !== 'First\nSecond') {
         throw new Error('The submitted form did not preserve the requested values.')
@@ -213,7 +220,8 @@ export async function apply(ctx: Context): Promise<void> {
       case 6: return call('browser', { action: 'waitFor', selector: `${frame}text:Your submission is awaiting review.` })
       case 7: return call('backlinks', { action: 'item_result', itemId: item.id, leaseId, status: 'live',
         publicUrl: item.sourceUrl, targetUrl: prompt.anchors[0]!.targetUrl, anchorText: 'Site', evidence: 'Fresh public listing contains the target href.',
-        verificationSelector: `${frame}body` })
+        verificationSelector: `${frame}body`,
+        ...item.category === null ? { category: '导航站' } : {} })
       default: return textResponse('Live result saved.')
     }
   }

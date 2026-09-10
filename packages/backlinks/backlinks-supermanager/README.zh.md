@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-外链批次工作源服务定义的 Service Provider：基于 supermanager `/api/agent/*` 的 Bearer 令牌 HTTP 客户端（批次列表/详情、租约认领/心跳/释放、闭合联合条目回写、互惠徽标）。HTTP 状态映射到 seam 错误分类；租约冲突的 `Retry-After` 以 `retryAfterSeconds` 保留。
+外链批次工作源服务定义的 Service Provider：基于 supermanager `/api/agent/*` 的 Bearer 令牌 HTTP 客户端（批次列表/详情、租约认领/心跳/释放、闭合联合条目回写、互惠徽标）。live/submitted 结果可透传可选 `category`；后端按名填入来源的空分类，绝不覆盖已保存值。HTTP 状态映射到 seam 错误分类；租约冲突的 `Retry-After` 以 `retryAfterSeconds` 保留。
 
 | 包 | 角色 | ctx 键 |
 |---|---|---|

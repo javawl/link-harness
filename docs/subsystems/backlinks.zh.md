@@ -12,7 +12,7 @@
 
 ## 条目结果词汇
 
-`BacklinkItemResult` 是本包持有的闭合联合——`live`（已核验公开 URL + 锚文本快照）、`submitted`、`failed`（带 `retryable`/`manual_required` 模式）、`skipped`——与后端回写契约一一对应。消费方 `switch` 到穷尽；「绝不重放结果未知的条目」这条规则位于工具的提示词指引中，并映射为 `failed + manual_required`，防重复发布守卫同样如此：条目已带 `submitted`/`live` 发布记录（批次详情里的 `publishStatus`/`publishedUrl`）、同批次内同来源已有此类记录、或目标站已收录本站链接，一律回写 `skipped`，绝不重复提交。
+`BacklinkItemResult` 是本包持有的闭合联合——`live`（已核验公开 URL + 锚文本快照）、`submitted`、`failed`（带 `retryable`/`manual_required` 模式）、`skipped`——与后端回写契约一一对应。`live`/`submitted` 可附可选 `category`：发布中判定的站点类型，仅在条目自身 `category` 为空时发送；后端只填入来源的空分类，绝不覆盖已保存值。消费方 `switch` 到穷尽；「绝不重放结果未知的条目」这条规则位于工具的提示词指引中，并映射为 `failed + manual_required`，防重复发布守卫同样如此：条目已带 `submitted`/`live` 发布记录（批次详情里的 `publishStatus`/`publishedUrl`）、同批次内同来源已有此类记录、或目标站已收录本站链接，一律回写 `skipped`，绝不重复提交。
 
 ## 词汇
 

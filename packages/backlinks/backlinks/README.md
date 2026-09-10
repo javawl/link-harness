@@ -18,7 +18,7 @@ Service Definition for the backlinks capability seam (`ctx.backlinks`): two prov
 | `registerBatchSourceProvider` / `registerMailboxProvider` | Register a provider; duplicate ids throw `BACKLINKS_DUPLICATE_PROVIDER`; fiber-scoped disposers |
 | `listBatches` / `getBatch` | Batch listing and detail (website, anchors, items) |
 | `claim` / `heartbeat` / `release` | Lease lifecycle over one batch |
-| `reportItemResult` | Closed-union write-back: live/submitted/failed/skipped |
+| `reportItemResult` | Closed-union write-back: live/submitted/failed/skipped; live/submitted may carry `category` to fill the source's empty category |
 | `addBadge` | Reciprocal footer badge |
 | `createMailbox` / `pollMail` | Verification address creation and bounded mail wait |
 

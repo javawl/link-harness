@@ -187,8 +187,12 @@ describe('SupermanagerBatchSource', () => {
     const cases: Array<[Parameters<SupermanagerBatchSource['reportItemResult']>[1], Record<string, unknown>]> = [
       [{ status: 'live', publicUrl: 'https://d/l', anchorText: 'A', targetUrl: 'https://t/', evidence: 'E' },
         { status: 'live', publicUrl: 'https://d/l', anchorText: 'A', targetUrl: 'https://t/', evidenceZh: 'E' }],
+      [{ status: 'live', publicUrl: 'https://d/l', anchorText: 'A', targetUrl: 'https://t/', category: '导航站' },
+        { status: 'live', publicUrl: 'https://d/l', anchorText: 'A', targetUrl: 'https://t/', category: '导航站' }],
       [{ status: 'submitted', anchorText: 'A', targetUrl: 'https://t/' },
         { status: 'submitted', anchorText: 'A', targetUrl: 'https://t/' }],
+      [{ status: 'submitted', anchorText: 'A', targetUrl: 'https://t/', category: '博客' },
+        { status: 'submitted', anchorText: 'A', targetUrl: 'https://t/', category: '博客' }],
       [{ status: 'failed', failureMode: 'manual_required', failureReason: 'captcha' },
         { status: 'failed', failureMode: 'manual_required', failureReason: 'captcha' }],
       [{ status: 'skipped', skipReason: 'gone' }, { status: 'skipped', skipReason: 'gone' }],

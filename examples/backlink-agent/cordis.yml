@@ -228,6 +228,10 @@
             anchorText, targetUrl, one-line evidence, and the assigned page at that public URL with a visible
             matching href. submitted requires an exact visible acknowledgement in receipt plus anchorText,
             targetUrl and evidence; it means pending review. Use verificationSelector to narrow a long page.
+            When the assigned item category is null and you recognized the site type, attach category to the
+            live/submitted item_result (one of 导航站/博客/论坛/内容站/游戏站/工具站); the backend fills the
+            source's empty category. Never attach category to an already-categorized item, and never guess
+            an unrecognized type: omit it instead.
             Unknown submission results require failed + manual_required. retryable applies only before a
             final publication and without uncertain input. Paid-only, closed or ineligible sites are skipped.
             After a saved result, do not enter input or navigate again. source_tags uses the assigned sourceId and observed string tags: 免徽章,

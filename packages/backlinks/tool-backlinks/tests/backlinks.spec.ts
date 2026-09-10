@@ -44,6 +44,22 @@ describe('parseItemResult', () => {
       .toEqual({ status: 'failed', failureMode: 'manual_required', failureReason: 'captcha' })
   })
 
+  it('carries the judged category on successful results only', () => {
+    expect(parseItemResult({
+      status: 'live', publicUrl: 'https://d/l', anchorText: 'A', targetUrl: 'https://t/', category: '导航站',
+    })).toEqual({
+      status: 'live', publicUrl: 'https://d/l', anchorText: 'A', targetUrl: 'https://t/', category: '导航站',
+    })
+    expect(parseItemResult({ status: 'submitted', anchorText: 'A', targetUrl: 'https://t/', category: '博客' }))
+      .toMatchObject({ category: '博客' })
+    expect(parseItemResult({ status: 'live', publicUrl: 'https://d/l', anchorText: 'A', targetUrl: 'https://t/', category: '' }))
+      .not.toHaveProperty('category')
+    expect(() => parseItemResult({ status: 'submitted', anchorText: 'A', targetUrl: 'https://t/', category: 5 }))
+      .toThrow(/category/u)
+    expect(parseItemResult({ status: 'failed', failureMode: 'retryable', failureReason: 'x', category: '导航站' }))
+      .not.toHaveProperty('category')
+  })
+
   it('rejects missing required fields per status', () => {
     expect(() => parseItemResult({})).toThrow(/status/u)
     expect(() => parseItemResult({ status: 'live', anchorText: 'A', targetUrl: 'https://t/' })).toThrow(/publicUrl/u)

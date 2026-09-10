@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Service Provider for the backlinks batch work-source seam: a Bearer-token HTTP client over the supermanager `/api/agent/*` surface (batch listing/detail, lease claim/heartbeat/release, closed-union item write-back, reciprocal badges). HTTP statuses map onto the seam taxonomy; lease-conflict `Retry-After` survives as `retryAfterSeconds`.
+Service Provider for the backlinks batch work-source seam: a Bearer-token HTTP client over the supermanager `/api/agent/*` surface (batch listing/detail, lease claim/heartbeat/release, closed-union item write-back, reciprocal badges). On live/submitted results an optional `category` passes through; the backend fills the source's empty category by name and never overwrites a saved value. HTTP statuses map onto the seam taxonomy; lease-conflict `Retry-After` survives as `retryAfterSeconds`.
 
 | Package | Role | ctx key |
 |---|---|---|

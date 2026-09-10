@@ -280,6 +280,7 @@ export class SupermanagerBatchSource implements BacklinkBatchSourceProvider {
           anchorText: result.anchorText,
           targetUrl: result.targetUrl,
           ...result.evidence === undefined ? {} : { evidenceZh: result.evidence },
+          ...result.category === undefined ? {} : { category: result.category },
         }
       case 'submitted':
         return {
@@ -288,6 +289,7 @@ export class SupermanagerBatchSource implements BacklinkBatchSourceProvider {
           anchorText: result.anchorText,
           targetUrl: result.targetUrl,
           ...result.evidence === undefined ? {} : { evidenceZh: result.evidence },
+          ...result.category === undefined ? {} : { category: result.category },
         }
       case 'failed':
         return {

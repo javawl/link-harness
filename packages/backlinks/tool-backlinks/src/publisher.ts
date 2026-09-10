@@ -120,6 +120,9 @@ export function applyPublisher(
       if (result.evidence === undefined || result.evidence.trim() === '') {
         throw new Error('Publication results require one-line evidence.')
       }
+      if (result.category !== undefined && assignment.item.category !== null) {
+        throw new Error('category is only reported while the assigned item has no category; the backend keeps its saved value.')
+      }
       if (!assignment.detail.anchors.some(anchor =>
         new URL(anchor.targetUrl).href === new URL(result.targetUrl).href)) {
         throw new Error('targetUrl must be an anchor destination from the assigned website.')

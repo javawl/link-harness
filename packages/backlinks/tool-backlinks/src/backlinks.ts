@@ -50,6 +50,7 @@ export interface BacklinksToolInput {
   readonly anchorText?: string
   readonly targetUrl?: string
   readonly evidence?: string
+  readonly category?: string
   readonly failureMode?: 'retryable' | 'manual_required'
   readonly failureReason?: string
   readonly skipReason?: string
@@ -100,6 +101,7 @@ function readOptionalString(args: Record<string, unknown>, field: string): strin
  */
 export function parseItemResult(args: Record<string, unknown>): BacklinkItemResult {
   const evidence = readOptionalString(args, 'evidence')
+  const category = readOptionalString(args, 'category')
   switch (args.status) {
     case 'live':
       return {
@@ -108,6 +110,7 @@ export function parseItemResult(args: Record<string, unknown>): BacklinkItemResu
         anchorText: readNonEmpty(args, 'anchorText'),
         targetUrl: readNonEmpty(args, 'targetUrl'),
         ...evidence === undefined ? {} : { evidence },
+        ...category === undefined ? {} : { category },
       }
     case 'submitted': {
       const publicUrl = readOptionalString(args, 'publicUrl')
@@ -117,6 +120,7 @@ export function parseItemResult(args: Record<string, unknown>): BacklinkItemResu
         anchorText: readNonEmpty(args, 'anchorText'),
         targetUrl: readNonEmpty(args, 'targetUrl'),
         ...evidence === undefined ? {} : { evidence },
+        ...category === undefined ? {} : { category },
       }
     }
     case 'failed': {
@@ -255,6 +259,7 @@ export function applyBacklinksTool(ctx: Context, config: ResolvedConfig): void {
       'batch_list → batch_get (counts by default; view=items returns only a small pending page) → batch_claim (grants a bounded lease)',
       '→ per item: browser publishes on the target site, then item_result reports live/submitted/failed/skipped',
       '→ lease_release when done. Keep lease renewal in the runtime; never use model calls to sleep or poll subagents.',
+      'On live/submitted with an empty item category, item_result may also carry category: the site type judged while publishing; the backend fills the source category and never overwrites a saved value.',
       'mailbox_create + mail_wait receive site verification codes (returns code and first link).',
       'badge_add installs a reciprocal footer badge when a site requires exchange.',
       'source_tags attaches tags to the target site by name after a publish attempt (免徽章/要徽章/可复用/有盾…); idempotent add-only.',
@@ -290,6 +295,7 @@ export function applyBacklinksTool(ctx: Context, config: ResolvedConfig): void {
       anchorText: { type: 'string', description: 'Anchor text used (live/submitted).' },
       targetUrl: { type: 'string', description: 'Target URL used (live/submitted).' },
       evidence: { type: 'string', description: 'One-line evidence note stored with the result.' },
+      category: { type: 'string', description: 'live/submitted: the site category judged while publishing (e.g. 导航站/博客/论坛/内容站/游戏站/工具站). Send only when the item category is empty; backends fill the source category and never overwrite a saved value.' },
       failureMode: { type: 'string', description: 'failed classification: retryable or manual_required.' },
       failureReason: { type: 'string', description: 'Why the item failed.' },
       skipReason: { type: 'string', description: 'Why the item is skipped.' },

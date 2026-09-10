@@ -18,7 +18,7 @@
 | `registerBatchSourceProvider` / `registerMailboxProvider` | 注册提供方；重复 id 抛 `BACKLINKS_DUPLICATE_PROVIDER`；随 fiber 销毁 |
 | `listBatches` / `getBatch` | 批次列表与详情（网站、锚文本、条目） |
 | `claim` / `heartbeat` / `release` | 单个批次的租约生命周期 |
-| `reportItemResult` | 闭合联合回写：live/submitted/failed/skipped |
+| `reportItemResult` | 闭合联合回写：live/submitted/failed/skipped；live/submitted 可附 `category` 填充来源的空分类 |
 | `addBadge` | 互惠 footer 徽标 |
 | `createMailbox` / `pollMail` | 验证邮箱创建与有界邮件等待 |
 

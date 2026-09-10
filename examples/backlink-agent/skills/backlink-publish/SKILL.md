@@ -49,7 +49,7 @@ user-invocable: true
 
 局部 snapshot 的 text、aria、form、links 使用相同的语义选择器和 frame 前缀。`form` 返回字段属性与当前值（不返回密码值）；`links` 返回可见锚文本和真实 href。已知字段用一次 `fill fields:[{selector,value}]` 顺序填写；后续字段失败不撤销前面的填写，提交必须另行操作。
 
-`live` 与 `submitted` 都要求已声明最终提交，预先存在的外链记为 skipped。`live` 的 publicUrl 须属于本条来源或提交地址的主机，且与推广站和目标地址主机不同，并在页面找到真实目标 href；裸字符串和转义 HTML 不算链接。`submitted` 必须提供当前页面可读的确认原文 `receipt`，只是待审。长页面使用 `verificationSelector` 缩小核验范围。回写响应丢失时运行时先读取后台，避免覆盖已保存发布。
+`live` 与 `submitted` 都要求已声明最终提交，预先存在的外链记为 skipped。条目 `category` 为空且发布中识别出六类类型时，live/submitted 回写附带 `category`，supermanager 仅在该来源分类为空时按名填入（详见[状态模型](references/status-model.md)）。`live` 的 publicUrl 须属于本条来源或提交地址的主机，且与推广站和目标地址主机不同，并在页面找到真实目标 href；裸字符串和转义 HTML 不算链接。`submitted` 必须提供当前页面可读的确认原文 `receipt`，只是待审。长页面使用 `verificationSelector` 缩小核验范围。回写响应丢失时运行时先读取后台，避免覆盖已保存发布。
 
 未声明最终提交、没有不确定输入的中断可记为 retryable。已派发最终提交但缺回执或 `BROWSER_ACTION_UNCERTAIN` 保留为 manual_required，页面也保留，不自动重试。验证码或人工登录须记录 manual_required，保留原始页面；运行时返回 manualRequired，逐条通知用户原因和 browserId/page，不自动置前或恢复窗口。最终提交前、无不确定输入的 retryable 失败才回收本条页面。成功、已提交和跳过的本条页面也由运行时清理，其他页面保持原状。
 
