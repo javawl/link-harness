@@ -165,11 +165,12 @@ function httpError(path: string, response: Response, bodyText: string): Backlink
 export class SupermanagerBatchSource implements BacklinkBatchSourceProvider {
   readonly id = SUPERMANAGER_BATCH_SOURCE_ID
 
-  constructor(private readonly config: ResolvedSupermanagerConfig) {}
+  constructor(private readonly resolveConfig: () => ResolvedSupermanagerConfig) {}
 
   /** Usable once a base URL and token are configured; no network is touched. */
   available(): boolean {
-    return this.config.baseUrl.length > 0 && this.config.token.length > 0
+    const { baseUrl, token } = this.resolveConfig()
+    return baseUrl.length > 0 && token.length > 0
   }
 
   async listBatches(signal?: AbortSignal): Promise<readonly BacklinkBatchSummary[]> {
@@ -290,17 +291,18 @@ export class SupermanagerBatchSource implements BacklinkBatchSourceProvider {
   /** One JSON request with timeout, cancellation, and typed error mapping. */
   private async requestJson(path: string, init: { method: 'GET' | 'POST'; payload?: Record<string, unknown> }, signal?: AbortSignal): Promise<unknown> {
     if (signal?.aborted) throw new BacklinksError('request aborted', 'BACKLINKS_ABORTED')
+    const { baseUrl, token, requestTimeoutMs } = this.resolveConfig()
     const timeout = new AbortController()
-    const timer = setTimeout(() =>{  timeout.abort() }, this.config.requestTimeoutMs)
+    const timer = setTimeout(() =>{  timeout.abort() }, requestTimeoutMs)
     const onOuterAbort = () =>{  timeout.abort() }
     signal?.addEventListener('abort', onOuterAbort, { once: true })
     try {
       let response: Response
       try {
-        response = await fetch(`${this.config.baseUrl}${path}`, {
+        response = await fetch(`${baseUrl}${path}`, {
           method: init.method,
           headers: {
-            authorization: `Bearer ${this.config.token}`,
+            authorization: `Bearer ${token}`,
             ...init.payload === undefined ? {} : { 'content-type': 'application/json' },
           },
           ...init.payload === undefined ? {} : { body: JSON.stringify(init.payload) },
@@ -309,7 +311,7 @@ export class SupermanagerBatchSource implements BacklinkBatchSourceProvider {
       } catch (error) {
         if (signal?.aborted) throw new BacklinksError('request aborted', 'BACKLINKS_ABORTED')
         if (timeout.signal.aborted) {
-          throw new BacklinksError(`supermanager ${path} timed out after ${this.config.requestTimeoutMs}ms`, 'BACKLINKS_TIMEOUT')
+          throw new BacklinksError(`supermanager ${path} timed out after ${requestTimeoutMs}ms`, 'BACKLINKS_TIMEOUT')
         }
         throw new BacklinksError(
           `supermanager ${path} transport failure: ${String(error instanceof Error ? error.message : error)}`,

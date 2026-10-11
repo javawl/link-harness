@@ -1,8 +1,34 @@
+---
+description: "Package map for the backlinks capability family: the batch-source and mailbox seam, its provider backends, the console Remote, and the model-facing tool."
+kind: "package-group"
+---
+
 # backlinks/ — 外链能力族
 
 [English](README.md) | 中文
 
+<a id="summary"></a>
+## 概述
+
 外链服务定义与其 Provider/Consumer 适配器。`backlinks` 包承担 Service Definition 角色：抽象服务（`ctx.backlinks`）、两个提供方注册表（批次工作源与邮箱）、闭合联合的条目结果词汇，以及 `BacklinksError` 错误分类。`backlinks-supermanager` 与 `backlinks-cloud-mail` 是 Service Provider。`tool-backlinks` 是 Consumer：面向模型的 `backlinks` 工具。全部为**产品**包。
+
+<a id="table-of-contents"></a>
+## 目录
+
+- [相关文档](#related-documentation)
+- [包列表](#packages)
+
+-----
+
+<a id="related-documentation"></a>
+## 相关文档
+
+- [外链子系统](../../docs/subsystems/backlinks.zh.md) — 批次工作源与邮箱 seam 的完整词汇与契约。
+
+-----
+
+<a id="packages"></a>
+## 包列表
 
 | 包 | 角色 | ctx 键 |
 |---|---|---|
@@ -12,3 +38,14 @@
 | [`tool-backlinks/`](tool-backlinks/README.zh.md) | 面向模型的 `backlinks` 工具 | `ctx.tools` |
 
 面向模型的名称、schema 与提示词指引只存在于 `tool-backlinks`；更换任一后端都不会改变模型驱动批次发布工作流的方式。
+
+-----
+
+### 开发备注
+
+<details>
+<summary>维护者的工作上下文 — 点击展开</summary>
+
+无。
+
+</details>

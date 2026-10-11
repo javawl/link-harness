@@ -1,6 +1,31 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/backlinks/backlinks-cloud-mail/README.md
-README.md: aba8f7ffe8f213922509ed4cecd05b9ead64e45d
-README.zh.md: 4ab9831c4487d02640c4cb259964c8b4a8f1f51f
+/:
+  en: 66284e8a9efb3a65
+  zh: 66284e8a9efb3a65
+/deepseek-ai-dsh-backlinks-cloud-mail:
+  en: 831279aa549cec72
+  zh: d94b94012bfff73d
+/deepseek-ai-dsh-backlinks-cloud-mail/summary:
+  en: c436da584af19bfe
+  zh: 56ffcad77707b5e0
+/deepseek-ai-dsh-backlinks-cloud-mail/table-of-contents:
+  en: 5e2487c3fd8a9d9d
+  zh: fe3926fa1e9102a5
+/deepseek-ai-dsh-backlinks-cloud-mail/configuration:
+  en: d7c01a43e4aeba80
+  zh: f07667745819312f
+/deepseek-ai-dsh-backlinks-cloud-mail/model-experience:
+  en: 48827eb2c21d771d
+  zh: dc0c5a1f3a8b6f48
+/deepseek-ai-dsh-backlinks-cloud-mail/model-experience/kv-cache-effect:
+  en: 40294c1c31b74824
+  zh: 166a66641a38a173
+/deepseek-ai-dsh-backlinks-cloud-mail/known-limitations-and-deferred-work:
+  en: a28a711049b836a6
+  zh: 550a72a1e976b428
+/deepseek-ai-dsh-backlinks-cloud-mail/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 4c879960b94cc733

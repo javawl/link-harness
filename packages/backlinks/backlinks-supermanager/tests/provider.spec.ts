@@ -70,16 +70,16 @@ const itemRow = {
 
 describe('SupermanagerBatchSource', () => {
   it('is available only with baseUrl and token configured', () => {
-    const provider = new SupermanagerBatchSource(resolved())
+    const provider = new SupermanagerBatchSource(() => resolved())
     expect(provider.id).toBe(SUPERMANAGER_BATCH_SOURCE_ID)
     expect(provider.available()).toBe(true)
-    expect(new SupermanagerBatchSource(resolved({ token: '' })).available()).toBe(false)
-    expect(new SupermanagerBatchSource(resolved({ baseUrl: '' })).available()).toBe(false)
+    expect(new SupermanagerBatchSource(() => resolved({ token: '' })).available()).toBe(false)
+    expect(new SupermanagerBatchSource(() => resolved({ baseUrl: '' })).available()).toBe(false)
   })
 
   it('lists batches with the bearer token', async () => {
     fetchMock.mockResolvedValueOnce(ok({ ok: true, batches: [batchRow] }))
-    const provider = new SupermanagerBatchSource(resolved())
+    const provider = new SupermanagerBatchSource(() => resolved())
 
     const batches = await provider.listBatches()
     expect(batches).toEqual([{
@@ -100,7 +100,7 @@ describe('SupermanagerBatchSource', () => {
       anchors: [{ id: 1, anchorText: 'Site', targetUrl: 'https://site.test/' }],
       items: [itemRow],
     }))
-    const provider = new SupermanagerBatchSource(resolved())
+    const provider = new SupermanagerBatchSource(() => resolved())
 
     const detail = await provider.getBatch(176)
     expect(detail.website.siteUrl).toBe('https://site.test')
@@ -112,7 +112,7 @@ describe('SupermanagerBatchSource', () => {
     fetchMock.mockResolvedValueOnce(ok({
       ok: true, leaseId: 900, leaseExpiresAt: '2026-08-25T10:57:18Z', items: [itemRow],
     }))
-    const provider = new SupermanagerBatchSource(resolved())
+    const provider = new SupermanagerBatchSource(() => resolved())
 
     const claim = await provider.claim(176)
     expect(claim).toMatchObject({ leaseId: 900, leaseExpiresAt: '2026-08-25T10:57:18Z' })
@@ -127,7 +127,7 @@ describe('SupermanagerBatchSource', () => {
   it('heartbeats and releases leases', async () => {
     fetchMock.mockResolvedValueOnce(ok({ ok: true, leaseId: 900, leaseExpiresAt: 't2' }))
     fetchMock.mockResolvedValueOnce(ok({ ok: true, leaseId: 900, released: true }))
-    const provider = new SupermanagerBatchSource(resolved())
+    const provider = new SupermanagerBatchSource(() => resolved())
 
     await expect(provider.heartbeat(900)).resolves.toEqual({ leaseId: 900, leaseExpiresAt: 't2' })
     await expect(provider.release(900)).resolves.toBeUndefined()
@@ -135,7 +135,7 @@ describe('SupermanagerBatchSource', () => {
   })
 
   it('flattens every item-result variant onto the wire shape', async () => {
-    const provider = new SupermanagerBatchSource(resolved())
+    const provider = new SupermanagerBatchSource(() => resolved())
     const cases: Array<[Parameters<SupermanagerBatchSource['reportItemResult']>[1], Record<string, unknown>]> = [
       [{ status: 'live', publicUrl: 'https://d/l', anchorText: 'A', targetUrl: 'https://t/', evidence: 'E' },
         { status: 'live', publicUrl: 'https://d/l', anchorText: 'A', targetUrl: 'https://t/', evidenceZh: 'E' }],
@@ -156,7 +156,7 @@ describe('SupermanagerBatchSource', () => {
 
   it('adds badges and reports callback state', async () => {
     fetchMock.mockResolvedValueOnce(ok({ ok: true, backlinkId: 643, callbackTriggered: false }))
-    const provider = new SupermanagerBatchSource(resolved())
+    const provider = new SupermanagerBatchSource(() => resolved())
 
     await expect(provider.addBadge(82, { name: 'P', html: '<b>P</b>' })).resolves.toEqual({
       backlinkId: 643, callbackTriggered: false,
@@ -174,7 +174,7 @@ describe('SupermanagerBatchSource', () => {
         { id: 99, name: '有盾', created: true },
       ],
     }))
-    const provider = new SupermanagerBatchSource(resolved())
+    const provider = new SupermanagerBatchSource(() => resolved())
 
     await expect(provider.tagSource(156, ['可复用', '有盾'])).resolves.toEqual({
       sourceId: 156,
@@ -189,7 +189,7 @@ describe('SupermanagerBatchSource', () => {
   })
 
   it('maps HTTP statuses onto the error taxonomy with Retry-After preserved', async () => {
-    const provider = new SupermanagerBatchSource(resolved())
+    const provider = new SupermanagerBatchSource(() => resolved())
 
     fetchMock.mockResolvedValueOnce(new Response('{"ok":false}', { status: 400 }))
     await expect(provider.listBatches()).rejects.toThrow(expect.objectContaining({ code: 'BACKLINKS_INVALID_REQUEST' }))
@@ -213,7 +213,7 @@ describe('SupermanagerBatchSource', () => {
   })
 
   it('wraps transport and timeout failures', async () => {
-    const provider = new SupermanagerBatchSource(resolved())
+    const provider = new SupermanagerBatchSource(() => resolved())
 
     fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'))
     await expect(provider.listBatches()).rejects.toThrow(expect.objectContaining({ code: 'BACKLINKS_TRANSPORT' }))
@@ -226,7 +226,7 @@ describe('SupermanagerBatchSource', () => {
   })
 
   it('rejects an already-aborted signal without calling the network', async () => {
-    const provider = new SupermanagerBatchSource(resolved())
+    const provider = new SupermanagerBatchSource(() => resolved())
     const aborted = new AbortController()
     aborted.abort()
     await expect(provider.listBatches(aborted.signal))
@@ -235,7 +235,7 @@ describe('SupermanagerBatchSource', () => {
   })
 
   it('surfaces outer cancellation during a request', async () => {
-    const provider = new SupermanagerBatchSource(resolved())
+    const provider = new SupermanagerBatchSource(() => resolved())
     const outer = new AbortController()
     fetchMock.mockImplementationOnce(() => new Promise((_resolve, reject) => {
       setTimeout(() => {
@@ -251,8 +251,8 @@ describe('SupermanagerBatchSource', () => {
 describe('backlinks-supermanager plugin apply', () => {
   it('registers the provider with defaults and env token fallback', () => {
     const registerBatchSourceProvider = vi.fn()
-    const defaulted = Config({ baseUrl: 'http://127.0.0.1:3000' }) as ResolvedSupermanagerConfig & { token?: string }
-    expect(defaulted.requestTimeoutMs).toBe(15_000)
+    const defaulted = Config({ baseUrl: 'http://127.0.0.1:3000' } as never)
+    expect(defaulted.requestTimeoutMs.get()).toBe(15_000)
 
     process.env.SUPERMANAGER_TOKEN = 'smag_env'
     try {
@@ -260,22 +260,30 @@ describe('backlinks-supermanager plugin apply', () => {
         backlinks: { registerBatchSourceProvider },
         get: () => undefined,
         inject: () => {},
-        effect: () => () => {},
+        effect: (run: () => unknown) => { void run(); return () => {} },
       } as never, defaulted)
+      const registered = registerBatchSourceProvider.mock.calls[0]?.[0] as unknown as {
+        id: string
+        resolveConfig: () => ResolvedSupermanagerConfig
+      }
+      expect(registered.id).toBe('supermanager')
+      expect(registered.resolveConfig().token).toBe('smag_env')
     } finally {
       delete process.env.SUPERMANAGER_TOKEN
     }
-    const registered = registerBatchSourceProvider.mock.calls[0]?.[0] as unknown as {
-      id: string
-      config: { token: string }
-    }
-    expect(registered.id).toBe('supermanager')
-    expect(registered.config.token).toBe('smag_env')
   })
 
-  it('rejects a non-http baseUrl and non-positive timeout', () => {
-    const ctx = { backlinks: { registerBatchSourceProvider: vi.fn() }, get: () => undefined }
-    expect(() =>{  apply(ctx as never, { baseUrl: 'ftp://x' }) }).toThrow(/baseUrl/u)
-    expect(() =>{  apply(ctx as never, { baseUrl: 'http://x', requestTimeoutMs: -1 }) }).toThrow(/requestTimeoutMs/u)
+  it('rejects a non-http baseUrl and non-positive timeout at resolution', () => {
+    const registered: Array<{ resolveConfig: () => ResolvedSupermanagerConfig }> = []
+    const ctx = {
+      backlinks: { registerBatchSourceProvider: (provider: { resolveConfig: () => ResolvedSupermanagerConfig }) => { registered.push(provider); return () => {} } },
+      get: () => undefined,
+      effect: (run: () => unknown) => { void run(); return () => {} },
+    }
+    apply(ctx as never, Config({ baseUrl: 'ftp://x' } as never))
+    expect(() =>{  registered[0]!.resolveConfig() }).toThrow(/baseUrl/u)
+    registered.length = 0
+    apply(ctx as never, Config({ baseUrl: 'http://x', requestTimeoutMs: -1 } as never))
+    expect(() =>{  registered[0]!.resolveConfig() }).toThrow(/requestTimeoutMs/u)
   })
 })

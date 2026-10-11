@@ -1,15 +1,15 @@
 /**
  * Service Provider for the backlinks mailbox seam: a cloud-mail Open-API client. Creates verification
- * addresses and polls received mail with backend-extracted codes. The base URL and token resolve
- * per-field from the settings user section, the composition entry, then `CLOUDMAIL_TOKEN`, in that
- * order; a settings change re-registers the provider without a restart.
+ * addresses and polls received mail with backend-extracted codes. The entry's config section is the
+ * settings surface: `baseUrl` and `token` resolve per use from the settings user layer over the
+ * composition entry, then `CLOUDMAIL_TOKEN`, in that order; the provider reads them through a
+ * resolver, so a settings change applies without a restart.
  * @module @deepseek-ai/dsh-backlinks-cloud-mail
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-backlinks'
 import { CloudMailMailbox, type ResolvedCloudMailConfig } from './provider.ts'
 
@@ -19,35 +19,22 @@ export const name = 'backlinks-cloud-mail'
 export const inject = ['backlinks']
 
 /** Settings namespace this provider surfaces in configuration UIs. */
-const NS = settingsNamespace('backlinks-cloud-mail')
+export const BACKLINKS_CLOUD_MAIL_SETTINGS_NAMESPACE = 'backlinks-cloud-mail'
 
 /** Configuration for the cloud-mail mailbox provider. */
 export interface Config {
   /** Base URL of the worker API, for example `https://mail.example.org/api`. */
-  readonly baseUrl?: string
-  /** Open-API token; `CLOUDMAIL_TOKEN` is the environment fallback. */
-  readonly token?: string
+  readonly baseUrl: Volatile<string>
+  /** Open-API token, redacted on configuration surfaces; `CLOUDMAIL_TOKEN` is the environment fallback. */
+  readonly token: Volatile<string | undefined>
   /** Per-request timeout in milliseconds. */
-  readonly requestTimeoutMs?: number
+  readonly requestTimeoutMs: Volatile<number>
 }
 
-export const Config: z<Config> = z.object({
-  baseUrl: z.string().default(''),
-  token: z.string().default(''),
-  requestTimeoutMs: z.number().default(15_000),
-})
-
-/** User-editable settings section layered over the composition entry's `baseUrl`/`token`. */
-interface Section {
-  /** Base URL of the worker API; the composition entry's value applies when unset. */
-  readonly baseUrl: string
-  /** Open-API token, redacted on configuration surfaces; falls back to the environment. */
-  readonly token?: string
-}
-
-const Section: z<Section> = z.object({
-  baseUrl: z.string().default(''),
-  token: z.string().role('secret'),
+export const Config = z.object({
+  baseUrl: z.string().default('').volatile(),
+  token: z.string().role('secret').volatile(),
+  requestTimeoutMs: z.number().default(15_000).volatile(),
 })
 
 /**
@@ -61,40 +48,20 @@ function assertHttpBaseUrl(baseUrl: string): void {
 }
 
 export function apply(ctx: Context, config: Config): void {
-  const resolved = config as ResolvedCloudMailConfig
-  assertHttpBaseUrl(resolved.baseUrl)
-  if (!Number.isSafeInteger(resolved.requestTimeoutMs) || resolved.requestTimeoutMs <= 0) {
-    throw new Error(`backlinks-cloud-mail: requestTimeoutMs must be a positive integer, got ${resolved.requestTimeoutMs}`)
-  }
-  const entry: Section = {
-    baseUrl: resolved.baseUrl,
-    ...resolved.token.length > 0 ? { token: resolved.token } : {},
-  }
-  let source: () => Section = () => entry
-  let dispose: (() => void) | undefined
-  const install = (): void => {
-    const section = source()
-    const token = section.token !== undefined && section.token.length > 0
-      ? section.token
+  const resolve = (): ResolvedCloudMailConfig => {
+    const requestTimeoutMs = config.requestTimeoutMs.get()
+    if (!Number.isSafeInteger(requestTimeoutMs) || requestTimeoutMs <= 0) {
+      throw new Error(`backlinks-cloud-mail: requestTimeoutMs must be a positive integer, got ${requestTimeoutMs}`)
+    }
+    const baseUrl = config.baseUrl.get()
+    assertHttpBaseUrl(baseUrl)
+    const declared = config.token.get()
+    const token = declared !== undefined && declared.length > 0
+      ? declared
       : launchEnvironmentOf(ctx).get('CLOUDMAIL_TOKEN')?.value ?? ''
-    dispose?.()
-    dispose = ctx.backlinks.registerMailboxProvider(new CloudMailMailbox({
-      baseUrl: section.baseUrl,
-      token,
-      requestTimeoutMs: resolved.requestTimeoutMs,
-    }))
+    return { baseUrl, token, requestTimeoutMs }
   }
-  install()
-  installSettingsSection(ctx, NS, Section, entry, {
-    validate: (section) => {
-      assertHttpBaseUrl(section.baseUrl)
-    },
-    setSource: (current) => {
-      source = current
-    },
-    onChange: install,
-  })
-  ctx.effect(() => () => dispose?.())
+  ctx.effect(() => ctx.backlinks.registerMailboxProvider(new CloudMailMailbox(resolve)), 'backlinks-cloud-mail: provider')
 }
 
 export { CLOUD_MAIL_MAILBOX_ID } from './provider.ts'

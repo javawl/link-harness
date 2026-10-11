@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-05-backlinks-batch-selection.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-05-backlinks-batch-selection.md
-2026-09-05-backlinks-batch-selection.md: bbede02a3815ff0d420d30bdc55fa8fdbdc6408b
-2026-09-05-backlinks-batch-selection.zh.md: 80317e39b582fd07ba5740c63ebf24a2bf58ed1a
+/agent-note-submit-selected-publish-batches-as-one-session-request:
+  en: 434dc29a28c044d3
+  zh: d16e8fa9506c1bbf
+/agent-note-submit-selected-publish-batches-as-one-session-request/problem:
+  en: 1a4f24b463a70cfd
+  zh: c92ea9b7966e0ca1
+/agent-note-submit-selected-publish-batches-as-one-session-request/decision:
+  en: 6cc7f91eca261c14
+  zh: 30db5396107647c3
+/agent-note-submit-selected-publish-batches-as-one-session-request/alternatives-considered:
+  en: 2d7ec2fb756f97fe
+  zh: 511e50fde39cba4f
+/agent-note-submit-selected-publish-batches-as-one-session-request/consequences:
+  en: 769721186380f939
+  zh: 9de4d6e8c70fca74
+/agent-note-submit-selected-publish-batches-as-one-session-request/verification:
+  en: 24957e8f48b768a2
+  zh: 911b42f458b3d47b

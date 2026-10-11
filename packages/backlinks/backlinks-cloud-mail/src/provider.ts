@@ -70,11 +70,12 @@ function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
 export class CloudMailMailbox implements MailboxProvider {
   readonly id = CLOUD_MAIL_MAILBOX_ID
 
-  constructor(private readonly config: ResolvedCloudMailConfig) {}
+  constructor(private readonly resolveConfig: () => ResolvedCloudMailConfig) {}
 
   /** Usable once a base URL and token are configured; no network is touched. */
   available(): boolean {
-    return this.config.baseUrl.length > 0 && this.config.token.length > 0
+    const { baseUrl, token } = this.resolveConfig()
+    return baseUrl.length > 0 && token.length > 0
   }
 
   async createMailbox(options: { readonly localPart: string; readonly domain: string }, signal?: AbortSignal): Promise<MailboxAddress> {
@@ -128,23 +129,24 @@ export class CloudMailMailbox implements MailboxProvider {
   /** One JSON request against the open API with typed error mapping. */
   private async requestJson(path: string, init: { method: 'POST'; payload: Record<string, unknown> }, signal?: AbortSignal): Promise<unknown> {
     if (signal?.aborted) throw new BacklinksError('request aborted', 'BACKLINKS_ABORTED')
+    const { baseUrl, token, requestTimeoutMs } = this.resolveConfig()
     const timeout = new AbortController()
-    const timer = setTimeout(() =>{  timeout.abort() }, this.config.requestTimeoutMs)
+    const timer = setTimeout(() =>{  timeout.abort() }, requestTimeoutMs)
     const onOuterAbort = () =>{  timeout.abort() }
     signal?.addEventListener('abort', onOuterAbort, { once: true })
     try {
       let response: Response
       try {
-        response = await fetch(`${this.config.baseUrl}${path}`, {
+        response = await fetch(`${baseUrl}${path}`, {
           method: init.method,
-          headers: { authorization: this.config.token, 'content-type': 'application/json' },
+          headers: { authorization: token, 'content-type': 'application/json' },
           body: JSON.stringify(init.payload),
           signal: timeout.signal,
         })
       } catch (error) {
         if (signal?.aborted) throw new BacklinksError('request aborted', 'BACKLINKS_ABORTED')
         if (timeout.signal.aborted) {
-          throw new BacklinksError(`cloud-mail ${path} timed out after ${this.config.requestTimeoutMs}ms`, 'BACKLINKS_TIMEOUT')
+          throw new BacklinksError(`cloud-mail ${path} timed out after ${requestTimeoutMs}ms`, 'BACKLINKS_TIMEOUT')
         }
         throw new BacklinksError(
           `cloud-mail ${path} transport failure: ${String(error instanceof Error ? error.message : error)}`,

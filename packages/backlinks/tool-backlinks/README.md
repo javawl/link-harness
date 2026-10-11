@@ -1,8 +1,25 @@
+---
+description: "Consumer for the backlinks capability seam: the model-facing backlinks tool driving the publish-batch workflow."
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-tool-backlinks
 
 English | [中文](README.zh.md)
 
+<a id="summary"></a>
+## Summary
+
 Consumer for the backlinks capability seam: the model-facing `backlinks` tool over `ctx.backlinks`. One tool with an `action` discriminant — the publish-batch workflow is one coherent verb set, mirroring the browser tool's single-surface shape.
+
+<a id="table-of-contents"></a>
+## Table of Contents
+
+- [Tool](#tool)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+-----
 
 | Package | Role | ctx key |
 |---|---|---|
@@ -11,10 +28,12 @@ Consumer for the backlinks capability seam: the model-facing `backlinks` tool ov
 | `dsh-backlinks-cloud-mail` | Service Provider: cloud-mail mailboxes | registers on `ctx.backlinks` |
 | `dsh-tool-backlinks` (this) | Consumer: the model-facing `backlinks` tool | `ctx.tools` |
 
+<a id="tool"></a>
 ## Tool
 
 `backlinks(action, …)` — actions `batch_list`, `batch_get`, `batch_claim`, `lease_heartbeat`, `lease_release`, `item_result`, `badge_add`, `mailbox_create`, `mail_wait`. Results carry a one-line `summary` plus the structured `data` payload; the per-call timeout (`timeoutMs`, default 300 000) is deployment policy. The tool stays visible when no provider exists and fails with a structured error at execution.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### System prompt
@@ -39,5 +58,18 @@ Stable tool schema and prompt section; no request-prefix churn across calls.
 
 ## Known Limitations and Deferred Work
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - **No batch progress events** — progress is observed per call; a lease/progress event stream is deferred.
 - **Mail wait is tool-call-length** — bounded by the tool's `timeoutMs`; longer waits mean repeated `mail_wait` calls.
+
+-----
+
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

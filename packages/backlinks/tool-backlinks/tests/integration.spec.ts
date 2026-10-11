@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import BacklinksRuntime from '@deepseek-ai/dsh-backlinks'
@@ -89,7 +89,7 @@ let counter = 0
 function call(args: unknown): Promise<ToolExecutionResult> {
   return ctx.tools.execute({
     signal: testToolSignal,
-    callId: CallId(`call-${++counter}`),
+    callId: ToolCallId(`call-${++counter}`),
     name: 'backlinks',
     arguments: args,
   })

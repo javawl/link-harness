@@ -1,0 +1,7 @@
+{
+  "plugins": {
+    "enabledPlugins": {
+      "backlinks@zcode-plugins-official": true
+    }
+  }
+}

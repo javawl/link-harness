@@ -18,10 +18,10 @@
       "path": "../../api/remotes/tsconfig.client.json"
     },
     {
-      "path": "../locale"
+      "path": "../locale/tsconfig.client.json"
     },
     {
-      "path": "../runtime"
+      "path": "../store"
     },
     {
       "path": "../ui-slots"
@@ -33,13 +33,16 @@
       "path": "../ui-sidebar"
     },
     {
-      "path": "../ui-conversation"
+      "path": "../ui-primitives"
+    },
+    {
+      "path": "../ui-conversation/tsconfig.client.json"
     },
     {
       "path": "../../backlinks/console"
     },
     {
-      "path": "../../runtime-diagnostics/invariants"
+      "path": "../ui-workspace"
     }
   ]
 }

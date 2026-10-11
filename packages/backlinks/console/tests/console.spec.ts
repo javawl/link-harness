@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 
 import { BacklinksConsoleRuntime } from '@deepseek-ai/dsh-backlinks-console/src/index.ts'
-import { apply } from '@deepseek-ai/dsh-backlinks-console/src/invariant.ts'
 import type { BacklinkBatchDetail, BacklinkBatchSummary } from '@deepseek-ai/dsh-backlinks/types'
 
 const summary: BacklinkBatchSummary = {
@@ -59,14 +58,5 @@ describe('BacklinksConsoleRuntime', () => {
   it('surfaces seam failures unchanged', async () => {
     const { runtime } = mountConsole()
     await expect(runtime.batch(999)).rejects.toThrow('no such batch')
-  })
-})
-
-describe('invariant companion', () => {
-  it('registers package ownership with a no-op install', async () => {
-    const register = vi.fn(() => () => undefined)
-    const dispose = await apply({ invariants: { register } } as never)
-    expect(register).toHaveBeenCalledWith('@deepseek-ai/dsh-backlinks-console', expect.any(Function))
-    dispose()
   })
 })

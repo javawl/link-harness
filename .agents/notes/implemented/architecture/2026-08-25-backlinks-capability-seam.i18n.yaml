@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-25-backlinks-capability-seam.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-25-backlinks-capability-seam.md
-2026-08-25-backlinks-capability-seam.md: 6dd8effee9067c79a0c7d7a1370497d17c6bcc9c
-2026-08-25-backlinks-capability-seam.zh.md: dd39caff7e226a8751eb9cea5aa8321cdab74f5b
+/agent-note-backlinks-capability-seam-one-workflow-two-backends:
+  en: 4523c4f3a3674317
+  zh: 9ac56ca1232c243f
+/agent-note-backlinks-capability-seam-one-workflow-two-backends/problem:
+  en: bd70725a8b55c038
+  zh: 20c9fa92efcc9a6d
+/agent-note-backlinks-capability-seam-one-workflow-two-backends/decision:
+  en: 4a534650e18a3aec
+  zh: 8c657dee434db239
+/agent-note-backlinks-capability-seam-one-workflow-two-backends/consequences:
+  en: ce944339044c25b1
+  zh: 44e910d357a4ce78
+/agent-note-backlinks-capability-seam-one-workflow-two-backends/alternatives-considered:
+  en: 82324fb02f6dbf50
+  zh: 46cd3b13ff320a56

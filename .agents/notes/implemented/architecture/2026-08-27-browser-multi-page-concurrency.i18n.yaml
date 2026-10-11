@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-27-browser-multi-page-concurrency.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-27-browser-multi-page-concurrency.md
-2026-08-27-browser-multi-page-concurrency.md: 6e3fc5b476ce602dc9d9bf21bb7cbc05c7fcf89f
-2026-08-27-browser-multi-page-concurrency.zh.md: 8f12d107cab95ba0f125a5775365b40c74ef98c5
+/agent-note-browser-multi-page-addressing-and-per-tab-concurrency:
+  en: 1403ba9c3ed4d014
+  zh: e592b89f505a298d
+/agent-note-browser-multi-page-addressing-and-per-tab-concurrency/problem:
+  en: cbf62455a3f6f6bf
+  zh: 7ad8ac2206d749b6
+/agent-note-browser-multi-page-addressing-and-per-tab-concurrency/decision:
+  en: 63b1e7727fe75726
+  zh: ddfdb5fc339c1cae
+/agent-note-browser-multi-page-addressing-and-per-tab-concurrency/consequences:
+  en: 7cdf013a4b63ebc7
+  zh: 33b41e53bfc4b7df
+/agent-note-browser-multi-page-addressing-and-per-tab-concurrency/alternatives-considered:
+  en: 59293df20bf61603
+  zh: 9cf234ce4d705a69

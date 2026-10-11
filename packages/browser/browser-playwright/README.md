@@ -1,8 +1,25 @@
+---
+description: "Service Provider for the browser automation seam: a persistent headed Chromium context over Playwright."
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-browser-playwright
 
 English | [中文](README.zh.md)
 
+<a id="summary"></a>
+## Summary
+
 Service Provider for the browser automation seam: a Playwright persistent Chromium context. Headed by default over a real Chrome channel, so cookie logins and human-solved challenges in the shared profile survive across harness runs.
+
+<a id="table-of-contents"></a>
+## Table of Contents
+
+- [Configuration](#configuration)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+-----
 
 | Package | Role | ctx key |
 |---|---|---|
@@ -10,6 +27,7 @@ Service Provider for the browser automation seam: a Playwright persistent Chromi
 | `dsh-browser-playwright` (this) | Service Provider: persistent Chromium via Playwright | registers on `ctx.browser` |
 | `dsh-tool-browser` | Consumer: the model-facing `browser` tool | `ctx.tools` |
 
+<a id="configuration"></a>
 ## Configuration
 
 | Field | Default | Purpose |
@@ -24,6 +42,7 @@ Service Provider for the browser automation seam: a Playwright persistent Chromi
 
 Every command dispatch maps the seam's closed `BrowserCommand` union onto its addressed tab: a named `page` ref (bound by a navigate, reused after) or, when omitted, the most recently opened tab. Commands on one tab serialize behind a per-tab chain while commands on different tabs overlap. Raw Playwright failures wrap into `BROWSER_ACTION_FAILED` and launch failures into `BROWSER_LAUNCH_FAILED`.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 Indirectly, through `dsh-tool-browser`; this provider contributes no prompt, schema, or session surface of its own.
@@ -34,6 +53,19 @@ No direct invalidation; the named consumer owns any request-prefix changes.
 
 ## Known Limitations and Deferred Work
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - **Bundled Chromium needs a manual install** — the default `chrome` channel uses the locally installed Google Chrome; an empty `channel` requires `npx playwright-core install chromium` in the deployment.
 - **Tabs addressed by ref** — the provider drives each tab behind a per-tab serial chain; cross-tab commands overlap; site-opened popups are adopted as addressable pages.
 - **Screenshots are viewport-only** — `fullPage` capture is deferred until a workflow needs page-length evidence.
+
+-----
+
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

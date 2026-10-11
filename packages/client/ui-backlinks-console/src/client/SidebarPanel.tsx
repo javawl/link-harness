@@ -1,45 +1,32 @@
 /**
- * The publish console as a sidebar panel: compact batch rows with status
+ * The publish console as a global panel page: batch rows with status
  * chips, inline item details, search, auto-refresh, and batch selection for
  * submission into a blank session. State arrives through the console
  * store share and the locale seat.
  */
 
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import type { ReactNode } from 'react'
 import type { BacklinkBatchSummary } from '@deepseek-ai/dsh-backlinks/types'
-import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SidebarPanelTabOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import { IconLinkOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { ConsoleStore } from './store.ts'
 import css from './SidebarPanel.module.css'
 
-/** Sidebar panel props: the console store plus the locale seat. */
+/** Console page props: the console store plus the locale seat. */
 export type SidebarConsolePanelProps = PropsLocale<'backlinksConsole'> & {
   store: ConsoleStore
 }
 
-/** The panel's fixed registration id; the tab and the body share it. */
-const PANEL_ID = 'backlinks-console'
-
 /**
- * Render the console's tab button in the sidebar strip.
- * @param props - the tab activation share, the console store, and the locale seat.
- * @returns the tab button for this panel.
+ * The console's sidebar row glyph; the sidebar owns the button, label, and
+ * selected state around it.
+ * @param props - the sidebar's icon share: the requested edge and whether the panel is selected.
+ * @returns the link glyph.
  */
-export function SidebarConsoleTab(
-  props: SidebarPanelTabOwnerProps & PropsLocale<'backlinksConsole'> & { store: ConsoleStore },
-) {
-  const { activeId, activate, t } = props
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={activeId === PANEL_ID}
-      className={css.tab}
-      onClick={() => { activate(PANEL_ID) }}
-    >
-      {t('sidebar.action')}
-    </button>
-  )
+export function BacklinksConsoleIcon({ size }: PropsRuntime<'sidebar.panellist'>): ReactNode {
+  return <IconLinkOutlineRegular size={size} />
 }
 
 /** One compact batch row: chips + expandable items + publish action. */
@@ -106,9 +93,9 @@ function BatchRow(props: SidebarConsolePanelProps & { batch: BacklinkBatchSummar
 }
 
 /**
- * Render the console panel body for the sidebar tab.
+ * Render the console page for the global panel.
  * @param props - the console store plus the locale seat.
- * @returns the compact console list.
+ * @returns the console list.
  */
 export function SidebarConsolePanel(props: SidebarConsolePanelProps) {
   const { store, t } = props

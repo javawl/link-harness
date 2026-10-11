@@ -1,6 +1,31 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/backlinks/backlinks-supermanager/README.md
-README.md: 006e7980a2abaf9aa366f88784503e7a097734f1
-README.zh.md: a10ccdb0780e0e147b6295297e0507f13e089aa4
+/:
+  en: 61320b43b849ab0d
+  zh: 61320b43b849ab0d
+/deepseek-ai-dsh-backlinks-supermanager:
+  en: c2da5199c4772ff3
+  zh: 4bbae491e6d9bea2
+/deepseek-ai-dsh-backlinks-supermanager/summary:
+  en: d91d22ca14458b22
+  zh: e762442eb9d6b0eb
+/deepseek-ai-dsh-backlinks-supermanager/table-of-contents:
+  en: 2a22a04d52afd49c
+  zh: 382d837a384d267c
+/deepseek-ai-dsh-backlinks-supermanager/configuration:
+  en: cd62774e3b4b4c73
+  zh: 50211d5ee06a39c9
+/deepseek-ai-dsh-backlinks-supermanager/model-experience:
+  en: 48827eb2c21d771d
+  zh: dc0c5a1f3a8b6f48
+/deepseek-ai-dsh-backlinks-supermanager/model-experience/kv-cache-effect:
+  en: 40294c1c31b74824
+  zh: 166a66641a38a173
+/deepseek-ai-dsh-backlinks-supermanager/known-limitations-and-deferred-work:
+  en: d8dd3ee18e67be09
+  zh: 474ba2d917ec8730
+/deepseek-ai-dsh-backlinks-supermanager/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 4c879960b94cc733

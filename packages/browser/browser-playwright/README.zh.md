@@ -1,8 +1,25 @@
+---
+description: "Service Provider for the browser automation seam: a persistent headed Chromium context over Playwright."
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-browser-playwright
 
 [English](README.md) | 中文
 
+<a id="summary"></a>
+## 概述
+
 浏览器自动化能力服务定义的 Service Provider：Playwright 持久 Chromium 上下文。默认有头并使用真实 Chrome 渠道，共享 profile 里的 cookie 登录态与人工解决过的挑战跨运行保留。
+
+<a id="table-of-contents"></a>
+## 目录
+
+- [配置](#configuration)
+- [模型体验](#model-experience)
+- [已知限制与遗留工作](#known-limitations-and-deferred-work)
+
+-----
 
 | 包 | 角色 | ctx 键 |
 |---|---|---|
@@ -10,6 +27,9 @@
 | `dsh-browser-playwright`（本包） | Service Provider：基于 Playwright 的持久 Chromium | 注册到 `ctx.browser` |
 | `dsh-tool-browser` | Consumer：面向模型的 `browser` 工具 | `ctx.tools` |
 
+<a id=""></a>
+
+<a id="configuration"></a>
 ## 配置
 
 | 字段 | 默认 | 用途 |
@@ -24,6 +44,7 @@
 
 每条命令分发把服务定义的闭合 `BrowserCommand` 联合映射到其寻址的标签页：命名 `page` 引用（由 navigate 绑定、此后复用），省略时为最近打开的标签页。同一标签页的命令在页内链上保序，不同标签页的命令可并行；Playwright 的裸失败包装为 `BROWSER_ACTION_FAILED`，启动失败包装为 `BROWSER_LAUNCH_FAILED`。
 
+<a id="model-experience"></a>
 ## 模型体验
 
 间接经由 `dsh-tool-browser`；本 Provider 不产出提示词、schema 或会话面。
@@ -32,8 +53,21 @@
 
 无直接失效；由上述 Consumer 负责请求前缀变化。
 
-## 已知限制与遗留工作
+## 已知限制与延期工作
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - **内置 Chromium 需手动安装** — 默认 `chrome` 渠道使用本机安装的 Google Chrome；`channel` 留空时部署环境需 `npx playwright-core install chromium`。
 - **按引用寻址标签页** — Provider 以页内串行链驾驭每个标签页，跨页命令可重叠；弹出窗口自动收养为可寻址页。
 - **截图仅视口** — `fullPage` 整页捕获推迟到有工作流需要页面级证据时。
+
+-----
+
+### 开发备注
+
+<details>
+<summary>维护者的工作上下文 — 点击展开</summary>
+
+无。
+
+</details>

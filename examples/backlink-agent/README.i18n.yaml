@@ -1,6 +1,25 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write examples/backlink-agent/README.md
-README.md: 0a4f10f92d276674cb16f13f3e97bf510372a5af
-README.zh.md: d65d310321c306e8bac3469bf316a2c0ab103da4
+/backlink-agent-autonomous-backlink-publishing-operator:
+  en: 5d2599da93045271
+  zh: f7801288bf052276
+/backlink-agent-autonomous-backlink-publishing-operator/how-a-run-works:
+  en: c7c2d5e73f02df23
+  zh: 8fefcb8fca2d2177
+/backlink-agent-autonomous-backlink-publishing-operator/onboarding-another-machine-three-steps:
+  en: bf1649fa8964210b
+  zh: 87e05b1b0e7051d4
+/backlink-agent-autonomous-backlink-publishing-operator/daily-use:
+  en: 8a57fb14a3d892ea
+  zh: 4f6f15ec00fbe666
+/backlink-agent-autonomous-backlink-publishing-operator/composition:
+  en: 061841ceb71a8d6f
+  zh: 5ad312cdbb2b5898
+/backlink-agent-autonomous-backlink-publishing-operator/google-login-sites:
+  en: e9d590dc58211ee3
+  zh: ca1548f7c340a5e9
+/backlink-agent-autonomous-backlink-publishing-operator/security-notes:
+  en: 61e8fefcac184c38
+  zh: c4c748ef758c035b

@@ -1,6 +1,16 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for backlinks.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/backlinks.md
-backlinks.md: 684f677f5dc4072f90706a2533f5bb64db83f6bc
-backlinks.zh.md: e613ba06a6c57c873293423b4f17396e24ae154d
+/backlinks:
+  en: b3449762721c9809
+  zh: a583b2a0d3951dfa
+/backlinks/why-one-seam-carries-a-work-source-and-a-mailbox:
+  en: a0399a97a7395d41
+  zh: ba0142ea16ae5f4e
+/backlinks/item-result-vocabulary:
+  en: d61e744ad3c75730
+  zh: 2cb762ae68f56621
+/backlinks/vocabulary:
+  en: fa0d20d35a6f74bb
+  zh: d9ad0c3bfaee26ec

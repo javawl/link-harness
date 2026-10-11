@@ -1,6 +1,25 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-25-browser-capability-seam.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-25-browser-capability-seam.md
-2026-08-25-browser-capability-seam.md: 57393e4bc89006f8f42bb0171c9da09c9f486cd3
-2026-08-25-browser-capability-seam.zh.md: b5292c4476f0dbcd64e4b5c8e8c16f6880fba422
+/agent-note-browser-capability-seam-one-session-one-verb-set:
+  en: 9de418cc41dfd132
+  zh: 25df37b8619f56df
+/agent-note-browser-capability-seam-one-session-one-verb-set/problem:
+  en: a6587f0fc60939cc
+  zh: 9d92bdfa08c5a7aa
+/agent-note-browser-capability-seam-one-session-one-verb-set/decision:
+  en: 3bbd4a46fc3b53e1
+  zh: f4ea60c76fd0482a
+/agent-note-browser-capability-seam-one-session-one-verb-set/failure-discipline:
+  en: 59a0ca95a5094688
+  zh: bb17a53b0f7e115b
+/agent-note-browser-capability-seam-one-session-one-verb-set/deferred-work:
+  en: d6b00c1e80a73865
+  zh: 70a2811e31a75d01
+/agent-note-browser-capability-seam-one-session-one-verb-set/consequences:
+  en: 7d7ad750bb8729bd
+  zh: beb9a74c799cb9d1
+/agent-note-browser-capability-seam-one-session-one-verb-set/alternatives-considered:
+  en: db7d9236960b5343
+  zh: 4eb32571c95e07b2

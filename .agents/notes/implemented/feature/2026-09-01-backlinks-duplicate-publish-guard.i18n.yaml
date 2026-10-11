@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-01-backlinks-duplicate-publish-guard.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-01-backlinks-duplicate-publish-guard.md
-2026-09-01-backlinks-duplicate-publish-guard.md: 8cb9af85a0716466cca586c72193493e107215d4
-2026-09-01-backlinks-duplicate-publish-guard.zh.md: 2299655d05b7b1808e8f3c90d8dff9d0fd94430c
+/agent-note-backlinks-duplicate-publish-guard-verify-records-before-re-submitting:
+  en: 1ae888866ed036ba
+  zh: 0e071b26abd36f14
+/agent-note-backlinks-duplicate-publish-guard-verify-records-before-re-submitting/problem:
+  en: ed3e213e2dfad823
+  zh: 19705d2b44ae0bd5
+/agent-note-backlinks-duplicate-publish-guard-verify-records-before-re-submitting/decision:
+  en: c01419c835d61249
+  zh: 95dd4e28d17aa739
+/agent-note-backlinks-duplicate-publish-guard-verify-records-before-re-submitting/alternatives-considered:
+  en: ce77fa626ba5a294
+  zh: b34598d1c6652888
+/agent-note-backlinks-duplicate-publish-guard-verify-records-before-re-submitting/consequences:
+  en: 0502a959d5a0cb75
+  zh: 66618600d113f8fc

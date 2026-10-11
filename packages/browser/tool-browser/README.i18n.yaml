@@ -1,6 +1,43 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/browser/tool-browser/README.md
-README.md: 02243e49be0139bf62e05c5a89aec38b2b792751
-README.zh.md: 92b1ae68dc63eceaf289503f786b97afe7b41c7e
+/:
+  en: efe91f30d5239e7e
+  zh: efe91f30d5239e7e
+/deepseek-ai-dsh-tool-browser:
+  en: 5ea01cb2f4769903
+  zh: 703ad4476c6c3138
+/deepseek-ai-dsh-tool-browser/summary:
+  en: 337d21428dbbaefa
+  zh: 3fc2d3124dcdc83b
+/deepseek-ai-dsh-tool-browser/table-of-contents:
+  en: 9df9e0c67085c766
+  zh: 94132dd864f65b97
+/deepseek-ai-dsh-tool-browser/tool:
+  en: 575cfb6d275df596
+  zh: f0a9c62d041b9d19
+/deepseek-ai-dsh-tool-browser/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-tool-browser/model-experience/system-prompt:
+  en: cf78b9dd5596495f
+  zh: bd44560f8c2435e8
+/deepseek-ai-dsh-tool-browser/model-experience/system-prompt/what-the-model-sees:
+  en: f9dd16eb25855106
+  zh: 50d300ec8565dd9c
+/deepseek-ai-dsh-tool-browser/model-experience/system-prompt/what-the-model-sees/browser-tool-guidance:
+  en: ac6c69b1a44865c7
+  zh: 55829e004628e660
+/deepseek-ai-dsh-tool-browser/model-experience/system-prompt/token-effect:
+  en: 90f17d8b21ee65ca
+  zh: 080d51926b4a29a9
+/deepseek-ai-dsh-tool-browser/model-experience/system-prompt/kv-cache-effect:
+  en: 1eb836164f8ab0a9
+  zh: 537f31b09caaa913
+/deepseek-ai-dsh-tool-browser/known-limitations-and-deferred-work:
+  en: f944e6aab5f586be
+  zh: cea3f22a0257543a
+/deepseek-ai-dsh-tool-browser/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 4c879960b94cc733

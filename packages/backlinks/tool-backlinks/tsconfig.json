@@ -28,9 +28,6 @@
     },
     {
       "path": "../backlinks"
-    },
-    {
-      "path": "../../runtime-diagnostics/invariants"
     }
   ]
 }

@@ -136,4 +136,27 @@ async pollMail(address: MailboxAddress, options: MailPollOptions, signal?: Abort
 ```
 
 Source: [`packages/backlinks/backlinks/src/index.ts`](../../packages/backlinks/backlinks/src/index.ts)
+
+<a id="ctxbacklinksconsole--backlinksconsoleruntime"></a>
+
+### `ctx.backlinksConsole` — `BacklinksConsoleRuntime`
+
+The read-only Remote console over `ctx.backlinks`. Mounted as a Service plugin (`ctx.plugin(BacklinksConsoleRuntime)` via the composition row), it binds the `backlinksConsole` wire namespace for the gateway.
+
+```ts cordis-catalog
+/**
+ * Every batch in the workspace with per-status counts and the executing flag.
+ * @returns the provider's batch summaries, newest-planned first.
+ */
+@Remote async batches(): Promise<readonly BacklinkBatchSummary[]>
+
+/**
+ * One batch's full detail: website, anchors, and items.
+ * @param batchId - the batch to read.
+ * @returns batch, website, anchors, and items.
+ */
+@Remote async batch(batchId: number): Promise<BacklinkBatchDetail>
+```
+
+Source: [`packages/backlinks/console/src/index.ts`](../../packages/backlinks/console/src/index.ts)
 <!-- END GENERATED cordis-surface -->

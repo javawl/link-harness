@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-03-backlinks-discipline-delivery-channel.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-03-backlinks-discipline-delivery-channel.md
-2026-09-03-backlinks-discipline-delivery-channel.md: cec78e18d28c2c09925c17e22c552cc52ace9dfe
-2026-09-03-backlinks-discipline-delivery-channel.zh.md: a2293b45054ca117a5b9d28631a416411b29d729
+/agent-note-backlinks-discipline-delivery-the-subagent-prompt-is-the-only-channel-executors-read:
+  en: ab3dc1d6cb14afd6
+  zh: 8445dcd80e78e803
+/agent-note-backlinks-discipline-delivery-the-subagent-prompt-is-the-only-channel-executors-read/problem:
+  en: affe313668121b4a
+  zh: 49f371bcc89f4710
+/agent-note-backlinks-discipline-delivery-the-subagent-prompt-is-the-only-channel-executors-read/decision:
+  en: 04236bcd97d1d268
+  zh: de497dc19bd35284
+/agent-note-backlinks-discipline-delivery-the-subagent-prompt-is-the-only-channel-executors-read/alternatives-considered:
+  en: f992885297d2eda0
+  zh: 5ea71f950db8b3af
+/agent-note-backlinks-discipline-delivery-the-subagent-prompt-is-the-only-channel-executors-read/consequences:
+  en: 2930ba762d31a795
+  zh: e48103fe1d3fc657

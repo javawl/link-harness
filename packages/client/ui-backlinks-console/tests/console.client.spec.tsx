@@ -20,8 +20,8 @@ function batch(id: number): BacklinkBatchSummary {
 function bench() {
   const ctx = new Context()
   const send = vi.fn(async (_text: string) => {})
-  const open = vi.fn()
-  const connectWorkspace = vi.fn(async (_id: string) => 'blank')
+  const openSession = vi.fn()
+  const create = vi.fn(async (_opts: { workspaceId: string }) => 'blank')
   const scope = vi.fn(() => ({
     inject: async (_keys: string[], callback: (bound: { conversation: { send: typeof send } }) => Promise<void>) => {
       await callback({ conversation: { send } })
@@ -34,17 +34,23 @@ function bench() {
     })),
   } }))
   const workspaceState = {
-    items: [{ workspaceId: 'current-workspace', sessionIds: ['existing'] }],
-    recentWorkspaceId: 'recent-workspace',
+    items: [{ workspaceId: 'current-workspace', sessionIds: ['existing'], createdAt: '2026-01-01T00:00:00Z' }],
+    archivedSessionIds: [],
+    pinnedSessionIds: [],
+    state: 'idle',
+    phase: 'ready',
+    error: null,
   }
+  const sessionState = { ids: ['existing'], byId: { existing: { id: 'existing', updatedAt: 1 } }, phase: 'ready', projectionsBySession: {} }
   ctx.provide('remote', { backlinksConsole: { batches, batch: detail } } as never)
-  ctx.provide('workspaces', { list: { getSnapshot: () => workspaceState }, connectWorkspace } as never)
-  ctx.provide('sessions', { list: { getSnapshot: () => ({ current: 'existing' }) }, scope, open } as never)
+  ctx.provide('workspaces', { list: { getSnapshot: () => workspaceState } } as never)
+  ctx.provide('sessions', { list: { getSnapshot: () => sessionState }, create, scope } as never)
+  ctx.provide('uiWorkspace', { openSession } as never)
   const store = createConsoleStore(ctx)
   const locale = new LocaleRuntime(ctx)
   locale.register('backlinksConsole', { zh, en })
   locale.setLocale('zh')
-  return { store, batches, detail, send, open, connectWorkspace, scope, workspaceState, t: locale.bind('backlinksConsole') }
+  return { store, batches, detail, send, openSession, create, scope, workspaceState, t: locale.bind('backlinksConsole') }
 }
 
 afterEach(cleanup)
@@ -66,7 +72,7 @@ describe('publish batch console', () => {
     await b.store.refresh()
     b.store.selectBatches([99, 389, 99], true)
     let finish!: (id: string) => void
-    b.connectWorkspace.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    b.create.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
     const pending = b.store.publishSelected()
     await b.store.publish(100)
     b.store.selectBatches([100], true)
@@ -74,10 +80,10 @@ describe('publish batch console', () => {
     expect(b.store.store.getSnapshot().selectedBatchIds).toEqual([389, 99])
     finish('new-blank')
     await pending
-    expect(b.connectWorkspace).toHaveBeenCalledExactlyOnceWith('current-workspace')
+    expect(b.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'current-workspace' })
     expect(b.scope).toHaveBeenCalledExactlyOnceWith('new-blank')
     expect(b.send).toHaveBeenCalledExactlyOnceWith('/backlink-publish 389 99\n请按以上批次号顺序依次发布，仅处理这些批次。')
-    expect(b.open).toHaveBeenCalledExactlyOnceWith('new-blank')
+    expect(b.openSession).toHaveBeenCalledExactlyOnceWith('new-blank')
     expect(b.store.store.getSnapshot()).toMatchObject({ selectedBatchIds: [], publishing: null, error: null })
   })
 
@@ -88,7 +94,7 @@ describe('publish batch console', () => {
     b.send.mockRejectedValueOnce(new Error('submission rejected'))
     await b.store.publishSelected()
     expect(b.store.store.getSnapshot()).toMatchObject({ selectedBatchIds: [389, 100], publishing: null, error: 'submission rejected' })
-    expect(b.open).not.toHaveBeenCalled()
+    expect(b.openSession).not.toHaveBeenCalled()
     await b.store.publishSelected()
     expect(b.send).toHaveBeenCalledTimes(2)
     expect(b.store.store.getSnapshot()).toMatchObject({ selectedBatchIds: [], error: null })
@@ -97,14 +103,14 @@ describe('publish batch console', () => {
   it('keeps single-batch commands and ignores an empty batch selection', async () => {
     const b = bench()
     await b.store.publishSelected()
-    expect(b.connectWorkspace).not.toHaveBeenCalled()
+    expect(b.create).not.toHaveBeenCalled()
     await b.store.publish(100)
     expect(b.send).toHaveBeenCalledExactlyOnceWith('/backlink-publish 100')
   })
 
   it('reports connection failures without submitting to the current session', async () => {
     const b = bench()
-    b.connectWorkspace.mockRejectedValueOnce(new Error('connection failed'))
+    b.create.mockRejectedValueOnce(new Error('connection failed'))
     await b.store.publish(389)
     expect(b.send).not.toHaveBeenCalled()
     expect(b.store.store.getSnapshot()).toMatchObject({ publishing: null, error: 'connection failed' })

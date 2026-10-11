@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-27-backlinks-settings-section.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-27-backlinks-settings-section.md
-2026-08-27-backlinks-settings-section.md: bd9161948c2256c621f1e775ee8680991ddaa531
-2026-08-27-backlinks-settings-section.zh.md: f2f3492dc8aaadcb6eb97b93e86828182855c857
+/agent-note-backlinks-tokens-and-endpoints-join-the-settings-web-configuration:
+  en: 012db8dce8661aab
+  zh: 1abb52040bf88bb0
+/agent-note-backlinks-tokens-and-endpoints-join-the-settings-web-configuration/problem:
+  en: 3a73005f952c54e0
+  zh: 917e6dbd17ae13fd
+/agent-note-backlinks-tokens-and-endpoints-join-the-settings-web-configuration/decision:
+  en: c3d7a83a454c3425
+  zh: 15cbec7ce9dd0b14
+/agent-note-backlinks-tokens-and-endpoints-join-the-settings-web-configuration/consequences:
+  en: 33e8c83e7c311616
+  zh: 774f3b962f8ac83e
+/agent-note-backlinks-tokens-and-endpoints-join-the-settings-web-configuration/alternatives-considered:
+  en: 0ec25251c66ce32a
+  zh: 7a7c02d497b84155

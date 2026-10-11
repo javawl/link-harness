@@ -1,8 +1,25 @@
+---
+description: "Consumer for the browser automation seam: the model-facing browser tool with one action discriminant."
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-tool-browser
 
 English | [中文](README.zh.md)
 
+<a id="summary"></a>
+## Summary
+
 Consumer for the browser automation seam: the model-facing `browser` tool over `ctx.browser`. One tool with an `action` discriminant — the browser is one stateful surface, so the model drives it with a single verb set instead of one tool per operation.
+
+<a id="table-of-contents"></a>
+## Table of Contents
+
+- [Tool](#tool)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+-----
 
 | Package | Role | ctx key |
 |---|---|---|
@@ -10,10 +27,12 @@ Consumer for the browser automation seam: the model-facing `browser` tool over `
 | `dsh-browser-playwright` | Service Provider: persistent Chromium via Playwright | registers on `ctx.browser` |
 | `dsh-tool-browser` (this) | Consumer: the model-facing `browser` tool | `ctx.tools` |
 
+<a id="tool"></a>
 ## Tool
 
 `browser(action, url?, selector?, value?, key?, files?, waitUntil?, timeoutMs?)` — actions `navigate`, `snapshot`, `click`, `fill`, `select`, `press`, `upload`, `screenshot`, `waitFor`, `closePage`. Results are the seam's closed union: bounded page capture (`page`), `acked`, or `screenshot` PNG base64. Page text is bounded by `maxOutputChars` (default 60 000); the per-call timeout (`timeoutMs`, default 120 000) is deployment policy forwarded as the tool's cancellation signal. The tool stays visible when no provider exists and fails with a structured error at execution.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### System prompt
@@ -38,6 +57,19 @@ Stable tool schema and prompt section; no request-prefix churn across calls.
 
 ## Known Limitations and Deferred Work
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - **Tab addressing is per-caller** — the `page` argument threads through every action; navigate binds a new ref, later commands address it. One agent's calls stay serial (`isConcurrencySafe` false); cross-agent parallelism is orchestration (each child addresses its own ref), not this agent's parallel calls.
 - **Semantic selectors first** — `snapshot format=aria` returns the accessibility tree; selectors address by `role:<role>|<name>`, `label:`, `placeholder:`, `text:`, bare CSS as fallback, `frame(<css>)>>` chains into iframes, and click alone takes `xy:<x>,<y>`. `bringToFront` surfaces an offscreen window for human fallback.
 - **No cookie/storage inspection** — deliberate: sessions are opaque to the model; login state is observed through page snapshots only.
+
+-----
+
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

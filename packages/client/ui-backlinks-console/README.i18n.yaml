@@ -1,6 +1,40 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/ui-backlinks-console/README.md
-README.md: afd68293711482fd96ce4d38083ab9c062d4369a
-README.zh.md: 7fecf2e3d05da71ff7dd40280a5b95ccd42f2b9a
+/:
+  en: 8aff2a6200d49d29
+  zh: 8aff2a6200d49d29
+/publish-batch-console:
+  en: a8b600404b5a2da8
+  zh: 5f0a2a25fb6dfa6e
+/publish-batch-console/summary:
+  en: 6b229dd7cd04efc7
+  zh: dde33cdf47a324a1
+/publish-batch-console/table-of-contents:
+  en: eb402c7510e36d4b
+  zh: 79880b46e1102766
+/publish-batch-console/selection-and-submission:
+  en: 62d80fd578fd5938
+  zh: 4df908e84e518a73
+/publish-batch-console/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/publish-batch-console/model-experience/user-request-submission:
+  en: 8d85cc2651d56cce
+  zh: 9f4a47b244b6dcb2
+/publish-batch-console/model-experience/user-request-submission/what-the-model-sees:
+  en: 805e79af26276efc
+  zh: 43c6b5b14b8eed7b
+/publish-batch-console/model-experience/user-request-submission/token-effect:
+  en: 10a7e0cb844c055e
+  zh: 477e233d6667ddc2
+/publish-batch-console/model-experience/user-request-submission/kv-cache-effect:
+  en: b5be70674bda0ae4
+  zh: 2c6345421203c491
+/publish-batch-console/known-limitations-and-deferred-work:
+  en: c054bf1cd9cdb15e
+  zh: 8948ff8fdaab3e04
+/publish-batch-console/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 4c879960b94cc733

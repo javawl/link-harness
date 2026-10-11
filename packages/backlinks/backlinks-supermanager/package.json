@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-backlinks-supermanager",
-  "description": "Supermanager batch work-source provider for the DeepSeek Harness backlinks seam (ctx.backlinks) \u2014 Bearer-token HTTP client over /api/agent/*: batches, leases, item results, reciprocal badges",
+  "description": "Supermanager batch work-source provider for the DeepSeek Harness backlinks seam (ctx.backlinks) — Bearer-token HTTP client over /api/agent/*: batches, leases, item results, reciprocal badges",
   "version": "0.1.1-rc.2",
   "publishConfig": {
     "access": "public"
@@ -18,25 +18,18 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./invariant": {
-      "types": "./lib/types/invariant.d.ts",
-      "default": "./lib/invariant.js"
-    },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
     "lib/index.js",
-    "lib/invariant.js",
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
   "peerDependencies": {
     "@deepseek-ai/dsh-backlinks": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-launch-environment": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-settings": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
   },
   "dependencies": {
@@ -44,10 +37,8 @@
   },
   "devDependencies": {
     "@deepseek-ai/dsh-backlinks": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-launch-environment": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-settings": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
   }
 }

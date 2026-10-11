@@ -1,8 +1,25 @@
+---
+description: "Service Provider for the backlinks mailbox seam: a cloud-mail Open-API client for verification addresses and mail polling."
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-backlinks-cloud-mail
 
 English | [中文](README.zh.md)
 
+<a id="summary"></a>
+## Summary
+
 Service Provider for the backlinks mailbox seam: a cloud-mail Open-API client. Creates verification addresses (`/public/addUser`) and polls received mail (`/public/emailList`) under the caller's bounded wait; the backend's AI-extracted `code` and the first body URL surface on `VerificationMail`.
+
+<a id="table-of-contents"></a>
+## Table of Contents
+
+- [Configuration](#configuration)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+-----
 
 | Package | Role | ctx key |
 |---|---|---|
@@ -10,6 +27,7 @@ Service Provider for the backlinks mailbox seam: a cloud-mail Open-API client. C
 | `dsh-backlinks-cloud-mail` (this) | Service Provider: cloud-mail mailboxes | registers on `ctx.backlinks` |
 | `dsh-tool-backlinks` | Consumer: the model-facing `backlinks` tool | `ctx.tools` |
 
+<a id="configuration"></a>
 ## Configuration
 
 | Field | Default | Purpose |
@@ -18,6 +36,7 @@ Service Provider for the backlinks mailbox seam: a cloud-mail Open-API client. C
 | `token` | `CLOUDMAIL_TOKEN` env | Open-API token (admin-generated) |
 | `requestTimeoutMs` | `15000` | Per-request timeout |
 
+<a id="model-experience"></a>
 ## Model Experience
 
 Indirectly, through `dsh-tool-backlinks`; this provider contributes no prompt or schema of its own.
@@ -28,5 +47,18 @@ No direct invalidation; the named consumer owns any request-prefix changes.
 
 ## Known Limitations and Deferred Work
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - **Polling only** — cloud-mail has no webhook; `pollMail` polls at the caller's interval until the deadline.
 - **No mailbox cleanup** — created addresses persist in cloud-mail; lifecycle pruning is a backend concern.
+
+-----
+
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

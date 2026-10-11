@@ -6,7 +6,7 @@
 
 import { chromium } from 'playwright-core'
 import type { BrowserContext, Locator, Page } from 'playwright-core'
-import { assertNever } from '@deepseek-ai/dsh-llm'
+import { assertNever } from '@deepseek-ai/dsh-util-values'
 import type {
   BrowserAutomationProvider,
   BrowserCommand,

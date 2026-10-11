@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-02-backlinks-comment-body-link.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-02-backlinks-comment-body-link.md
-2026-09-02-backlinks-comment-body-link.md: 1cb564b42c73262f26c23d317edbd4d0df46f64a
-2026-09-02-backlinks-comment-body-link.zh.md: 8b6d46e65d3514b9ed8356c826f5c1f8676aa501
+/agent-note-backlinks-comment-body-link-embedding-the-anchor-without-a-website-field:
+  en: 8e94e3dfb42d610d
+  zh: a830eb1229598bb2
+/agent-note-backlinks-comment-body-link-embedding-the-anchor-without-a-website-field/problem:
+  en: 86d8365f79d22f34
+  zh: d31ee5ed982fbe7e
+/agent-note-backlinks-comment-body-link-embedding-the-anchor-without-a-website-field/decision:
+  en: e3ad00320e220549
+  zh: 8c43796b99937537
+/agent-note-backlinks-comment-body-link-embedding-the-anchor-without-a-website-field/alternatives-considered:
+  en: 9bf6f5e65384e305
+  zh: 25b6d3ddbba24379
+/agent-note-backlinks-comment-body-link-embedding-the-anchor-without-a-website-field/consequences:
+  en: fcd2c8308e7f88c8
+  zh: 18bd22b7f8e2a824
+/agent-note-backlinks-comment-body-link-embedding-the-anchor-without-a-website-field/related:
+  en: daf9bd0ab3ebf5da
+  zh: 3741cb40bce63f68

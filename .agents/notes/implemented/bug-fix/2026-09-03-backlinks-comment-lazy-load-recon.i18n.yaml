@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-03-backlinks-comment-lazy-load-recon.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-03-backlinks-comment-lazy-load-recon.md
-2026-09-03-backlinks-comment-lazy-load-recon.md: d4938f42f0a0d7884782d245f0eef03dc3f74384
-2026-09-03-backlinks-comment-lazy-load-recon.zh.md: 319c824051ad233db6120995f645c7037ec9f863
+/agent-note-backlinks-comment-area-lazy-load-recon-never-conclude-absence-from-one-snapshot:
+  en: 3e4ac3c908a6a181
+  zh: 243f1ef47293d518
+/agent-note-backlinks-comment-area-lazy-load-recon-never-conclude-absence-from-one-snapshot/problem:
+  en: 8047eb13c8ec3051
+  zh: 8c7a39f1c26dfc2b
+/agent-note-backlinks-comment-area-lazy-load-recon-never-conclude-absence-from-one-snapshot/decision:
+  en: 892a76d2d4132fdd
+  zh: f4b947ca992a2e15
+/agent-note-backlinks-comment-area-lazy-load-recon-never-conclude-absence-from-one-snapshot/alternatives-considered:
+  en: 6e7c9102c5ec29db
+  zh: 2be4f229795a73ef
+/agent-note-backlinks-comment-area-lazy-load-recon-never-conclude-absence-from-one-snapshot/consequences:
+  en: 15df0bd2e56e2da7
+  zh: f0de38a04fb99261

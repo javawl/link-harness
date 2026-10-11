@@ -9,9 +9,17 @@ import type { BacklinkBatchDetail, BacklinkBatchSummary } from '@deepseek-ai/dsh
 import type {} from '@deepseek-ai/dsh-backlinks-console/remote'
 // Type-only: the conversation face's Context merge (ctx…conversation.send).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+// Type-only: the workspace UI service's Context merge (ctx.uiWorkspace).
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
+// Type-only: the session and workspace Context merges (ctx.sessions,
+// ctx.workspaces, ctx.uiWorkspace).
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 
 /** What the publish panel renders. */
 export interface ConsoleViewState {
@@ -81,12 +89,9 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
     const ids = [...new Set(batchIds)].sort((a, b) => b - a)
     store.update((state) => { state.publishing = ids; state.error = null })
     try {
-      const current = ctx.sessions.list.getSnapshot().current
-      const workspaces = ctx.workspaces.list.getSnapshot()
-      const workspaceId = workspaces.items.find(item => current !== undefined && item.sessionIds.includes(current))?.workspaceId
-        ?? workspaces.recentWorkspaceId
+      const workspaceId = recentWorkspaceId(ctx.sessions.list.getSnapshot(), ctx.workspaces.list.getSnapshot())
       if (workspaceId === undefined) throw new Error('publish: select a workspace first')
-      const sessionId = await ctx.workspaces.connectWorkspace(workspaceId)
+      const sessionId = await ctx.sessions.create({ workspaceId })
       const scope = ctx.sessions.scope(sessionId)
       if (scope === undefined) throw new Error('publish: new session is unavailable')
       const command = `/backlink-publish ${ids.join(' ')}`
@@ -94,7 +99,7 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
       await scope.inject(['conversation'], async (bound) => {
         await bound.conversation.send(command)
       })
-      ctx.sessions.open(sessionId)
+      ctx.uiWorkspace.openSession(sessionId)
       store.update((state) => {
         state.selectedBatchIds = state.selectedBatchIds.filter(id => !ids.includes(id))
         state.open = false
@@ -165,4 +170,30 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
       await publishBatches(store.getSnapshot().selectedBatchIds)
     },
   }
+}
+
+/**
+ * Pick the Workspace a publish submission targets: the one holding the most
+ * recently updated Session, falling back to the newest created Workspace —
+ * the same recency rule the workspace navigation applies when nothing is open.
+ * @param sessions - current Session list projection.
+ * @param workspaces - current Workspace projection.
+ * @returns the target Workspace id, or undefined when none is registered.
+ */
+function recentWorkspaceId(sessions: SessionListState, workspaces: WorkspaceSnapshot): WorkspaceSnapshot['items'][number]['workspaceId'] | undefined {
+  let selected: WorkspaceSnapshot['items'][number]['workspaceId'] | undefined
+  let selectedTime = Number.NEGATIVE_INFINITY
+  for (const workspace of workspaces.items) {
+    let latest = Number.NEGATIVE_INFINITY
+    for (const sessionId of workspace.sessionIds) {
+      const session = sessions.byId[sessionId]
+      if (session !== undefined) latest = Math.max(latest, session.updatedAt)
+    }
+    if (latest === Number.NEGATIVE_INFINITY) latest = Date.parse(workspace.createdAt)
+    if (selected === undefined || latest > selectedTime) {
+      selected = workspace.workspaceId
+      selectedTime = latest
+    }
+  }
+  return selected
 }

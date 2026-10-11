@@ -1,8 +1,26 @@
+---
+description: "Service Definition for the browser automation capability seam: the provider registry, lazy shared session, and closed-union command vocabulary."
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-browser
 
 English | [中文](README.zh.md)
 
+<a id="summary"></a>
+## Summary
+
 Service Definition for the browser automation capability seam (`ctx.browser`): the provider registry, the lazy single-session lifecycle, per-tab-ordered closed-union command dispatch over page refs, and the `BrowserError` taxonomy.
+
+<a id="table-of-contents"></a>
+## Table of Contents
+
+- [Service API (ctx.browser)](#service-api)
+- [Selection](#selection)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+-----
 
 | Package | Role | ctx key |
 |---|---|---|
@@ -10,6 +28,8 @@ Service Definition for the browser automation capability seam (`ctx.browser`): t
 | `dsh-browser-playwright` | Service Provider: persistent Chromium via Playwright | registers on `ctx.browser` |
 | `dsh-tool-browser` | Consumer: the model-facing `browser` tool | `ctx.tools` |
 
+
+<a id="service-api"></a>
 ## Service API (ctx.browser)
 
 | Member | Purpose |
@@ -20,6 +40,7 @@ Service Definition for the browser automation capability seam (`ctx.browser`): t
 
 `BrowserCommand` (`navigate`/`snapshot`/`click`/`fill`/`select`/`press`/`upload`/`screenshot`/`waitFor`/`closePage`) and `BrowserResult` (`page`/`acked`/`screenshot`) are CLOSED unions owned here. A raw provider failure discards the session (`BROWSER_ACTION_FAILED`), so the next command relaunches rather than reusing unknown browser state.
 
+<a id="selection"></a>
 ## Selection
 
 | Situation | Execution |
@@ -33,6 +54,7 @@ Service Definition for the browser automation capability seam (`ctx.browser`): t
 
 `$DSH_BROWSER_PROVIDER` is equivalent to the `provider` config field.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 Indirectly, through `dsh-tool-browser`, which returns the bounded page capture, ack, or screenshot outcomes and the exact provider-selection failures while this registry contributes no prompt or schema itself.
@@ -43,6 +65,19 @@ No direct invalidation; the named consumer owns any request-prefix changes.
 
 ## Known Limitations and Deferred Work
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - **One session, many addressed tabs** — every command takes an optional `page` ref; a navigate binds a caller-named ref to a tab and later commands address it, so parallel callers each drive their own tab (cookie jar shared). Commands without a ref keep the legacy most-recent-tab contract; a second parallel session remains out of scope.
 - **No observation surface** — no page-lifecycle events and no session-status query; callers observe outcomes per command.
 - **Signal checks are cooperative** — `AbortSignal` is checked before dispatch; in-flight Playwright operations complete under their own timeouts.
+
+-----
+
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>
