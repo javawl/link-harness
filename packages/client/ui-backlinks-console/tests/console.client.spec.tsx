@@ -22,11 +22,29 @@ function bench() {
   const send = vi.fn(async (_text: string) => {})
   const openSession = vi.fn()
   const create = vi.fn(async (_opts: { workspaceId: string }) => 'blank')
-  const scope = vi.fn(() => ({
-    inject: async (_keys: string[], callback: (bound: { conversation: { send: typeof send } }) => Promise<void>) => {
-      await callback({ conversation: { send } })
-    },
-  }))
+  // Faithful to the real contract: send goes through a retained reference's
+  // scoped conversation face, not a bare scope() borrow of a just-created
+  // (never-retained) session.
+  let sessionSnapshot: { openState: string; openError?: Error } = { openState: 'open' }
+  const using = vi.fn(async (
+    _target: string,
+    _options: { source: string },
+    operation: (reference: {
+      ready: Promise<unknown>
+      binding: {
+        session: { getSnapshot: () => typeof sessionSnapshot }
+        ctx: { inject: (keys: string[], callback: (scoped: { conversation: { send: typeof send } }) => Promise<void>) => Promise<void> }
+      }
+    }) => Promise<void>,
+  ) => {
+    await operation({
+      ready: Promise.resolve(),
+      binding: {
+        session: { getSnapshot: () => sessionSnapshot },
+        ctx: { inject: async (_keys, callback) => { await callback({ conversation: { send } }) } },
+      },
+    })
+  })
   const batches = vi.fn(async () => ({ ok: true, value: [batch(99), batch(389), batch(100)] }))
   const detail = vi.fn(async (id: number) => ({ ok: true, value: {
     batch: batch(id), items: ['executed', 'failed', 'skipped'].map((status, index) => ({
@@ -44,13 +62,17 @@ function bench() {
   const sessionState = { ids: ['existing'], byId: { existing: { id: 'existing', updatedAt: 1 } }, phase: 'ready', projectionsBySession: {} }
   ctx.provide('remote', { backlinksConsole: { batches, batch: detail } } as never)
   ctx.provide('workspaces', { list: { getSnapshot: () => workspaceState } } as never)
-  ctx.provide('sessions', { list: { getSnapshot: () => sessionState }, create, scope } as never)
+  ctx.provide('sessions', { list: { getSnapshot: () => sessionState }, create, using } as never)
   ctx.provide('uiWorkspace', { openSession } as never)
   const store = createConsoleStore(ctx)
   const locale = new LocaleRuntime(ctx)
   locale.register('backlinksConsole', { zh, en })
   locale.setLocale('zh')
-  return { store, batches, detail, send, openSession, create, scope, workspaceState, t: locale.bind('backlinksConsole') }
+  return {
+    store, batches, detail, send, openSession, create, using, workspaceState,
+    setSessionSnapshot: (next: typeof sessionSnapshot) => { sessionSnapshot = next },
+    t: locale.bind('backlinksConsole'),
+  }
 }
 
 afterEach(cleanup)
@@ -81,10 +103,21 @@ describe('publish batch console', () => {
     finish('new-blank')
     await pending
     expect(b.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'current-workspace' })
-    expect(b.scope).toHaveBeenCalledExactlyOnceWith('new-blank')
+    expect(b.using).toHaveBeenCalledExactlyOnceWith('new-blank', { source: 'backlinksConsole' }, expect.any(Function))
     expect(b.send).toHaveBeenCalledExactlyOnceWith('/backlink-publish 389 99\n请按以上批次号顺序依次发布，仅处理这些批次。')
     expect(b.openSession).toHaveBeenCalledExactlyOnceWith('new-blank')
     expect(b.store.store.getSnapshot()).toMatchObject({ selectedBatchIds: [], publishing: null, error: null })
+  })
+
+  it('reports a blank session whose initial open failed and never sends', async () => {
+    const b = bench()
+    await b.store.refresh()
+    b.store.selectBatches([389], true)
+    b.setSessionSnapshot({ openState: 'error', openError: new Error('host refused the open') })
+    await b.store.publishSelected()
+    expect(b.send).not.toHaveBeenCalled()
+    expect(b.openSession).not.toHaveBeenCalled()
+    expect(b.store.store.getSnapshot()).toMatchObject({ selectedBatchIds: [389], publishing: null, error: 'host refused the open' })
   })
 
   it('retains selected batches after a failed send and permits retry', async () => {

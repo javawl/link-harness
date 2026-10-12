@@ -26,7 +26,7 @@ The Web sidebar's Publish Batches tab reads batch summaries and details through 
 
 Batches sort by numeric id descending on every refresh. Each top-level row has a checkbox independent of its detail disclosure. Select visible applies to the current search results; hidden selections remain selected. Refresh removes selections whose batches disappeared. Expanded items display `executed` in green, `failed` in red, and other statuses in muted text.
 
-Publish selected sends one request containing the selected ids in descending order into the current session's workspace, falling back to the recent workspace. Submission awaits `connectWorkspace()` and sends to that returned blank session. All publish and selection controls are disabled until submission settles. Success opens the receiving session and clears the submitted selection; a failure retains the selection and displays the error. Single-row Publish uses the same submission path.
+Publish selected sends one request containing the selected ids in descending order into the most recently used workspace. Submission creates a blank session there, holds a session reference until its initial open settles, and sends through that reference's scoped conversation face. All publish and selection controls are disabled until submission settles. Success opens the receiving session and clears the submitted selection; a failure (including a session that fails to open) retains the selection and displays the error. Single-row Publish uses the same submission path.
 
 <a id="model-experience"></a>
 ## Model Experience

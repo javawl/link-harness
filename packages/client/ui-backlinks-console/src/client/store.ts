@@ -21,6 +21,13 @@ import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 
+declare module '@deepseek-ai/dsh-api-session-controller/client' {
+  interface SessionReferenceSourceMap {
+    /** One publish-batch submission the console panel sends into a blank session. */
+    backlinksConsole: unknown
+  }
+}
+
 /** What the publish panel renders. */
 export interface ConsoleViewState {
   open: boolean
@@ -92,12 +99,20 @@ export function createConsoleStore(ctx: ClientContext): ConsoleStore {
       const workspaceId = recentWorkspaceId(ctx.sessions.list.getSnapshot(), ctx.workspaces.list.getSnapshot())
       if (workspaceId === undefined) throw new Error('publish: select a workspace first')
       const sessionId = await ctx.sessions.create({ workspaceId })
-      const scope = ctx.sessions.scope(sessionId)
-      if (scope === undefined) throw new Error('publish: new session is unavailable')
       const command = `/backlink-publish ${ids.join(' ')}`
         + (ids.length > 1 ? '\n请按以上批次号顺序依次发布，仅处理这些批次。' : '')
-      await scope.inject(['conversation'], async (bound) => {
-        await bound.conversation.send(command)
+      // create() only catalogues the session; the scoped conversation face
+      // exists solely while a reference holds the generation open, and a
+      // service property resolves only through an inject callback.
+      await ctx.sessions.using(sessionId, { source: 'backlinksConsole' }, async (reference) => {
+        await reference.ready
+        const state = reference.binding.session.getSnapshot()
+        if (state.openState !== 'open') {
+          throw state.openError ?? new Error('publish: new session failed to open')
+        }
+        await reference.binding.ctx.inject(['conversation'], async (scoped) => {
+          await scoped.conversation.send(command)
+        })
       })
       ctx.uiWorkspace.openSession(sessionId)
       store.update((state) => {
