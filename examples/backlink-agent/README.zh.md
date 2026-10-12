@@ -14,7 +14,7 @@ backlink-agent 是运行在你自己电脑上的外链发布智能体：它从 s
 2. **启动**：`bash examples/backlink-agent/start.sh`。启动只依赖 node，浏览器自动打开 `http://127.0.0.1:8787`。
 3. **配置令牌（网页设置页，保存即生效）**：首次启动后在网页设置页填写三个令牌与后端地址，无需编辑任何文件——`NEWAPI_API_KEY`（模型网关令牌，团队共用）、`SUPERMANAGER_TOKEN`（在 supermanager 系统设置 → Agent 接口为这台电脑单独创建，审计按令牌区分）、`CLOUDMAIL_TOKEN`（收验证邮件用，共用）；supermanager 地址生产环境填 `https://link.screwdom.org`（默认是本地开发地址）。
 
-配置的优先级：网页设置页 > 组合文件预置 > 环境变量与仓库根 `.env`（模板见 [`.env.example`](.env.example)，仅供批量引导机器时使用）。修改设置页里的令牌或地址后立即生效，无需重启。
+配置的优先级：网页设置页 > 组合文件预置 > 环境变量与仓库根 `.env`（模板见 [`.env.example`](.env.example)，仅供批量引导机器时使用）。模型目录、默认路由与主 agent 由 [`profile-settings.yml`](profile-settings.yml) 装入 profile 的持久设置层——`start.sh`/`setup.sh` 会自动安装（只补缺失条目，绝不覆盖你在设置页的编辑）——设置页的“模型”与“Agent 预设”因此能看到并编辑它们；`--patch` 叠加层只承载结构性组合，因为它优先级高于设置层、且对设置编辑器不可见。修改设置页里的令牌或地址后立即生效，无需重启。
 
 ## 日常使用
 
@@ -24,14 +24,14 @@ backlink-agent 是运行在你自己电脑上的外链发布智能体：它从 s
 - `/backlink-publish 176` —— 直接发布批次 176
 - `/google-session` —— 初始化或检查共享浏览器的谷歌会话
 
-也可以无界面一次性运行：`pnpm dsh --patch examples/backlink-agent/cordis.yml "发外链"`。直接说「执行批次 176」可跳过选择；`manual_required` 条目在人工解除浏览器挑战后于下次运行自动回到队列。
+也可以无界面一次性运行：每台电脑先执行一次 `node examples/backlink-agent/ensure-profile-settings.mjs headless`，再运行 `pnpm dsh --profile headless --patch examples/backlink-agent/cordis.yml "发外链"`。直接说「执行批次 176」可跳过选择；`manual_required` 条目在人工解除浏览器挑战后于下次运行自动回到队列。
 
 ## 组合
 
 | 条目 | 角色 |
 |---|---|
-| `llm-deepseek`（禁用）+ `llm-pi-ai` | OpenAI 兼容网关上的模型适配器（密钥可来自设置页或 `.env`） |
-| `agent-spine` | 每次运行一个 `main` agent，会话持久化在 `./.sessions` |
+| `llm-deepseek`（禁用）+ `llm-pi-ai` | OpenAI 兼容网关上的模型适配器（密钥可来自设置页或 `.env`；路由与模型目录预置在 `profile-settings.yml`） |
+| `agent-loop` | 每次运行一个 `main` agent，预置在 `profile-settings.yml` |
 | `skills`（`dsh-skill-filesystem`） | 来自 `./skills` 的六类 playbook `backlink-publish` 技能 |
 | `browser` + `browser-playwright` + `tool-browser` | 共享持久 Chrome，默认有头，人工可随时接管 |
 | `backlinks` + 两个提供方 + `tool-backlinks` | 批次工作源（supermanager）与邮箱（cloud-mail），令牌与地址均可在设置页配置 |

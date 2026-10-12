@@ -1,0 +1,46 @@
+# backlink-agent settings the web UI owns. ensure-profile-settings.mjs
+# appends each entry whose id is missing into the active profile's
+# cordis.patch.yml — the layer the settings page reads and writes. A
+# `--patch` overlay outranks that layer and hides from the settings editor,
+# so the model catalog, the default route, and the main agent must live
+# here instead of the overlay. After installation the file belongs to the
+# settings page: evolve these defaults by deleting the entry there and
+# rerunning the installer. Installing into a non-web profile:
+#   node examples/backlink-agent/ensure-profile-settings.mjs headless
+
+# Entry points that create agents without an explicit route (session titles,
+# fresh drivers) follow this default; point it at the gateway below.
+- id: agent-default-model
+  config:
+    provider: newapi
+    model: grok-4.6
+
+# One OpenAI-compatible route: any New API / One API style aggregator. The
+# providers dict key IS the route name; the models below are what the
+# settings page's model catalog edits and the composer's picker offers.
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  config:
+    providers:
+      newapi:
+        apiKeyEnv: NEWAPI_API_KEY
+        api: openai-completions
+        baseURL: https://newapi.code0.vip/v1
+        models:
+          - id: gemini-3.7-flash-high
+          - id: grok-4.6
+          - id: gpt-5.6-sol
+          - id: gpt-5.6-terra
+          - id: gpt-5.6-luna
+
+# One pre-created agent; hermetic prompts (no workspace-context loader). cwd
+# evaluates when the profile loads — launch from the repo root, as every
+# documented command does; a settings-page edit of this section freezes the
+# evaluated value into the file.
+- id: agent-loop
+  config:
+    agents:
+      - id: main
+        provider: newapi
+        model: grok-4.6
+        cwd: !!js process.cwd()

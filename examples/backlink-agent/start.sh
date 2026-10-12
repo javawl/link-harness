@@ -36,5 +36,9 @@ if command -v node >/dev/null && node -e 'process.exit(process.versions.node.spl
 else
   export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
 fi
+# 设置页管理的配置（模型目录/默认路由/主 agent）装进 profile 持久层：
+# --patch 叠加层优先级更高且对设置编辑器不可见，不能承载它们。只补写
+# 缺失条目，用户在设置页的已有编辑不会被覆盖。
+node examples/backlink-agent/ensure-profile-settings.mjs web
 # 等价于根 package.json 的 "dsh" 脚本：源码启动需经 tsx 的 ESM hook
 exec node --import tsx/esm apps/cli/src/bin.ts web --patch examples/backlink-agent/cordis.yml --port 8787

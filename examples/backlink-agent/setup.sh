@@ -49,6 +49,12 @@ pnpm install
 pnpm run build
 
 echo "== 4/4 配置 =="
+# 刚经 brew 装好 node@24 时本 shell 的 PATH 未必包含它，与 start.sh 相同回退
+if ! node -e 'process.exit(process.versions.node.split(".")[0] >= 24 ? 0 : 1)' 2>/dev/null; then
+  export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
+fi
+# 模型目录/默认路由/主 agent 装进 web profile 持久层，网页设置页才能看到并编辑
+node "$HERE/ensure-profile-settings.mjs" web
 echo "令牌（NEWAPI_API_KEY / SUPERMANAGER_TOKEN / CLOUDMAIL_TOKEN）不再需要改文件："
 echo "启动后在网页设置页填写即可，保存即生效。也可选用仓库根 .env（模板 $HERE/.env.example）。"
 

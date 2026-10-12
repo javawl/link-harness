@@ -14,7 +14,7 @@ A typical publish run: the agent lists pending batches over the backend's agent 
 2. **Start**: `bash examples/backlink-agent/start.sh`. Launch depends only on node; the browser opens `http://127.0.0.1:8787` automatically.
 3. **Configure tokens (web settings page, effective on save)**: after first launch fill three tokens and the backend URL in the web settings page — no file editing. `NEWAPI_API_KEY` (model-gateway key, shared across the team), `SUPERMANAGER_TOKEN` (created per machine at supermanager 系统设置 → Agent 接口; audit records attribute by token), `CLOUDMAIL_TOKEN` (verification mail, shared); set the supermanager base URL to `https://link.screwdom.org` for production (the default is a local dev address).
 
-Resolution order: web settings page > composition presets > environment variables and the repo-root `.env` (template in [`.env.example`](.env.example), kept for bulk machine provisioning). Editing a token or URL in the settings page takes effect immediately, without a restart.
+Resolution order: web settings page > composition presets > environment variables and the repo-root `.env` (template in [`.env.example`](.env.example), kept for bulk machine provisioning). The model catalog, default route, and main agent install from [`profile-settings.yml`](profile-settings.yml) into the profile's persistent settings layer — `start.sh` and `setup.sh` do this automatically (missing entries only; your settings-page edits are never overwritten) — which is what makes them visible and editable on the Models and Agent presets pages; the `--patch` overlay carries only structural composition, because it outranks the settings layer and hides from the editor. Editing a token or URL in the settings page takes effect immediately, without a restart.
 
 ## Daily use
 
@@ -24,14 +24,14 @@ Typing `/` in the web composer opens the skill trigger picker; a `/name` token i
 - `/backlink-publish 176` — publish batch 176 directly
 - `/google-session` — seed or check the shared browser's Google session
 
-A headless one-shot also works: `pnpm dsh --patch examples/backlink-agent/cordis.yml "发外链"`. Say "执行批次 176" to skip the picker; `manual_required` items re-enter the run automatically after a human clears the browser challenge.
+A headless one-shot also works: once per machine run `node examples/backlink-agent/ensure-profile-settings.mjs headless`, then `pnpm dsh --profile headless --patch examples/backlink-agent/cordis.yml "发外链"`. Say "执行批次 176" to skip the picker; `manual_required` items re-enter the run automatically after a human clears the browser challenge.
 
 ## Composition
 
 | Entry | Role |
 |---|---|
-| `llm-deepseek` (disabled) + `llm-pi-ai` | model adapter over an OpenAI-compatible gateway (key from the settings page or `.env`) |
-| `agent-spine` | one `main` agent per run, session persisted under `./.sessions` |
+| `llm-deepseek` (disabled) + `llm-pi-ai` | model adapter over an OpenAI-compatible gateway (key from the settings page or `.env`; route and model catalog pinned in `profile-settings.yml`) |
+| `agent-loop` | one `main` agent per run, pinned in `profile-settings.yml` |
 | `skills` (`dsh-skill-filesystem`) | the six-playbook `backlink-publish` skill from `./skills` |
 | `browser` + `browser-playwright` + `tool-browser` | shared persistent Chrome, headed by default, human can step in anytime |
 | `backlinks` + two providers + `tool-backlinks` | batch work source (supermanager) and mailboxes (cloud-mail); tokens and URLs configurable in the settings page |
