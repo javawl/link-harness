@@ -17,20 +17,24 @@ user-invocable: true
 收到"发外链"（或输入 `/backlink-publish [批次号]`）后：消息里已带具体批次号时跳过第 1 步直接认领执行。
 
 1. `backlinks batch_list` → **必须调用 `ask_user_question` 工具**把批次渲染成可点击选项卡让用户选，不要只在对话里贴列表让用户打字：每个选项 `label` = "批次 <id> · <待发布数>条"，`description` = 站点类型 + 日期概要；最近 4 个批次作为选项，其余引导用户用自定义输入填批次号。**用户点选后才继续；若问题卡被取消、跳过或未获回答，立即停止本流程，绝不认领任何批次（包括推荐项），向用户说明并等待明确指示。**
-2. `backlinks batch_get <id>` → 展示条目并先做**已发布分区**：条目 `publishStatus` 为 `submitted`/`live`（已提交/已上线）或 `publishedUrl` 非空 = 已发布；同批次内同 `sourceId` 的其余条目同样视为已发布。已发布条目本次**不认领、不执行**（认领会被后端拒绝），汇总时单列"已发布跳过"；两张卡的候选项只覆盖其余条目。再用 ask-user 依次确认两张卡：
+2. `backlinks batch_get <id>` → 展示条目并先做**已发布分区**：条目 `publishStatus` 为 `submitted`/`live`（已提交/已上线）或 `publishedUrl` 非空 = 已发布；同批次内同 `sourceId` 的其余条目同样视为已发布。已发布条目本次**不认领、不执行**（认领会被后端拒绝），汇总时单列"已发布跳过"；各卡的候选项只覆盖其余条目。再用 ask-user 依次确认三张卡：
    a. **范围**：全部 / 仅待发布 / 手选；
    b. **执行模式**（本次运行生效）：
       - `智能匹配（推荐）`：只发布类型可识别的外链站——勘察后能匹配六类剧本之一才发；类型不识别的条目回写 `skipped`（failureReason 注明"类型不识别，智能匹配模式下跳过"）。
       - `全部尝试`：不做类型筛选，所有条目都尝试发布——已知类型仍用对应剧本提速，未知类型走通用主循环（勘察→注册→提交→核验→回写）；绝不因类型跳过，结局交给诚实回写。
    未回答模式卡时默认 `智能匹配`；无人值守（headless）任务里以任务描述声明的模式为准。
+   c. **停靠模式**（本次运行生效，决定结束后浏览器的去留，影响内存占用）：
+      - `保留停靠页`：人工介入（CAPTCHA/登录墙）的标签页跨会话保留，浏览器保持待命；运行结束只关工作标签。适合人工介入多、想空闲时集中处理的节奏。
+      - `结束即关浏览器`：运行结束 `browser closeBrowser` 关闭整个浏览器——登录态仍在持久 profile 里无损，下次发布自动恢复；人工介入请趁运行中当场完成，或下次重跑再处理。适合内存紧张或批次间隔长的场景。
+      未回答时默认 `保留停靠页`；无人值守（headless）任务里以任务描述声明的模式为准，未声明默认 `保留停靠页`。
 3. `backlinks batch_claim <id> [itemIds]` 获得租约，记下 `leaseId`。
 4. **选择执行拓扑**：
    - **条目 ≥3 且分布在不同域名** → 用并发拓扑（默认并发 3）：
      a. 按 `sourceHost` 把条目分组——**同域名的条目必须进同一组串行**（防频控）；
-     b. 一次回复里并发调用 `subagent` 工具派出至多 3 个子任务（或逐个以 run_in_background 派发再轮询）。每个子任务的提示词必须包含：该组全部条目的完整信息（id/sourceId/sourceUrl/submitUrl/category/anchors/tags/notes/publishStatus/publishedUrl）、`leaseId`、以及这段话（子任务不会加载技能文件，四段硬纪律全靠这段话送达）："你是并行发布子任务。执行模式：{智能匹配|全部尝试}。先用 browser navigate 并带 page:"组名" 打开专属标签页，此后每一条 browser 命令都必须带同一个 page 参数。四条硬纪律：(1) 勘察——判'无评论区/无入口'前必须依次 waitFor 常见锚点（#comments/#respond/[id*='comment']/iframe）或等 3-5 秒、press End 滚到页底、见'Load comments'类按钮先点击、快照里的 iframe 用 frame() 前缀进入、兜底 navigate 到 URL#comments；全走完仍无才 skipped，措辞固定'评论区延迟加载探测后仍不存在'，禁止凭一次首屏快照判'静态页面'。(2) 带链——表单有 Website 字段优先填字段；contenteditable 富文本框/带工具栏禁止把 <a> 当文本输入（会被原样转义），必须先输观点句、选中锚文本、点工具栏链接按钮填 targetUrl；真纯文本框才直写 <a href="targetUrl">anchorText</a>；BBCode 框用 [url=targetUrl]anchorText[/url]；一段只嵌 1 个链接，锚文本融进观点句。(3) 核验与查重——aria 快照 role:link 且名称含锚文本才算链接嵌上，目标 URL 裸字符串（含被转义的 <a> 文本）不算；'目标站已存在本站链接'同口径，自己被转义的旧评论不算已发布；转义回写 failed + manual_required 绝不重发。(4) 注册——评论区/发帖要求登录时先自助注册：进 Sign Up/Register 走邮箱注册表单，backlinks mailbox_create 必须带两个参数（localPart=随机前缀、domain=screwdom.org，缺 domain 会直接报错）拿邮箱 → 填表注册 → backlinks mail_wait（默认等 120 秒）拿验证码/链接 → 完成验证后回来登录发布。'要求登录'本身不是人工事件——Wix 'Log in to publish as a member' 这类能一次性邮箱注册的登录墙是正常流程；仅 reCAPTCHA/人机验证、仅 Google OAuth 且会话未初始化、或注册被拒才回写 failed + manual_required。已发布的条目回写 skipped 绝不重复提交；每条完成立即用 backlinks item_result（带 leaseId）诚实回写；人机验证墙回写 manual_required 并 bringToFront 保留标签页；不要认领批次、不要 lease_release、不要问用户问题。"
+     b. 一次回复里并发调用 `subagent` 工具派出至多 3 个子任务（或逐个以 run_in_background 派发再轮询）。每个子任务的提示词必须包含：该组全部条目的完整信息（id/sourceId/sourceUrl/submitUrl/category/anchors/tags/notes/publishStatus/publishedUrl）、`leaseId`、本次运行的停靠模式（保留停靠页/结束即关浏览器）、以及这段话（子任务不会加载技能文件，五段硬纪律全靠这段话送达）："你是并行发布子任务。执行模式：{智能匹配|全部尝试}。先用 browser navigate 并带 page:"组名" 打开专属标签页，此后每一条 browser 命令都必须带同一个 page 参数。五条硬纪律：(1) 勘察——判'无评论区/无入口'前必须依次 waitFor 常见锚点（#comments/#respond/[id*='comment']/iframe）或等 3-5 秒、press End 滚到页底、见'Load comments'类按钮先点击、快照里的 iframe 用 frame() 前缀进入、兜底 navigate 到 URL#comments；全走完仍无才 skipped，措辞固定'评论区延迟加载探测后仍不存在'，禁止凭一次首屏快照判'静态页面'。(2) 带链——表单有 Website 字段优先填字段；contenteditable 富文本框/带工具栏禁止把 <a> 当文本输入（会被原样转义），必须先输观点句、选中锚文本、点工具栏链接按钮填 targetUrl；真纯文本框才直写 <a href="targetUrl">anchorText</a>；BBCode 框用 [url=targetUrl]anchorText[/url]；一段只嵌 1 个链接，锚文本融进观点句。(3) 核验与查重——aria 快照 role:link 且名称含锚文本才算链接嵌上，目标 URL 裸字符串（含被转义的 <a> 文本）不算；'目标站已存在本站链接'同口径，自己被转义的旧评论不算已发布；转义回写 failed + manual_required 绝不重发。(4) 注册——评论区/发帖要求登录时先自助注册：进 Sign Up/Register 走邮箱注册表单，backlinks mailbox_create 必须带两个参数（localPart=随机前缀、domain=screwdom.org，缺 domain 会直接报错）拿邮箱 → 填表注册 → backlinks mail_wait（默认等 120 秒）拿验证码/链接 → 完成验证后回来登录发布。'要求登录'本身不是人工事件——Wix 'Log in to publish as a member' 这类能一次性邮箱注册的登录墙是正常流程；仅 reCAPTCHA/人机验证、仅 Google OAuth 且会话未初始化、或注册被拒才回写 failed + manual_required。已发布的条目回写 skipped 绝不重复提交；每条完成立即用 backlinks item_result（带 leaseId）诚实回写；人机验证墙回写 manual_required 并 bringToFront 保留标签页；不要认领批次、不要 lease_release、不要问用户问题。(5) 标签——组内条目依次复用同一专属标签页；条目挂起 manual_required 时把当前标签保留为停靠页（bringToFront 召回窗口），用新的 page 参数（如 "组名-2"）新开标签继续后续条目；临时弹窗（OAuth 授权窗等）用完即 closePage；返回前按停靠模式收尾——保留停靠页模式 closePage 关闭自己开的全部非停靠标签（停靠页留着等人工），结束即关模式直接返回、由主任务统一关闭浏览器。"
      c. 等待子任务期间，主任务每约 60 秒调一次 `lease_heartbeat` 保活租约；
-     d. 全部子任务返回后核对各条目回写状态，`lease_release`，输出汇总表（含每条的 live/submitted/failed/skipped，另单列本次"已发布跳过"的条目）。
-   - **条目 <3 或集中在同一域名** → 串行拓扑：自己逐条执行单条目循环，每 1-2 个条目 `lease_heartbeat`，结束后 `lease_release` 输出汇总。
+     d. 全部子任务返回后核对各条目回写状态，`lease_release`，输出汇总表（含每条的 live/submitted/failed/skipped，另单列本次"已发布跳过"的条目）。收尾按停靠模式：结束即关 → `browser closeBrowser`；保留停靠页 → 子任务已各自关闭工作标签，主任务只需关闭自己开过的工作标签，停靠页留着等人工。
+   - **条目 <3 或集中在同一域名** → 串行拓扑：自己逐条执行单条目循环，每 1-2 个条目 `lease_heartbeat`，结束后 `lease_release` 输出汇总；收尾同并发拓扑：结束即关 → `browser closeBrowser`，保留停靠页 → 关闭工作标签仅留停靠页。
 
 ## 单条目循环
 
@@ -63,7 +67,7 @@ user-invocable: true
    把所打标签记进 evidence。回写内容：
    - 核验通过 → `live` + publicUrl + anchorText + targetUrl + evidence（一句话证据）
    - 明确"已提交待审核" → `submitted`
-   - CAPTCHA/登录墙/需人工 → `failed` + `manual_required` + 原因（保留浏览器标签页不关）
+   - CAPTCHA/登录墙/需人工 → `failed` + `manual_required` + 原因（该标签保留为停靠页不关，新开标签继续后续条目）
    - 瞬时错误（超时/网络）→ `failed` + `retryable`
    - 付费/停服/资格不符 → `skipped` + 原因
 9. 对方要求先挂互换徽标时（"reciprocal/featured badge"），按此流程**在提交前完成**：
@@ -74,7 +78,9 @@ user-invocable: true
 
 ## 人工兜底（持久会话）
 
-浏览器 profile 是持久的。遇到 CAPTCHA/首次登录：保留标签页，回写 `manual_required`，继续下一条。用户在弹出的浏览器窗口里人工过一次验证后，重跑该批次即可自动复用会话。
+浏览器 profile 是持久的。遇到 CAPTCHA/首次登录：把当前标签保留为停靠页（bringToFront 召回窗口），回写 `manual_required`，新开标签继续下一条。用户在浏览器窗口里人工过一次验证后，重跑该批次即可自动复用会话。
+
+批次结束时浏览器的去留由发布前的**停靠模式**选择决定：`保留停靠页` = 停靠页跨会话存活等用户空闲时处理，工作标签全部关闭；`结束即关浏览器` = `closeBrowser` 全部关闭，登录态在持久 profile 里无损，人工介入改在运行中当场完成或下次重跑时处理。用户随时说「关闭浏览器」可立即 `closeBrowser` 释放内存。
 
 ## 初始化谷歌会话
 

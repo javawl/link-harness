@@ -14,10 +14,19 @@ import { assertNever } from '@deepseek-ai/dsh-util-values'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type { BrowserCommand, BrowserResult } from '@deepseek-ai/dsh-browser'
 
-/** Tool actions, one per closed-union command kind. */
-const ACTIONS = ['navigate', 'snapshot', 'click', 'fill', 'select', 'press', 'upload', 'screenshot', 'waitFor', 'closePage', 'bringToFront'] as const
+/** Tool actions, one per closed-union command kind, plus the session-lifecycle `closeBrowser`. */
+const ACTIONS = ['navigate', 'snapshot', 'click', 'fill', 'select', 'press', 'upload', 'screenshot', 'waitFor', 'closePage', 'bringToFront', 'closeBrowser'] as const
 
 type BrowserAction = typeof ACTIONS[number]
+
+/**
+ * Tool-local marker for `closeBrowser`: ending the whole session is browser
+ * lifecycle owned by `ctx.browser.closeSession()`, not a page command the
+ * seam union carries. Execution routes the marker there and acks.
+ */
+export interface BrowserCloseBrowserMarker {
+  readonly kind: 'closeBrowser'
+}
 
 /** Validated tool arguments after value checks the schema DSL cannot express. */
 export interface BrowserToolInput {
@@ -36,9 +45,10 @@ export interface BrowserToolInput {
  * Validate tool arguments into a seam command. Throws a plain `Error` with a
  * model-readable message; the registry turns it into a structured tool error.
  * @param args - raw tool arguments.
- * @returns the closed-union command for `ctx.browser.act()`.
+ * @returns the closed-union command for `ctx.browser.act()`, or the
+ * tool-local {@link BrowserCloseBrowserMarker} for `closeBrowser`.
  */
-export function parseBrowserArgs(args: Record<string, unknown>): BrowserCommand {
+export function parseBrowserArgs(args: Record<string, unknown>): BrowserCommand | BrowserCloseBrowserMarker {
   const action = args.action
   const page = readNonEmpty(args.page, 'page')
   const url = readNonEmpty(args.url, 'url')
@@ -102,6 +112,8 @@ export function parseBrowserArgs(args: Record<string, unknown>): BrowserCommand 
       })
     case 'closePage':
       return addressed({ kind: 'closePage' })
+    case 'closeBrowser':
+      return { kind: 'closeBrowser' }
     default:
       return assertNever(action as never, `browser action must be one of ${ACTIONS.join(', ')}.`)
   }
@@ -275,14 +287,15 @@ export function applyBrowserTool(ctx: Context, timeoutMs: number, maxOutputChars
       'Selectors address semantically first: role:<role>|<name> (for example role:button|Submit), label:<text>, placeholder:<text>, text:<text>, or bare CSS as fallback; prefix frame(<iframe css>)>> to reach inside an iframe; click also takes xy:<x>,<y> viewport coordinates from a screenshot.',
       'Prefer snapshot with format=aria to read element roles and names, then address them by role/label/placeholder — far more reliable than guessing CSS.',
       'The window may run offscreen; when a human must step in (CAPTCHA, login), call bringToFront first so the window surfaces.',
-      'Actions: navigate (absolute http(s) url), snapshot (url/title/text of the page or a selector), click/fill/select (CSS selector; fill and select need value), press (key like Enter), upload (selector + files), screenshot (PNG base64), waitFor (selector or url), closePage.',
+      'Actions: navigate (absolute http(s) url), snapshot (url/title/text of the page or a selector), click/fill/select (CSS selector; fill and select need value), press (key like Enter), upload (selector + files), screenshot (PNG base64), waitFor (selector or url), closePage, closeBrowser.',
+      'closeBrowser ends the whole browser session; cookies and logins persist in the profile and the next command relaunches it. Use it once browser work is done and no parked tab is waiting for a human, so the browser does not idle on memory.',
       'The session persists cookies and logins across calls and runs; prefer it for sites that need JavaScript, logins, or form submission. Confirm outcomes with snapshot or waitFor after state-changing actions.',
     ].join(' '),
   })
 
   ctx.tools.register(defineTool({
     name: 'browser',
-    description: 'Drive one shared persistent real-browser session: navigate, read page text, click, fill forms, select options, press keys, upload files, screenshot, wait, and close tabs.',
+    description: 'Drive one shared persistent real-browser session: navigate, read page text, click, fill forms, select options, press keys, upload files, screenshot, wait, close tabs, and end the browser session when done.',
     parameters: {
       action: {
         type: 'string',
@@ -376,6 +389,10 @@ export function applyBrowserTool(ctx: Context, timeoutMs: number, maxOutputChars
     isConcurrencySafe: browserIsConcurrencySafe,
     async execute(args: Record<string, unknown>, exec) {
       const command = parseBrowserArgs(args)
+      if (command.kind === 'closeBrowser') {
+        await ctx.browser.closeSession()
+        return { action: String(args.action), result: { kind: 'acked' as const } }
+      }
       const bounded: BrowserCommand = command.kind === 'navigate' || command.kind === 'snapshot'
         ? { ...command, maxChars: maxOutputChars }
         : command

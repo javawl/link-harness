@@ -6,7 +6,7 @@ backlink-agent is a backlink publishing operator that runs on your own machine: 
 
 ## How a run works
 
-A typical publish run: the agent lists pending batches over the backend's agent open API, you pick a batch and scope, and it claims a lease (90-minute mutual exclusion — several machines publishing concurrently never double-submit an item). Before claiming it partitions out already-published sources — an item whose publish record is `submitted` or `live` (or whose target site already lists the website) is skipped and reported, never re-submitted. It then drives the shared browser item by item, choosing the playbook for each site type. On a CAPTCHA or first login the item parks as `manual_required` with the browser window held open; once a human clears it once, the session in the persistent profile lets later items on the same site pass fully automatically. Every result writes back under the status model: `live` (verified publicly visible), `submitted` (awaiting the site's review), `failed` (manual-required or retryable), `skipped` (already published / paid / eligibility mismatch). An unknown outcome is never resubmitted — the item parks for a human instead, so publish records stay honest.
+A typical publish run: the agent lists pending batches over the backend's agent open API, you pick a batch and scope, and three cards are confirmed before claiming — scope, run mode, and the **parking mode**: `keep parked tabs` (human-intervention tabs survive across runs with the browser on standby, for clearing at leisure) or `close browser at end` (the run closes the whole browser to release memory; logins persist unharmed in the persistent profile). It then partitions out already-published sources — an item whose publish record is `submitted` or `live` (or whose target site already lists the website) is skipped and reported, never re-submitted — claims a lease (90-minute mutual exclusion — several machines publishing concurrently never double-submit an item), and drives the shared browser item by item, choosing the playbook for each site type. On a CAPTCHA or first login the item parks as `manual_required` with its tab held open; once a human clears it once, the session in the persistent profile lets later items on the same site pass fully automatically. Every result writes back under the status model: `live` (verified publicly visible), `submitted` (awaiting the site's review), `failed` (manual-required or retryable), `skipped` (already published / paid / eligibility mismatch). An unknown outcome is never resubmitted — the item parks for a human instead, so publish records stay honest.
 
 ## Onboarding another machine (three steps)
 
@@ -20,11 +20,11 @@ Resolution order: web settings page > composition presets > environment variable
 
 Typing `/` in the web composer opens the skill trigger picker; a `/name` token in any message injects that skill's full body:
 
-- `/backlink-publish` — start the flow with clickable batch cards; a second card picks the run mode — smart-match (publish only recognized site types, skip unknown) or try-all (attempt every item regardless of type)
+- `/backlink-publish` — start the flow with clickable batch cards; a second card picks the run mode — smart-match (publish only recognized site types, skip unknown) or try-all (attempt every item regardless of type); a third card picks the parking mode — keep parked tabs across runs, or close the whole browser at the end (`closeBrowser`, logins persist either way). You can also say "close the browser" at any time to release memory immediately.
 - `/backlink-publish 176` — publish batch 176 directly
 - `/google-session` — seed or check the shared browser's Google session
 
-A headless one-shot also works: once per machine run `node examples/backlink-agent/ensure-profile-settings.mjs headless`, then `pnpm dsh --profile headless --patch examples/backlink-agent/cordis.yml "发外链"`. Say "执行批次 176" to skip the picker; `manual_required` items re-enter the run automatically after a human clears the browser challenge.
+A headless one-shot also works: once per machine run `node examples/backlink-agent/ensure-profile-settings.mjs headless`, then `pnpm dsh --profile headless --patch examples/backlink-agent/cordis.yml "发外链"`. Say "执行批次 176" to skip the picker; `manual_required` items re-enter the run automatically after a human clears the browser challenge (keep-parked mode; with close-browser mode, clear challenges during the run or handle them on the next rerun — the parking mode declared in the task description wins).
 
 ## Composition
 

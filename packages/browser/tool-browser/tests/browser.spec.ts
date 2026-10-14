@@ -33,6 +33,7 @@ describe('parseBrowserArgs', () => {
     expect(parseBrowserArgs({ action: 'waitFor', url: '**/thanks' }))
       .toEqual({ kind: 'waitFor', url: '**/thanks' })
     expect(parseBrowserArgs({ action: 'closePage' })).toEqual({ kind: 'closePage' })
+    expect(parseBrowserArgs({ action: 'closeBrowser' })).toEqual({ kind: 'closeBrowser' })
     expect(parseBrowserArgs({ action: 'navigate', page: 'siteA', url: 'https://example.com' }))
       .toEqual({ kind: 'navigate', page: 'siteA', url: 'https://example.com/' })
     expect(parseBrowserArgs({ action: 'click', page: 'siteA', selector: 'a' }))

@@ -32,7 +32,7 @@ kind: "package-reference"
 <a id="tool"></a>
 ## 工具
 
-`browser(action, url?, selector?, value?, key?, files?, waitUntil?, timeoutMs?)` — 动作 `navigate`、`snapshot`、`click`、`fill`、`select`、`press`、`upload`、`screenshot`、`waitFor`、`closePage`。结果是服务定义的闭合联合：有界页面捕获（`page`）、`acked`、或 `screenshot` PNG base64。页面文本受 `maxOutputChars`（默认 60000）约束；单次调用超时（`timeoutMs`，默认 120000）是部署策略，经工具取消信号转发。没有 Provider 时工具保持可见，执行时返回结构化错误。
+`browser(action, url?, selector?, value?, key?, files?, waitUntil?, timeoutMs?)` — 动作 `navigate`、`snapshot`、`click`、`fill`、`select`、`press`、`upload`、`screenshot`、`waitFor`、`closePage`、`closeBrowser`。结果是服务定义的闭合联合：有界页面捕获（`page`）、`acked`、或 `screenshot` PNG base64。`closeBrowser` 是会话生命周期而非页面命令：它路由到 `ctx.browser.closeSession()`，下一条命令会用 profile 里持久化的登录态重新拉起浏览器。页面文本受 `maxOutputChars`（默认 60000）约束；单次调用超时（`timeoutMs`，默认 120000）是部署策略，经工具取消信号转发。没有 Provider 时工具保持可见，执行时返回结构化错误。
 
 <a id="model-experience"></a>
 ## 模型体验
@@ -46,7 +46,7 @@ browser 工具在注册时贡献以下指引。
 ##### Browser 工具指引
 
 ```markdown
-Use the browser tool to drive one shared, persistent real-browser session (the active tab). Actions: navigate (absolute http(s) url), snapshot (url/title/text of the page or a selector), click/fill/select (CSS selector; fill and select need value), press (key like Enter), upload (selector + files), screenshot (PNG base64), waitFor (selector or url), closePage. The session persists cookies and logins across calls and runs; prefer it for sites that need JavaScript, logins, or form submission. Confirm outcomes with snapshot or waitFor after state-changing actions.
+Use the browser tool to drive one shared, persistent real-browser session across tabs. Tabs: navigate returns a page ref like p2; pass that page on every later command for the tab you are working. Work several sites in parallel by giving each its own ref. Omit page only for single-tab serial work. Selectors address semantically first: role:<role>|<name> (for example role:button|Submit), label:<text>, placeholder:<text>, text:<text>, or bare CSS as fallback; prefix frame(<iframe css>)>> to reach inside an iframe; click also takes xy:<x>,<y> viewport coordinates from a screenshot. Prefer snapshot with format=aria to read element roles and names, then address them by role/label/placeholder — far more reliable than guessing CSS. The window may run offscreen; when a human must step in (CAPTCHA, login), call bringToFront first so the window surfaces. Actions: navigate (absolute http(s) url), snapshot (url/title/text of the page or a selector), click/fill/select (CSS selector; fill and select need value), press (key like Enter), upload (selector + files), screenshot (PNG base64), waitFor (selector or url), closePage, closeBrowser. closeBrowser ends the whole browser session; cookies and logins persist in the profile and the next command relaunches it. Use it once browser work is done and no parked tab is waiting for a human, so the browser does not idle on memory. The session persists cookies and logins across calls and runs; prefer it for sites that need JavaScript, logins, or form submission. Confirm outcomes with snapshot or waitFor after state-changing actions.
 ```
 
 #### Token 影响
