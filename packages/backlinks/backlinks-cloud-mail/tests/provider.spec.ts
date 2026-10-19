@@ -172,7 +172,7 @@ describe('CloudMailMailbox', () => {
 describe('backlinks-cloud-mail plugin apply', () => {
   it('registers the provider with env token fallback', () => {
     const registerMailboxProvider = vi.fn()
-    const defaulted = Config({ baseUrl: 'https://mail.test/api' } as never)
+    const defaulted = Config({ baseUrl: 'https://mail.test/api' })
     process.env.CLOUDMAIL_TOKEN = 'env-token'
     try {
       apply({
@@ -195,14 +195,19 @@ describe('backlinks-cloud-mail plugin apply', () => {
   it('rejects a non-http baseUrl and non-positive timeout at resolution', () => {
     const registered: Array<{ resolveConfig: () => ResolvedCloudMailConfig }> = []
     const ctx = {
-      backlinks: { registerMailboxProvider: (provider: { resolveConfig: () => ResolvedCloudMailConfig }) => { registered.push(provider); return () => {} } },
+      backlinks: {
+        registerMailboxProvider: (provider: { resolveConfig: () => ResolvedCloudMailConfig }) => {
+          registered.push(provider)
+          return () => {}
+        },
+      },
       get: () => undefined,
       effect: (run: () => unknown) => { void run(); return () => {} },
     }
-    apply(ctx as never, Config({ baseUrl: 'x://y' } as never))
-    expect(() =>{  registered[0]!.resolveConfig() }).toThrow(/baseUrl/u)
+    apply(ctx as never, Config({ baseUrl: 'x://y' }))
+    expect(() => registered[0]!.resolveConfig()).toThrow(/baseUrl/u)
     registered.length = 0
-    apply(ctx as never, Config({ baseUrl: 'http://y', requestTimeoutMs: 0 } as never))
-    expect(() =>{  registered[0]!.resolveConfig() }).toThrow(/requestTimeoutMs/u)
+    apply(ctx as never, Config({ baseUrl: 'http://y', requestTimeoutMs: 0 }))
+    expect(() => registered[0]!.resolveConfig()).toThrow(/requestTimeoutMs/u)
   })
 })

@@ -21,7 +21,7 @@ function acceptWrites(host: StubConfigForm<BacklinksSettings>): void {
         value[field] = (host.scope.getSnapshot().base as Record<string, unknown> | undefined)?.[field]
       }
     }
-    host.publish({ value: value as BacklinksSettings, user })
+    host.publish({ value, user })
     return Promise.resolve(true)
   })
 }

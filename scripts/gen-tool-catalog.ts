@@ -720,7 +720,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
       // Mount the seam and one provider so the tool registers. Its schema does
       // not depend on the backend being reachable or configured.
       await ctx.plugin(BacklinksRuntime)
-      await ctx.plugin(BacklinksSupermanager, { baseUrl: 'http://127.0.0.1:9', token: 'catalog' } as never)
+      await ctx.plugin(BacklinksSupermanager, { baseUrl: 'http://127.0.0.1:9', token: 'catalog' })
       await ctx.plugin(ToolBacklinks)
     },
     note:

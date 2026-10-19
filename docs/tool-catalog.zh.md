@@ -2847,7 +2847,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
   "properties": {
     "action": {
       "type": "string",
-      "description": "One of navigate, snapshot, click, fill, select, press, upload, screenshot, waitFor, closePage, bringToFront."
+      "description": "One of navigate, snapshot, click, fill, select, press, upload, screenshot, waitFor, closePage, bringToFront, closeBrowser."
     },
     "page": {
       "type": "string",

@@ -251,7 +251,7 @@ describe('SupermanagerBatchSource', () => {
 describe('backlinks-supermanager plugin apply', () => {
   it('registers the provider with defaults and env token fallback', () => {
     const registerBatchSourceProvider = vi.fn()
-    const defaulted = Config({ baseUrl: 'http://127.0.0.1:3000' } as never)
+    const defaulted = Config({ baseUrl: 'http://127.0.0.1:3000' })
     expect(defaulted.requestTimeoutMs.get()).toBe(15_000)
 
     process.env.SUPERMANAGER_TOKEN = 'smag_env'
@@ -276,14 +276,19 @@ describe('backlinks-supermanager plugin apply', () => {
   it('rejects a non-http baseUrl and non-positive timeout at resolution', () => {
     const registered: Array<{ resolveConfig: () => ResolvedSupermanagerConfig }> = []
     const ctx = {
-      backlinks: { registerBatchSourceProvider: (provider: { resolveConfig: () => ResolvedSupermanagerConfig }) => { registered.push(provider); return () => {} } },
+      backlinks: {
+        registerBatchSourceProvider: (provider: { resolveConfig: () => ResolvedSupermanagerConfig }) => {
+          registered.push(provider)
+          return () => {}
+        },
+      },
       get: () => undefined,
       effect: (run: () => unknown) => { void run(); return () => {} },
     }
-    apply(ctx as never, Config({ baseUrl: 'ftp://x' } as never))
-    expect(() =>{  registered[0]!.resolveConfig() }).toThrow(/baseUrl/u)
+    apply(ctx as never, Config({ baseUrl: 'ftp://x' }))
+    expect(() => registered[0]!.resolveConfig()).toThrow(/baseUrl/u)
     registered.length = 0
-    apply(ctx as never, Config({ baseUrl: 'http://x', requestTimeoutMs: -1 } as never))
-    expect(() =>{  registered[0]!.resolveConfig() }).toThrow(/requestTimeoutMs/u)
+    apply(ctx as never, Config({ baseUrl: 'http://x', requestTimeoutMs: -1 }))
+    expect(() => registered[0]!.resolveConfig()).toThrow(/requestTimeoutMs/u)
   })
 })
