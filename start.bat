@@ -1,70 +1,75 @@
 @echo off
 setlocal
-chcp 65001 >nul
-title backlink-agent
-rem 启动 backlink-agent 网页端（http://127.0.0.1:8787），与 examples/backlink-agent/start.sh 等价。
-rem 令牌推荐在网页设置页配置（启动后浏览器打开即见）；仓库根 .env 或已 set
-rem 的同名变量仍是等价的配置来源。依赖已由 setup.sh（Git Bash/WSL 下）装好 —— 启动只依赖 node。
+rem Launch the backlink-agent web UI (http://127.0.0.1:8787); Windows counterpart of examples/backlink-agent/start.sh.
+rem Tokens are best configured in the web settings page (shown when the browser opens); the repo
+rem root .env or pre-set environment variables are equivalent sources. Dependencies are installed
+rem by setup.sh (Git Bash/WSL); launching only needs node.
 cd /d "%~dp0"
 
 where node >nul 2>nul
 if errorlevel 1 (
-  echo 未找到 node：请先安装 Node.js 24 及以上，或将其所在目录加入 PATH。
+  echo node not found: install Node.js 24 or newer, or add its directory to PATH.
   goto :fail
 )
 node -e "process.exit(process.versions.node.split('.')[0]>=24?0:1)" >nul 2>nul
 if errorlevel 1 (
-  echo node 版本过低：需要 Node.js 24 及以上，当前为：
+  echo node too old: Node.js 24 or newer required, current version:
   node -v
   goto :fail
 )
 
-rem 依赖未安装时给出明确指引，代替 node 的模块解析报错
+rem Give explicit guidance when dependencies are missing, instead of node module-resolution errors
 if not exist "node_modules\tsx" (
-  echo 依赖未安装：请先运行 bash examples/backlink-agent/setup.sh。
+  echo Dependencies missing: run "bash examples/backlink-agent/setup.sh" first.
   goto :fail
 )
-rem 构建产物（lib/）不进 git，缺失说明从未构建过；客户端产物（lib/client.js）
-rem 是 0.2.x 新增的启动必需品，单独检查以免旧产物漏过预检。
+rem lib/ build artifacts are not committed; a missing one means never built. The client bundle
+rem (lib/client.js) became a launch requirement in 0.2.x; check it separately so old artifacts
+rem cannot slip past this precheck.
 set "TYPERT_OK="
-for %%f in (packages\*\*\lib\typert.host.js) do if not defined TYPERT_OK set "TYPERT_OK=1"
+rem cmd path wildcards only match the final segment; expand directory levels with nested for /d
+for /d %%g in (packages\*) do for /d %%p in ("%%g\*") do if exist "%%p\lib\typert.host.js" if not defined TYPERT_OK set "TYPERT_OK=1"
 if not defined TYPERT_OK (
-  echo 构建产物缺失：请先运行 bash examples/backlink-agent/setup.sh（或 pnpm run build）。
+  echo Build artifacts missing: run "bash examples/backlink-agent/setup.sh" ^(or pnpm run build^).
   goto :fail
 )
 if not exist "packages\client\modules\lib\client.js" (
-  echo 客户端构建产物缺失（版本对齐后需重新构建）：请先运行 pnpm run build。
+  echo Client bundle missing ^(rebuild after version alignment^): run pnpm run build.
   goto :fail
 )
 
-rem 令牌缺失只提示不阻断：环境变量或仓库根 .env 任一处有非空值即视为已配置
+rem Token gaps are informational only: an env var or a root .env line with a non-empty value counts as configured
 set "MISSING="
 call :check_token NEWAPI_API_KEY
 call :check_token SUPERMANAGER_TOKEN
 call :check_token CLOUDMAIL_TOKEN
 if defined MISSING (
-  echo 提示：%MISSING% 未配置 —— 可启动后在网页设置页填写，或写入仓库根 .env（模板 examples/backlink-agent/.env.example）。
+  echo Hint: %MISSING% not set - fill it in the web settings page after launch, or in the root .env ^(template examples/backlink-agent/.env.example^).
 )
 
-rem 端口被占时给出一句话原因，代替 webserver 深处的 EADDRINUSE 报错
+rem Explain port conflicts in one line instead of an EADDRINUSE error from deep inside the webserver
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr /c:":8787 " ^| findstr /c:"LISTENING"') do (
-  echo 端口 8787 已被 PID %%p 占用 —— 多半已有一个 backlink-agent 在运行：
-  echo   直接访问 http://127.0.0.1:8787 ；要重启请先在任务管理器结束该进程再重跑本脚本。
+  echo Port 8787 is held by PID %%p - an existing backlink-agent is likely running:
+  echo   open http://127.0.0.1:8787 directly; to restart, end that process in Task Manager first.
   goto :fail
 )
 
-rem 设置页管理的配置（模型目录/默认路由/主 agent）写入 profile 持久层，
-rem 只补写缺失条目，用户在设置页的已有编辑不会被覆盖。
+rem Switch the console to UTF-8 before node runs so process output renders correctly; all bat
+rem content after this point stays pure ASCII, keeping parse positions codepage-independent.
+chcp 65001 >nul
+
+rem Settings-page config (model catalog / default routing / main agent) is persisted via the
+rem profile layer; only missing entries are written, existing edits in the settings page are kept.
 node examples/backlink-agent/ensure-profile-settings.mjs web
 if errorlevel 1 goto :fail
 
-rem 等价于 start.sh 的最终 exec：源码启动需经 tsx 的 ESM hook
+rem Equivalent to start.sh's final exec: the source launch must go through tsx's ESM hook
 node --import tsx/esm apps/cli/src/bin.ts web --patch examples/backlink-agent/cordis.yml --port 8787
 if errorlevel 1 (
-  echo backlink-agent 异常退出。
+  echo backlink-agent exited unexpectedly.
   goto :fail
 )
-echo backlink-agent 已停止。
+echo backlink-agent stopped.
 pause
 exit /b 0
 
